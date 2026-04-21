@@ -1,0 +1,2336 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>ОБД — Оперативна База Даних</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#060911;--bg2:#0a0e1a;--bg3:#0d1220;--card:#0d1220;
+  --border:#1a2540;--blue:#1d4ed8;--blue-l:#3b82f6;--blue-b:#60a5fa;
+  --text:#dde3f0;--text2:#94a3b8;--text3:#475569;--text4:#2d3f5c;
+  --red:#f87171;--yellow:#fde047;--green:#4ade80;--orange:#fb923c;
+  --scan:rgba(29,78,216,0.025);
+}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',Arial,sans-serif;min-height:100vh;
+  background-image:repeating-linear-gradient(0deg,var(--scan) 0,var(--scan) 1px,transparent 1px,transparent 6px);}
+.hidden{display:none!important}
+
+/* ─── AUTH ─────────────────────────────── */
+.auth-wrap{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px;
+  background:linear-gradient(135deg,#020510 0%,#060c1e 100%)}
+.auth-box{background:var(--bg3);border:1px solid var(--border);border-radius:16px;
+  padding:40px 36px;width:100%;max-width:400px;
+  box-shadow:0 0 80px rgba(29,78,216,0.18),0 0 0 1px rgba(29,78,216,0.08)}
+.auth-logo{text-align:center;margin-bottom:28px}
+.auth-crest{font-size:48px;margin-bottom:10px;display:block;
+  filter:drop-shadow(0 0 12px rgba(96,165,250,0.4))}
+.auth-logo h1{font-size:1.05rem;font-weight:800;color:var(--blue-b);
+  letter-spacing:3px;text-transform:uppercase;margin-bottom:4px}
+.auth-logo p{font-size:0.7rem;color:var(--text3);letter-spacing:1px}
+.auth-badge{display:inline-block;background:#0f1e3a;border:1px solid #1e3a8a;
+  color:#93c5fd;font-size:0.62rem;padding:3px 10px;border-radius:4px;
+  text-transform:uppercase;letter-spacing:1.5px;margin-top:6px}
+.form-group{margin-bottom:14px}
+.form-group label{display:block;font-size:0.7rem;color:var(--text2);
+  text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
+.form-group input{width:100%;background:var(--bg2);border:1px solid var(--border);
+  border-radius:8px;color:var(--text);font-size:0.9rem;padding:11px 14px;outline:none;
+  transition:border-color 0.2s;font-family:inherit}
+.form-group input:focus{border-color:var(--blue)}
+.auth-error{color:var(--red);font-size:0.78rem;text-align:center;
+  min-height:20px;margin-bottom:10px}
+.btn-login{width:100%;background:var(--blue);color:#fff;border:none;border-radius:8px;
+  padding:12px;font-size:0.9rem;font-weight:700;cursor:pointer;
+  letter-spacing:1px;transition:all 0.2s;margin-top:6px}
+.btn-login:hover{background:#1e40af;box-shadow:0 0 20px rgba(29,78,216,0.4)}
+.btn-login:disabled{opacity:0.5;cursor:not-allowed}
+.auth-footer{font-size:0.65rem;color:var(--text4);text-align:center;margin-top:16px}
+
+/* ─── TOP BAR ──────────────────────────── */
+.top-bar{background:linear-gradient(135deg,#030812 0%,#091029 50%,#030812 100%);
+  border-bottom:2px solid var(--blue);padding:0 20px;height:56px;
+  display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:100;
+  box-shadow:0 2px 24px rgba(29,78,216,0.28)}
+.top-logo{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.top-crest{font-size:22px;filter:drop-shadow(0 0 6px rgba(96,165,250,0.5))}
+.top-logo-text h1{font-size:0.88rem;font-weight:800;color:var(--blue-b);
+  letter-spacing:2px;text-transform:uppercase;line-height:1.2}
+.top-logo-text p{font-size:0.6rem;color:var(--text4);letter-spacing:1px}
+.live-dot{width:6px;height:6px;border-radius:50%;background:#ef4444;
+  animation:blink 1.4s infinite;display:inline-block;margin-right:5px;
+  vertical-align:middle}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.15}}
+.top-sep{flex:1}
+.top-actions{display:flex;gap:6px;align-items:center}
+.top-btn{background:rgba(29,78,216,0.12);border:1px solid rgba(29,78,216,0.35);
+  color:var(--blue-b);border-radius:6px;padding:6px 12px;font-size:0.73rem;
+  cursor:pointer;transition:all 0.2s;white-space:nowrap;font-family:inherit}
+.top-btn:hover{background:rgba(29,78,216,0.28);border-color:var(--blue-l)}
+.top-btn.danger{background:rgba(127,29,29,0.2);border-color:#7f1d1d;color:#fca5a5}
+.top-btn.danger:hover{background:rgba(127,29,29,0.4)}
+.top-btn.success{background:rgba(20,83,45,0.2);border-color:#14532d;color:var(--green)}
+.access-badge{font-size:0.6rem;padding:3px 9px;border-radius:4px;font-weight:800;
+  letter-spacing:1.5px;text-transform:uppercase}
+.role-admin{background:#0f2d10;color:var(--green);border:1px solid #14532d}
+.role-viewer{background:#0f1e3a;color:#93c5fd;border:1px solid #1e3a8a}
+
+/* ─── STATS BAR ────────────────────────── */
+.stats-bar{display:flex;gap:0;background:#060b16;
+  border-bottom:1px solid var(--border);flex-wrap:wrap}
+.stat-item{display:flex;align-items:center;gap:6px;padding:8px 16px;
+  border-right:1px solid var(--border);cursor:pointer;transition:background 0.15s}
+.stat-item:hover{background:rgba(29,78,216,0.07)}
+.stat-item:last-child{border-right:none;margin-left:auto}
+.stat-label{font-size:0.68rem;color:var(--text3)}
+.stat-num{font-weight:800;font-size:1.05rem}
+.n-blue{color:var(--blue-b)}.n-red{color:var(--red)}.n-yellow{color:var(--yellow)}
+.n-green{color:var(--green)}.n-orange{color:var(--orange)}.n-gray{color:var(--text2)}
+.n-white{color:#e2e8f0}.stat-time{font-size:0.65rem;color:var(--text4);margin-left:auto;padding:8px 16px}
+
+/* ─── SEARCH BAR ───────────────────────── */
+.search-bar{padding:10px 20px;background:var(--bg2);
+  border-bottom:1px solid var(--border);
+  display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.search-inp{position:relative;flex:1;min-width:220px}
+.search-icon{position:absolute;left:11px;top:50%;transform:translateY(-50%);
+  color:var(--text4);font-size:14px;pointer-events:none}
+.search-inp input{width:100%;background:var(--bg3);border:1px solid var(--border);
+  border-radius:8px;color:var(--text);padding:8px 10px 8px 32px;font-size:0.82rem;
+  outline:none;transition:border-color 0.2s;font-family:inherit}
+.search-inp input:focus{border-color:var(--blue)}
+select.flt{background:var(--bg3);border:1px solid var(--border);
+  border-radius:8px;color:var(--text2);padding:8px 10px;font-size:0.8rem;
+  cursor:pointer;outline:none;min-width:130px;font-family:inherit}
+select.flt:focus{border-color:var(--blue)}
+.btn-reset{background:transparent;border:1px solid var(--border);color:var(--text3);
+  border-radius:6px;padding:7px 12px;font-size:0.73rem;cursor:pointer;
+  transition:all 0.2s;font-family:inherit;white-space:nowrap}
+.btn-reset:hover{border-color:var(--blue-l);color:var(--text)}
+
+/* ─── USERS MODAL ──────────────────────── */
+.users-modal{background:var(--bg2);border-radius:14px;width:560px;max-width:96vw;
+  max-height:88vh;overflow-y:auto;padding:28px 28px 24px;border:1px solid var(--border)}
+.users-modal h2{font-size:1.1rem;margin:0 0 18px;color:var(--blue-l)}
+.users-table{width:100%;border-collapse:collapse;font-size:0.82rem;margin-bottom:20px}
+.users-table th{text-align:left;color:var(--text3);font-weight:600;padding:6px 10px;
+  border-bottom:1px solid var(--border)}
+.users-table td{padding:8px 10px;border-bottom:1px solid #1a2540;vertical-align:middle}
+.users-table tr:hover td{background:#0d1829}
+.role-pill{display:inline-block;padding:2px 10px;border-radius:20px;font-size:0.72rem;font-weight:700}
+.role-admin{background:#1a3a6e;color:#60b4ff}
+.role-viewer{background:#1a3a2e;color:#4ddb8a}
+.users-add-form{background:#060a14;border:1px solid var(--border);border-radius:10px;
+  padding:16px;margin-top:4px}
+.users-add-form h3{font-size:0.85rem;color:var(--text3);margin:0 0 12px}
+.users-add-form input,.users-add-form select{
+  width:100%;padding:8px 12px;background:var(--bg3);border:1px solid var(--border);
+  border-radius:7px;color:var(--text);font-size:0.82rem;margin-bottom:8px;box-sizing:border-box}
+.users-add-form input:focus,.users-add-form select:focus{border-color:var(--blue);outline:none}
+.u-note{font-size:0.72rem;color:var(--text4);margin-bottom:12px;line-height:1.5}
+
+/* ─── MAIN / GRID ──────────────────────── */
+.main{max-width:1440px;margin:0 auto;padding:16px 20px}
+.grid-meta{font-size:0.72rem;color:var(--text4);margin-bottom:12px;
+  display:flex;align-items:center;justify-content:space-between}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px}
+.no-res{grid-column:1/-1;text-align:center;padding:80px 20px;color:var(--text4);
+  display:none;font-size:0.9rem}
+.no-res.show{display:block}
+
+/* ─── CARD ─────────────────────────────── */
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;
+  overflow:hidden;transition:transform 0.2s,box-shadow 0.2s,border-color 0.2s;
+  cursor:pointer}
+.card:hover{transform:translateY(-3px);box-shadow:0 8px 32px rgba(29,78,216,0.18);
+  border-color:rgba(59,130,246,0.4)}
+.card-head{display:flex}
+.card-photo-col{width:110px;flex-shrink:0;background:#060a14;
+  border-right:1px solid var(--border);display:flex;flex-direction:column;
+  align-items:center;padding:12px 8px;gap:6px}
+.card-photo{width:92px;height:98px;object-fit:cover;border-radius:8px;
+  border:2px solid var(--border);transition:border-color 0.2s,transform 0.2s;display:block}
+.card-photo:hover{border-color:var(--blue-l);transform:scale(1.04)}
+.card-no-photo{width:92px;height:98px;border-radius:8px;
+  border:2px dashed var(--border);display:flex;align-items:center;
+  justify-content:center;color:var(--text4);font-size:28px;background:#060a14}
+.photo-count{font-size:0.6rem;color:var(--text4)}
+.card-main{flex:1;padding:12px 14px;min-width:0}
+.card-num{font-size:0.6rem;color:var(--text4);letter-spacing:1px;margin-bottom:4px}
+.card-name{font-size:0.95rem;font-weight:700;color:#e8edf8;
+  line-height:1.3;margin-bottom:8px}
+.badges{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px}
+.badge{padding:2px 8px;border-radius:4px;font-size:0.65rem;font-weight:700;letter-spacing:0.5px}
+.b-rank{background:#0f1e3a;color:#93c5fd;border:1px solid #1e3a8a}
+.b-prison{background:#2d0f0f;color:#f87171;border:1px solid #7f1d1d}
+.b-exchange{background:#2d2500;color:#fde047;border:1px solid #713f12}
+.b-active{background:#0f2d10;color:#4ade80;border:1px solid #14532d}
+.b-neutral{background:#1a1a2a;color:#94a3b8;border:1px solid #334155}
+.b-wanted{background:#2d1500;color:#fb923c;border:1px solid #92400e}
+.b-region{background:#0f1f30;color:#7dd3fc;border:1px solid #1e3a5a}
+.b-tag{background:#1e1b4b;color:#a5b4fc;border:1px solid #3730a3}
+.card-fields{font-size:0.76rem}
+.cf-row{display:flex;gap:6px;margin-bottom:3px;line-height:1.4}
+.cf-lbl{color:var(--text3);flex-shrink:0;width:80px;font-size:0.72rem}
+.cf-val{color:var(--text2);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card-foot{display:flex;gap:6px;padding:8px 12px;
+  border-top:1px solid var(--border);background:#09101e}
+.cf-btn{flex:1;background:var(--bg3);border:1px solid var(--border);
+  color:var(--text3);border-radius:6px;padding:5px;font-size:0.7rem;
+  cursor:pointer;transition:all 0.2s;text-align:center;font-family:inherit}
+.cf-btn:hover{border-color:var(--blue);color:var(--text)}
+.cf-btn.del:hover{border-color:#7f1d1d;color:var(--red)}
+.status-quick{background:var(--bg3);border:1px solid var(--border);
+  color:var(--text2);border-radius:6px;padding:4px 6px;font-size:0.68rem;
+  cursor:pointer;flex:2;font-family:inherit}
+
+/* ─── DETAIL PANEL ─────────────────────── */
+.detail-overlay{display:none;position:fixed;inset:0;z-index:150;
+  background:rgba(0,0,0,0.7);backdrop-filter:blur(4px)}
+.detail-overlay.open{display:flex;align-items:flex-start;justify-content:flex-end}
+.detail-panel{background:var(--bg3);border-left:2px solid var(--blue);
+  width:min(560px,100vw);height:100vh;overflow-y:auto;
+  display:flex;flex-direction:column;
+  box-shadow:-8px 0 40px rgba(29,78,216,0.25);
+  animation:slideIn 0.25s ease}
+@keyframes slideIn{from{transform:translateX(40px);opacity:0}to{transform:none;opacity:1}}
+.dp-head{padding:16px 20px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:12px;background:#09101e;
+  position:sticky;top:0;z-index:10}
+.dp-head h2{flex:1;font-size:0.95rem;color:var(--blue-b);font-weight:700}
+.dp-close{background:none;border:none;color:var(--text3);font-size:22px;
+  cursor:pointer;padding:4px;transition:color 0.2s;font-family:inherit}
+.dp-close:hover{color:var(--text)}
+.dp-photos{display:flex;gap:8px;padding:16px 20px;background:#07101e;
+  border-bottom:1px solid var(--border);flex-wrap:wrap}
+.dp-photo{width:100px;height:110px;object-fit:cover;border-radius:8px;
+  border:2px solid var(--border);cursor:zoom-in;transition:border-color 0.2s}
+.dp-photo:hover{border-color:var(--blue-l)}
+.dp-body{padding:16px 20px;flex:1}
+.dp-name{font-size:1.2rem;font-weight:800;color:#f0f4ff;margin-bottom:10px}
+.dp-badges{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:16px}
+.dp-section{font-size:0.65rem;font-weight:800;text-transform:uppercase;
+  letter-spacing:2px;color:var(--blue-l);padding-bottom:4px;
+  border-bottom:1px solid var(--border);margin:14px 0 8px}
+.dp-row{display:flex;gap:8px;margin-bottom:6px;font-size:0.8rem;line-height:1.4}
+.dp-lbl{color:var(--text3);flex-shrink:0;width:130px;font-size:0.76rem}
+.dp-val{color:var(--text2);flex:1;word-break:break-word}
+.dp-notes{background:var(--bg2);border:1px solid var(--border);border-radius:8px;
+  padding:12px 14px;font-size:0.78rem;color:var(--text2);line-height:1.6;
+  white-space:pre-wrap;word-break:break-word}
+.dp-foot{padding:14px 20px;border-top:1px solid var(--border);
+  display:flex;gap:8px;background:#09101e;position:sticky;bottom:0}
+.dp-foot .cf-btn{padding:9px 14px;font-size:0.78rem}
+.dp-tag{display:inline-block;background:#1e1b4b;color:#a5b4fc;
+  border:1px solid #3730a3;border-radius:4px;padding:2px 8px;
+  font-size:0.65rem;margin:2px}
+
+/* ─── MODALS ───────────────────────────── */
+.modal{display:none;position:fixed;inset:0;z-index:200;
+  background:rgba(0,0,0,0.85);backdrop-filter:blur(6px);
+  align-items:flex-start;justify-content:center;padding:16px;overflow-y:auto}
+.modal.open{display:flex}
+.modal-box{background:var(--bg3);border:1px solid var(--border);border-radius:14px;
+  width:100%;max-width:720px;margin:auto;position:relative;
+  box-shadow:0 0 60px rgba(29,78,216,0.2)}
+.modal-head{display:flex;align-items:center;gap:10px;padding:16px 22px;
+  border-bottom:1px solid var(--border);background:#09101e;
+  border-radius:14px 14px 0 0}
+.modal-head h2{font-size:0.95rem;font-weight:700;color:var(--blue-b);flex:1}
+.modal-close{background:none;border:none;color:var(--text3);font-size:22px;
+  cursor:pointer;padding:4px;line-height:1;transition:color 0.2s;font-family:inherit}
+.modal-close:hover{color:var(--text)}
+.modal-body{padding:20px 22px;max-height:72vh;overflow-y:auto}
+.modal-foot{padding:14px 22px;border-top:1px solid var(--border);
+  display:flex;gap:8px;justify-content:flex-end;background:#09101e;
+  border-radius:0 0 14px 14px}
+.btn{border:none;border-radius:8px;cursor:pointer;font-size:0.82rem;
+  font-weight:600;padding:10px 20px;transition:all 0.2s;font-family:inherit}
+.btn-primary{background:var(--blue);color:#fff}
+.btn-primary:hover{background:#1e40af}
+.btn-secondary{background:var(--bg2);border:1px solid var(--border);color:var(--text2)}
+.btn-secondary:hover{border-color:var(--blue);color:var(--text)}
+.btn-danger{background:#7f1d1d;color:#fca5a5}
+.btn-danger:hover{background:#991b1b}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+
+/* ─── FORM ─────────────────────────────── */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.form-full{grid-column:1/-1}
+.fg{display:flex;flex-direction:column;gap:4px}
+.fg label{font-size:0.68rem;color:var(--text2);text-transform:uppercase;letter-spacing:0.8px}
+.fg input,.fg select,.fg textarea{background:var(--bg2);border:1px solid var(--border);
+  border-radius:6px;color:var(--text);font-size:0.82rem;padding:8px 10px;
+  outline:none;transition:border-color 0.2s;font-family:inherit}
+.fg input:focus,.fg select:focus,.fg textarea:focus{border-color:var(--blue)}
+.fg textarea{resize:vertical;min-height:72px;width:100%}
+.form-section{grid-column:1/-1;font-size:0.66rem;font-weight:800;
+  text-transform:uppercase;letter-spacing:2px;color:var(--blue-l);
+  border-bottom:1px solid var(--border);padding-bottom:5px;margin-top:8px}
+.multi-row{display:flex;gap:6px;align-items:center;margin-bottom:4px}
+.multi-row input{flex:1;background:var(--bg2);border:1px solid var(--border);
+  border-radius:6px;color:var(--text);font-size:0.8rem;padding:7px 9px;
+  outline:none;font-family:inherit}
+.multi-row input:focus{border-color:var(--blue)}
+.btn-add-row{background:none;border:1px dashed var(--border);color:var(--text3);
+  border-radius:6px;padding:5px 10px;font-size:0.72rem;cursor:pointer;
+  margin-top:4px;transition:all 0.2s;display:block;font-family:inherit;text-align:left}
+.btn-add-row:hover{border-color:var(--blue);color:var(--text)}
+.btn-rm{background:none;border:none;color:var(--text4);cursor:pointer;
+  font-size:16px;padding:0 4px;flex-shrink:0;transition:color 0.2s;font-family:inherit}
+.btn-rm:hover{color:var(--red)}
+.photo-drop{border:2px dashed var(--border);border-radius:10px;padding:20px;
+  text-align:center;color:var(--text3);font-size:0.8rem;cursor:pointer;
+  transition:all 0.2s;background:var(--bg2)}
+.photo-drop:hover,.photo-drop.over{border-color:var(--blue);color:var(--blue-b);
+  background:rgba(29,78,216,0.06)}
+.photo-previews{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.prev-wrap{position:relative;display:inline-block}
+.prev-img{width:72px;height:76px;object-fit:cover;border-radius:6px;
+  border:2px solid var(--border)}
+.prev-rm{position:absolute;top:-6px;right:-6px;background:#7f1d1d;
+  color:#fff;border:none;border-radius:50%;width:18px;height:18px;
+  font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+
+/* ─── PHOTO VIEWER ─────────────────────── */
+.pv-overlay{display:none;position:fixed;inset:0;z-index:400;
+  background:rgba(0,0,0,0.95);backdrop-filter:blur(10px);
+  align-items:center;justify-content:center;flex-direction:column;gap:14px}
+.pv-overlay.open{display:flex}
+.pv-img{max-width:88vw;max-height:82vh;object-fit:contain;border-radius:10px;
+  border:2px solid var(--blue);box-shadow:0 0 60px rgba(29,78,216,0.3)}
+.pv-nav{display:flex;gap:14px;align-items:center}
+.pv-btn{background:var(--bg2);border:1px solid var(--border);color:var(--text);
+  border-radius:8px;padding:8px 22px;cursor:pointer;font-size:0.85rem;
+  transition:border-color 0.2s;font-family:inherit}
+.pv-btn:hover{border-color:var(--blue)}
+.pv-cnt{font-size:0.75rem;color:var(--text3);min-width:55px;text-align:center}
+.pv-close{position:absolute;top:16px;right:20px;background:none;border:none;
+  color:var(--text3);font-size:28px;cursor:pointer;transition:color 0.2s;font-family:inherit}
+.pv-close:hover{color:#fff}
+
+/* ─── CONFIRM DIALOG ───────────────────── */
+.confirm-box{background:var(--bg3);border:1px solid var(--border);
+  border-radius:14px;padding:28px 28px;max-width:400px;
+  width:100%;text-align:center}
+.confirm-box h3{font-size:1rem;color:var(--red);margin-bottom:10px}
+.confirm-box p{font-size:0.82rem;color:var(--text2);margin-bottom:22px;line-height:1.5}
+.confirm-acts{display:flex;gap:10px;justify-content:center}
+.confirm-acts .btn{min-width:110px}
+
+/* ─── TOAST ────────────────────────────── */
+.toast{position:fixed;bottom:24px;right:24px;z-index:9999;
+  background:var(--bg3);border:1px solid var(--border);border-radius:10px;
+  padding:12px 18px;font-size:0.82rem;color:var(--text);
+  box-shadow:0 4px 24px rgba(0,0,0,0.5);transform:translateY(20px);
+  opacity:0;transition:all 0.3s;max-width:320px}
+.toast.show{transform:translateY(0);opacity:1}
+.toast.ok{border-color:#14532d;background:#0a2010;color:var(--green)}
+.toast.err{border-color:#7f1d1d;background:#200a0a;color:var(--red)}
+
+/* ─── LOADING ──────────────────────────── */
+.loading{display:none;position:fixed;inset:0;z-index:500;
+  background:rgba(6,9,17,0.85);align-items:center;justify-content:center;
+  flex-direction:column;gap:16px}
+.loading.show{display:flex}
+.spinner{width:44px;height:44px;border:3px solid var(--border);
+  border-top-color:var(--blue-l);border-radius:50%;animation:spin 0.8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading p{color:var(--text2);font-size:0.85rem}
+
+footer{border-top:1px solid var(--border);padding:12px 20px;
+  text-align:center;font-size:0.65rem;color:var(--text4);margin-top:20px}
+
+@media(max-width:560px){
+  .grid{grid-template-columns:1fr}
+  .form-grid{grid-template-columns:1fr}
+  .form-full{grid-column:1}.form-section{grid-column:1}
+  .top-actions{flex-wrap:wrap;gap:4px}
+  .top-btn{padding:5px 9px;font-size:0.68rem}
+  .search-bar{padding:8px 12px;gap:6px}
+  select.flt{min-width:0;font-size:0.75rem}
+  .detail-panel{width:100vw}
+  .dp-photo{width:80px;height:88px}
+  .modal-body{max-height:78vh}
+}
+</style>
+</head>
+<body>
+
+<!-- ══ LOGIN ══════════════════════════════════════════ -->
+<div id="scr-login">
+<div class="auth-wrap">
+<div class="auth-box">
+  <div class="auth-logo">
+    <span class="auth-crest">🔒</span>
+    <h1>Оперативна База Даних</h1>
+    <p>ВІДОМОСТІ ОБМЕЖЕНОГО ДОСТУПУ</p>
+    <span class="auth-badge">ДСК · ОВС</span>
+  </div>
+  <div class="form-group">
+    <label>Email</label>
+    <input type="email" id="li-email" placeholder="user@example.com" autocomplete="email">
+  </div>
+  <div class="form-group">
+    <label>Пароль</label>
+    <input type="password" id="li-pass" placeholder="••••••••" autocomplete="current-password"
+      onkeydown="if(event.key==='Enter')doLogin()">
+  </div>
+  <div class="auth-error" id="li-err"></div>
+  <button class="btn-login" id="li-btn" onclick="doLogin()">→ УВІЙТИ</button>
+  <p class="auth-footer">🔐 Захищено Supabase Auth · Доступ тільки для авторизованих</p>
+</div>
+</div>
+</div>
+
+<!-- ══ MAIN APP ═══════════════════════════════════════ -->
+<div id="scr-app" class="hidden">
+
+<div class="top-bar">
+  <div class="top-logo">
+    <span class="top-crest">🔎</span>
+    <div class="top-logo-text">
+      <h1><span class="live-dot"></span>Оперативна База Даних</h1>
+      <p>Відомості обмеженого доступу · ДСК</p>
+    </div>
+  </div>
+  <div class="top-sep"></div>
+  <div class="top-actions">
+    <span id="role-badge" class="access-badge"></span>
+    <button class="top-btn admin-only" id="btn-add" onclick="openAddModal()">＋ Додати</button>
+    <button class="top-btn admin-only" onclick="openUsersModal()">👥 Доступ</button>
+    <button class="top-btn admin-only" id="btn-import" onclick="document.getElementById('import-file').click()">⬆ Імпорт JSON</button>
+    <input type="file" id="import-file" accept=".json" style="display:none" onchange="importJSON(event)">
+    <button class="top-btn admin-only" onclick="document.getElementById('ingest-file').click()" title="Завантажити .xlsx або .docx через локальний сервер">📂 Комбайн</button>
+    <input type="file" id="ingest-file" accept=".xlsx,.xls,.docx" style="display:none" onchange="openIngestModal(event)">
+    <button class="top-btn admin-only" onclick="openOCRModal()" title="OCR — розпізнавання тексту з фото документа">📷 OCR</button>
+    <button class="top-btn" onclick="exportCSV()">⬇ Експорт CSV</button>
+    <button class="top-btn danger" onclick="doLogout()">🚪 Вийти</button>
+  </div>
+</div>
+
+<div class="stats-bar">
+  <div class="stat-item" onclick="setFilter('status','')">
+    <span class="stat-label">Всього:</span><span class="stat-num n-blue" id="s-total">0</span>
+  </div>
+  <div class="stat-item" onclick="setFilter('status','В полоні')">
+    <span class="stat-label">В полоні:</span><span class="stat-num n-red" id="s-prison">0</span>
+  </div>
+  <div class="stat-item" onclick="setFilter('status','Обміняний')">
+    <span class="stat-label">Обміняно:</span><span class="stat-num n-yellow" id="s-exchange">0</span>
+  </div>
+  <div class="stat-item" onclick="setFilter('status','Активний')">
+    <span class="stat-label">Активний:</span><span class="stat-num n-green" id="s-active">0</span>
+  </div>
+  <div class="stat-item" onclick="setFilter('status','Нейтралізований')">
+    <span class="stat-label">Нейтр.:</span><span class="stat-num n-gray" id="s-neutral">0</span>
+  </div>
+  <div class="stat-item" onclick="setFilter('status','Розшукується')">
+    <span class="stat-label">Розшук.:</span><span class="stat-num n-orange" id="s-wanted">0</span>
+  </div>
+  <div class="stat-item">
+    <span class="stat-label">Показано:</span><span class="stat-num n-white" id="s-shown">0</span>
+  </div>
+  <div class="stat-time" id="s-time"></div>
+</div>
+
+<div class="search-bar">
+  <div class="search-inp">
+    <span class="search-icon">⌕</span>
+    <input type="text" id="q" placeholder="Пошук по імені, підрозділу, посаді, нотатках..." oninput="triggerSearch()">
+  </div>
+  <select class="flt" id="f-status" onchange="triggerSearch()">
+    <option value="">Всі статуси</option>
+    <option>В полоні</option><option>Обміняний</option>
+    <option>Активний</option><option>Нейтралізований</option><option>Розшукується</option>
+  </select>
+  <input class="flt" type="text" id="f-rank" placeholder="Звання..." oninput="triggerSearch()">
+  <input class="flt" type="text" id="f-unit" placeholder="Підрозділ..." oninput="triggerSearch()">
+  <input class="flt" type="text" id="f-region" placeholder="Регіон..." oninput="triggerSearch()">
+  <select class="flt" id="f-sort" onchange="triggerSearch()">
+    <option value="new">↓ Нові спочатку</option>
+    <option value="old">↑ Старі спочатку</option>
+    <option value="name">А→Я по імені</option>
+    <option value="dob">По д.н.</option>
+  </select>
+  <button class="btn-reset" onclick="resetFilters()">✕ Скинути</button>
+</div>
+
+<div class="main">
+  <div class="grid-meta" id="grid-meta"></div>
+  <div class="grid" id="grid">
+    <div class="no-res" id="no-res">🔍 Нічого не знайдено</div>
+  </div>
+  <div style="text-align:center;margin:24px 0;display:none" id="loadmore-wrap">
+    <button id="btn-loadmore" onclick="loadMore()"
+      style="background:#1d4ed8;color:#fff;border:none;border-radius:8px;
+             padding:12px 36px;font-size:0.9rem;font-weight:700;cursor:pointer;
+             letter-spacing:1px">
+      ↓ Показати ще
+    </button>
+  </div>
+</div>
+<footer>Оперативна База Даних · Для службового використання · ДСК</footer>
+</div>
+
+<!-- ══ DETAIL PANEL ════════════════════════════════════ -->
+<div class="detail-overlay" id="detail-overlay" onclick="closeDetail(event)">
+<div class="detail-panel" id="detail-panel">
+  <div class="dp-head">
+    <h2 id="dp-title">Деталі</h2>
+    <div class="top-actions admin-only" id="dp-admin-acts">
+      <button class="top-btn" onclick="editFromDetail()">✏️ Редагувати</button>
+      <button class="top-btn danger" onclick="deleteFromDetail()">🗑 Видалити</button>
+    </div>
+    <button class="dp-close" onclick="closeDetailDirect()">✕</button>
+  </div>
+  <div class="dp-photos" id="dp-photos"></div>
+  <div class="dp-body" id="dp-body"></div>
+</div>
+</div>
+
+<!-- ══ КОМБАЙН MODAL ══════════════════════════════════ -->
+<div class="modal" id="modal-ingest" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.7);overflow-y:auto">
+<div class="modal-box" style="max-width:680px;margin:40px auto;padding:28px;background:#0d1220;border:1px solid #1a2540;border-radius:14px">
+  <div class="modal-head" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+    <span style="font-size:1.05rem;font-weight:700;color:#60a5fa">📂 Комбайн — Імпорт файлів</span>
+    <button onclick="closeIngestModal()" style="background:none;border:none;color:#94a3b8;font-size:1.4rem;cursor:pointer">✕</button>
+  </div>
+
+  <!-- Статус з'єднання з сервером -->
+  <div id="ingest-server-status" style="font-size:0.78rem;padding:6px 12px;border-radius:6px;margin-bottom:16px;background:#0f1e3a;color:#93c5fd">
+    🔌 Перевірка з'єднання з локальним сервером...
+  </div>
+
+  <!-- Файл інфо -->
+  <div id="ingest-file-info" style="margin-bottom:16px;color:#94a3b8;font-size:0.85rem"></div>
+
+  <!-- Preview таблиця -->
+  <div id="ingest-preview" style="display:none;margin-bottom:16px">
+    <div style="font-size:0.8rem;color:#60a5fa;font-weight:600;margin-bottom:8px">
+      Попередній перегляд (перші 5 записів):
+    </div>
+    <div style="overflow-x:auto;border:1px solid #1a2540;border-radius:8px">
+      <table id="ingest-table" style="width:100%;border-collapse:collapse;font-size:0.75rem">
+        <thead id="ingest-thead" style="background:#0a0e1a;color:#60a5fa"></thead>
+        <tbody id="ingest-tbody" style="color:#dde3f0"></tbody>
+      </table>
+    </div>
+    <div id="ingest-count" style="margin-top:8px;font-size:0.78rem;color:#94a3b8"></div>
+  </div>
+
+  <!-- Повідомлення про помилку / raw text -->
+  <div id="ingest-raw" style="display:none;margin-bottom:16px">
+    <div style="font-size:0.8rem;color:#fde047;margin-bottom:6px">⚠ Структуру не розпізнано. Сирий текст:</div>
+    <pre id="ingest-raw-text" style="background:#0a0e1a;border:1px solid #1a2540;border-radius:8px;padding:12px;font-size:0.72rem;color:#94a3b8;max-height:200px;overflow-y:auto;white-space:pre-wrap"></pre>
+  </div>
+
+  <!-- Дії -->
+  <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px">
+    <button onclick="closeIngestModal()" style="background:#1a2540;color:#94a3b8;border:none;border-radius:8px;padding:10px 20px;cursor:pointer">Скасувати</button>
+    <button id="ingest-push-btn" onclick="ingestPush()" disabled
+      style="background:#1d4ed8;color:#fff;border:none;border-radius:8px;padding:10px 24px;font-weight:700;cursor:pointer;opacity:0.4">
+      ✅ Завантажити в базу
+    </button>
+  </div>
+</div>
+</div>
+
+<!-- ══ OCR MODAL ════════════════════════════════════════ -->
+<div id="modal-ocr" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.75);overflow-y:auto">
+<div style="max-width:720px;margin:40px auto;padding:28px;background:#0d1220;border:1px solid #1a2540;border-radius:14px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+    <span style="font-size:1.05rem;font-weight:700;color:#60a5fa">📷 OCR — Розпізнавання документів</span>
+    <button onclick="closeOCRModal()" style="background:none;border:none;color:#94a3b8;font-size:1.4rem;cursor:pointer">✕</button>
+  </div>
+
+  <!-- Статус сервера -->
+  <div id="ocr-server-status" style="font-size:0.78rem;padding:6px 12px;border-radius:6px;margin-bottom:16px;background:#0f1e3a;color:#93c5fd">
+    ⏳ Перевірка сервера...
+  </div>
+
+  <!-- Зона завантаження фото -->
+  <div id="ocr-dropzone"
+    onclick="document.getElementById('ocr-file-input').click()"
+    ondragover="event.preventDefault();this.style.borderColor='#3b82f6'"
+    ondragleave="this.style.borderColor='#1a2540'"
+    ondrop="handleOCRDrop(event)"
+    style="border:2px dashed #1a2540;border-radius:10px;padding:32px;text-align:center;cursor:pointer;transition:border-color 0.2s;margin-bottom:16px">
+    <div style="font-size:2.5rem;margin-bottom:8px">📄</div>
+    <div style="color:#60a5fa;font-size:0.9rem;font-weight:600">Натисни або перетягни фото документа</div>
+    <div style="color:#64748b;font-size:0.75rem;margin-top:4px">Підтримується: JPG, PNG, BMP, TIFF, WEBP</div>
+    <input type="file" id="ocr-file-input" accept="image/*" style="display:none" onchange="handleOCRFile(event)">
+  </div>
+
+  <!-- Прев'ю зображення -->
+  <div id="ocr-img-preview" style="display:none;margin-bottom:16px;text-align:center">
+    <img id="ocr-img-el" style="max-width:100%;max-height:280px;border-radius:8px;border:1px solid #1a2540" alt="Preview">
+    <div id="ocr-img-name" style="color:#64748b;font-size:0.75rem;margin-top:4px"></div>
+  </div>
+
+  <!-- Кнопка розпізнавання -->
+  <div style="text-align:center;margin-bottom:16px">
+    <button id="ocr-run-btn" onclick="runOCR()" disabled
+      style="background:#1d4ed8;color:#fff;border:none;border-radius:8px;padding:11px 32px;font-weight:700;cursor:pointer;opacity:0.4;font-size:0.9rem">
+      🔍 Розпізнати текст
+    </button>
+    <div id="ocr-loading" style="display:none;color:#60a5fa;font-size:0.82rem;margin-top:10px">
+      ⏳ Розпізнавання... (перший запуск завантажує модель ~1.5 ГБ, зачекай)
+    </div>
+  </div>
+
+  <!-- Результати OCR -->
+  <div id="ocr-results" style="display:none">
+    <div style="color:#38bdf8;font-size:0.8rem;font-weight:700;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.05em">
+      Розпізнані дані — перевір та виправ якщо потрібно:
+    </div>
+
+    <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+      <div>
+        <label style="color:#64748b;font-size:0.73rem;display:block;margin-bottom:3px">ПІБ *</label>
+        <input id="ocr-f-name" type="text" placeholder="Прізвище Ім'я По-батькові"
+          style="width:100%;background:#0a0e1a;border:1px solid #1a2540;color:#dde3f0;border-radius:6px;padding:7px 10px;font-size:0.83rem;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="color:#64748b;font-size:0.73rem;display:block;margin-bottom:3px">Дата народження</label>
+        <input id="ocr-f-dob" type="text" placeholder="дд.мм.рррр"
+          style="width:100%;background:#0a0e1a;border:1px solid #1a2540;color:#dde3f0;border-radius:6px;padding:7px 10px;font-size:0.83rem;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="color:#64748b;font-size:0.73rem;display:block;margin-bottom:3px">Звання</label>
+        <input id="ocr-f-rank" type="text" placeholder="лейтенант, сержант..."
+          style="width:100%;background:#0a0e1a;border:1px solid #1a2540;color:#dde3f0;border-radius:6px;padding:7px 10px;font-size:0.83rem;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="color:#64748b;font-size:0.73rem;display:block;margin-bottom:3px">Посада</label>
+        <input id="ocr-f-position" type="text" placeholder="командир відділення..."
+          style="width:100%;background:#0a0e1a;border:1px solid #1a2540;color:#dde3f0;border-radius:6px;padding:7px 10px;font-size:0.83rem;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="color:#64748b;font-size:0.73rem;display:block;margin-bottom:3px">Підрозділ / В/ч</label>
+        <input id="ocr-f-unit" type="text" placeholder="в/ч 12345, ..."
+          style="width:100%;background:#0a0e1a;border:1px solid #1a2540;color:#dde3f0;border-radius:6px;padding:7px 10px;font-size:0.83rem;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="color:#64748b;font-size:0.73rem;display:block;margin-bottom:3px">Особистий номер</label>
+        <input id="ocr-f-unit_num" type="text" placeholder="Ю-123456"
+          style="width:100%;background:#0a0e1a;border:1px solid #1a2540;color:#dde3f0;border-radius:6px;padding:7px 10px;font-size:0.83rem;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="color:#64748b;font-size:0.73rem;display:block;margin-bottom:3px">Регіон</label>
+        <input id="ocr-f-region" type="text" placeholder="Московська обл."
+          style="width:100%;background:#0a0e1a;border:1px solid #1a2540;color:#dde3f0;border-radius:6px;padding:7px 10px;font-size:0.83rem;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="color:#64748b;font-size:0.73rem;display:block;margin-bottom:3px">Паспорт / документ</label>
+        <input id="ocr-f-passport" type="text" placeholder="АА 123456"
+          style="width:100%;background:#0a0e1a;border:1px solid #1a2540;color:#dde3f0;border-radius:6px;padding:7px 10px;font-size:0.83rem;box-sizing:border-box">
+      </div>
+      <div style="grid-column:span 2">
+        <label style="color:#64748b;font-size:0.73rem;display:block;margin-bottom:3px">Адреса реєстрації</label>
+        <input id="ocr-f-addr_reg" type="text" placeholder="вул. Леніна 1, м. Москва"
+          style="width:100%;background:#0a0e1a;border:1px solid #1a2540;color:#dde3f0;border-radius:6px;padding:7px 10px;font-size:0.83rem;box-sizing:border-box">
+      </div>
+      <div style="grid-column:span 2">
+        <label style="color:#64748b;font-size:0.73rem;display:block;margin-bottom:3px">Статус</label>
+        <select id="ocr-f-status"
+          style="width:100%;background:#0a0e1a;border:1px solid #1a2540;color:#dde3f0;border-radius:6px;padding:7px 10px;font-size:0.83rem;box-sizing:border-box">
+          <option>Активний</option><option>В полоні</option><option>Обміняний</option>
+          <option>Нейтралізований</option><option>Розшукується</option>
+        </select>
+      </div>
+      <div style="grid-column:span 2">
+        <label style="color:#64748b;font-size:0.73rem;display:block;margin-bottom:3px">Нотатки</label>
+        <textarea id="ocr-f-notes" rows="2" placeholder="Додаткові дані..."
+          style="width:100%;background:#0a0e1a;border:1px solid #1a2540;color:#dde3f0;border-radius:6px;padding:7px 10px;font-size:0.83rem;box-sizing:border-box;resize:vertical"></textarea>
+      </div>
+    </div>
+
+    <!-- Сирий текст OCR (згортається) -->
+    <details style="margin-bottom:16px">
+      <summary style="color:#64748b;font-size:0.75rem;cursor:pointer;user-select:none">▶ Показати розпізнаний текст (raw OCR)</summary>
+      <pre id="ocr-raw-text" style="background:#0a0e1a;border:1px solid #1a2540;border-radius:8px;padding:12px;font-size:0.72rem;color:#94a3b8;max-height:200px;overflow-y:auto;white-space:pre-wrap;margin-top:8px"></pre>
+    </details>
+
+    <div id="ocr-push-msg" style="display:none;font-size:0.82rem;padding:8px 12px;border-radius:6px;margin-bottom:10px"></div>
+
+    <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
+      <button onclick="closeOCRModal()" style="background:#1a2540;color:#94a3b8;border:none;border-radius:8px;padding:10px 20px;cursor:pointer">Скасувати</button>
+      <button onclick="ocrPush(false)" id="ocr-force-btn" style="display:none;background:#92400e;color:#fde68a;border:none;border-radius:8px;padding:10px 20px;font-weight:600;cursor:pointer">
+        ⚠️ Все одно додати
+      </button>
+      <button onclick="ocrPush(false)" id="ocr-push-btn"
+        style="background:#059669;color:#fff;border:none;border-radius:8px;padding:10px 24px;font-weight:700;cursor:pointer">
+        ✅ Додати в базу
+      </button>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ══ ADD/EDIT MODAL ══════════════════════════════════ -->
+<div class="modal" id="modal-person">
+<div class="modal-box">
+  <div class="modal-head">
+    <h2 id="modal-title">Додати особу</h2>
+    <button class="modal-close" onclick="closeModal('modal-person')">✕</button>
+  </div>
+  <div class="modal-body">
+  <div class="form-grid">
+    <div class="form-section">📋 Особисті дані</div>
+    <div class="fg form-full">
+      <label>ПІБ *</label>
+      <input type="text" id="f-name" placeholder="Прізвище Ім'я По-батькові">
+    </div>
+    <div class="fg">
+      <label>Дата народження</label>
+      <input type="text" id="f-dob" placeholder="дд.мм.рррр">
+    </div>
+    <div class="fg">
+      <label>Місце народження</label>
+      <input type="text" id="f-birth-place" placeholder="м. Москва, РФ">
+    </div>
+    <div class="fg form-full">
+      <label>Адреса проживання</label>
+      <input type="text" id="f-addr-live" placeholder="вул. Леніна, 1, кв. 5">
+    </div>
+    <div class="fg form-full">
+      <label>Адреса реєстрації</label>
+      <input type="text" id="f-addr-reg" placeholder="вул. __, буд. __, кв. __">
+    </div>
+    <div class="fg">
+      <label>Паспорт / ID / ВП</label>
+      <input type="text" id="f-passport" placeholder="РФ серія 5012 № 345678">
+    </div>
+    <div class="fg">
+      <label>ІПН / СНІЛС</label>
+      <input type="text" id="f-ipn" placeholder="Номер">
+    </div>
+
+    <div class="form-section">🎖 Службові дані</div>
+    <div class="fg">
+      <label>Звання</label>
+      <input type="text" id="f-rank-v" placeholder="полковник поліції">
+    </div>
+    <div class="fg">
+      <label>Посада</label>
+      <input type="text" id="f-position" placeholder="Командир ОМОН «Сибір»">
+    </div>
+    <div class="fg form-full">
+      <label>Підрозділ / Військова частина</label>
+      <input type="text" id="f-unit-v" placeholder="УФСВНГ по Новосибірській обл.">
+    </div>
+    <div class="fg">
+      <label>Особистий / номер в/ч</label>
+      <input type="text" id="f-unit-num" placeholder="А-043249">
+    </div>
+    <div class="fg">
+      <label>Регіон</label>
+      <input type="text" id="f-region-v" placeholder="Новосибірська область">
+    </div>
+
+    <div class="form-section">📞 Контакти</div>
+    <div class="fg form-full">
+      <label>Телефони</label>
+      <div id="phones-list"></div>
+      <button class="btn-add-row" onclick="addRow('phones-list','📱 Телефон')">＋ Додати телефон</button>
+    </div>
+    <div class="fg">
+      <label>Email</label>
+      <input type="text" id="f-email" placeholder="email@domain.com">
+    </div>
+    <div class="fg form-full">
+      <label>Соцмережі / Месенджери</label>
+      <div id="social-list"></div>
+      <button class="btn-add-row" onclick="addSocRow()">＋ Додати акаунт</button>
+    </div>
+
+    <div class="form-section">🚨 Статус</div>
+    <div class="fg">
+      <label>Статус</label>
+      <select id="f-status-v">
+        <option>Активний</option><option>В полоні</option>
+        <option>Обміняний</option><option>Нейтралізований</option><option>Розшукується</option>
+      </select>
+    </div>
+    <div class="fg">
+      <label>Дата затримання</label>
+      <input type="text" id="f-det-date" placeholder="24.02.2022">
+    </div>
+    <div class="fg form-full">
+      <label>Місце затримання</label>
+      <input type="text" id="f-det-place" placeholder="Гостомель, Київська обл.">
+    </div>
+
+    <div class="form-section">🖼 Фотографії</div>
+    <div class="fg form-full">
+      <div class="photo-drop" id="photo-drop"
+        onclick="document.getElementById('photo-file').click()"
+        ondragover="event.preventDefault();this.classList.add('over')"
+        ondragleave="this.classList.remove('over')"
+        ondrop="dropPhotos(event)">
+        📷 Натисніть або перетягніть фото сюди<br>
+        <span style="font-size:0.7rem;color:var(--text4)">JPG, PNG · до 5 МБ</span>
+      </div>
+      <input type="file" id="photo-file" accept="image/*" multiple style="display:none"
+        onchange="addPhotoFiles(event)">
+      <div class="photo-previews" id="photo-previews"></div>
+    </div>
+
+    <div class="form-section">📎 Посилання та нотатки</div>
+    <div class="fg form-full">
+      <label>Посилання (URL)</label>
+      <div id="links-list"></div>
+      <button class="btn-add-row" onclick="addLinkRow()">＋ Додати посилання</button>
+    </div>
+    <div class="fg form-full">
+      <label>Теги (через кому)</label>
+      <input type="text" id="f-tags" placeholder="Росгвардія, ОМОН, Гостомель">
+    </div>
+    <div class="fg form-full">
+      <label>Джерела інформації</label>
+      <input type="text" id="f-sources" placeholder="Відео допиту, протокол №...">
+    </div>
+    <div class="fg form-full">
+      <label>Нотатки</label>
+      <textarea id="f-notes" placeholder="Довільна інформація..."></textarea>
+    </div>
+  </div>
+  </div>
+  <div class="modal-foot">
+    <button class="btn btn-secondary" onclick="closeModal('modal-person')">Скасувати</button>
+    <button class="btn btn-primary" id="save-btn" onclick="savePerson()">💾 Зберегти</button>
+  </div>
+</div>
+</div>
+
+<!-- ══ PHOTO VIEWER ════════════════════════════════════ -->
+<div class="pv-overlay" id="pv" onclick="pvClose(event)">
+  <button class="pv-close" onclick="pvCloseDirect()">✕</button>
+  <img class="pv-img" id="pv-img" src="" alt="">
+  <div id="pv-info" style="text-align:center;margin-top:10px;color:#fff;text-shadow:0 1px 4px #000">
+    <div id="pv-name" style="font-size:1.05rem;font-weight:700;letter-spacing:0.5px"></div>
+    <div id="pv-dob" style="font-size:0.82rem;color:#a8c0e0;margin-top:3px"></div>
+  </div>
+  <div class="pv-nav">
+    <button class="pv-btn" onclick="pvNav(-1)">← Попереднє</button>
+    <span class="pv-cnt" id="pv-cnt"></span>
+    <button class="pv-btn" onclick="pvNav(1)">Наступне →</button>
+  </div>
+</div>
+
+<!-- ══ USERS MODAL ════════════════════════════════════ -->
+<div class="modal" id="modal-users">
+<div class="users-modal">
+  <h2>👥 Управління доступом</h2>
+  <table class="users-table">
+    <thead><tr><th>Email</th><th>Роль</th><th>Дії</th></tr></thead>
+    <tbody id="users-tbody"></tbody>
+  </table>
+
+  <div class="users-add-form">
+    <h3>➕ Додати нового користувача</h3>
+    <div class="u-note">⚠️ Перед додаванням переконайтесь що в Supabase вимкнено підтвердження email:<br>
+    <b>Authentication → Providers → Email → вимкни "Confirm email"</b></div>
+    <input type="email" id="u-email" placeholder="Email колеги">
+    <input type="password" id="u-pass" placeholder="Тимчасовий пароль (мін. 8 символів)">
+    <select id="u-role">
+      <option value="viewer">👁 Viewer — тільки перегляд</option>
+      <option value="admin">⚙ Admin — повний доступ</option>
+    </select>
+    <div style="display:flex;gap:10px;margin-top:4px">
+      <button class="btn btn-primary" onclick="createUser()" style="flex:1">Створити акаунт</button>
+      <button class="btn btn-secondary" onclick="closeModal('modal-users')" style="flex:1">Закрити</button>
+    </div>
+    <div id="u-msg" style="font-size:0.78rem;margin-top:10px;min-height:18px"></div>
+  </div>
+</div>
+</div>
+
+<!-- ══ CONFIRM DELETE ══════════════════════════════════ -->
+<div class="modal" id="modal-confirm">
+<div class="confirm-box">
+  <h3>⚠️ Видалити запис?</h3>
+  <p id="confirm-text">Ця дія незворотня. Всі дані та фото будуть видалені.</p>
+  <div class="confirm-acts">
+    <button class="btn btn-secondary" onclick="closeModal('modal-confirm')">Скасувати</button>
+    <button class="btn btn-danger" id="confirm-ok">Видалити</button>
+  </div>
+</div>
+</div>
+
+<!-- TOAST & LOADING -->
+<div class="toast" id="toast"></div>
+<div class="loading" id="loading"><div class="spinner"></div><p id="loading-msg">Завантаження...</p></div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// SUPABASE CONFIGURATION
+// ═══════════════════════════════════════════════════════
+const SB_URL = 'https://zvvtldyxmjuzpyozneoo.supabase.co';
+const SB_KEY = 'sb_publishable_OSZSn3NJXDgB7_Di_mNjSA_Q3NYRrlW';
+
+let SESSION = null; // { access_token, user }
+let ROLE    = null; // 'admin' | 'viewer'
+let DB      = [];   // persons array
+let PHOTOS  = {};   // { person_id: [storage_paths] }
+let detailId = null;
+let editingId = null;
+let tmpPhotos = []; // { file, previewUrl, existing?, path? }
+let deletedPhotoPaths = []; // paths of existing photos to delete on save
+let pvUrls = [], pvIdx = 0;
+
+// ─── HELPERS ─────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+function toast(msg, type='ok') {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = `toast ${type}`;
+  t.classList.add('show');
+  clearTimeout(t._t);
+  t._t = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+function showLoading(msg = 'Завантаження...') {
+  $('loading-msg').textContent = msg;
+  $('loading').classList.add('show');
+}
+function hideLoading() { $('loading').classList.remove('show'); }
+
+async function refreshSession() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('odb_session') || '{}');
+    if (!saved.refresh) return false;
+    const r = await fetch(`${SB_URL}/auth/v1/token?grant_type=refresh_token`, {
+      method: 'POST',
+      headers: { 'apikey': SB_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: saved.refresh })
+    });
+    if (!r.ok) return false;
+    const d = await r.json();
+    if (!d.access_token) return false;
+    SESSION = d;
+    localStorage.setItem('odb_session', JSON.stringify({ token: d.access_token, refresh: d.refresh_token, user: d.user?.id, email: saved.email }));
+    return true;
+  } catch { return false; }
+}
+
+async function sbFetch(path, opts = {}) {
+  const headers = {
+    'apikey': SB_KEY,
+    'Content-Type': 'application/json',
+    ...(SESSION ? {'Authorization': `Bearer ${SESSION.access_token}`} : {}),
+    ...(opts.headers || {})
+  };
+  let resp = await fetch(SB_URL + path, { ...opts, headers });
+  // Auto-refresh on token expiry
+  if (resp.status === 401 || (resp.status === 400 && (await resp.clone().text()).includes('expired'))) {
+    const ok = await refreshSession();
+    if (ok) {
+      const headers2 = { ...headers, 'Authorization': `Bearer ${SESSION.access_token}` };
+      resp = await fetch(SB_URL + path, { ...opts, headers: headers2 });
+    }
+  }
+  return resp;
+}
+
+async function sbGet(path) {
+  const r = await sbFetch('/rest/v1/' + path);
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+async function sbPost(table, data) {
+  const r = await sbFetch('/rest/v1/' + table, {
+    method: 'POST',
+    headers: { 'Prefer': 'return=representation' },
+    body: JSON.stringify(data)
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+async function sbPatch(table, id, data) {
+  const r = await sbFetch(`/rest/v1/${table}?id=eq.${id}`, {
+    method: 'PATCH',
+    headers: { 'Prefer': 'return=representation' },
+    body: JSON.stringify(data)
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+async function sbDelete(table, id) {
+  const r = await sbFetch(`/rest/v1/${table}?id=eq.${id}`, { method: 'DELETE' });
+  if (!r.ok) throw new Error(await r.text());
+}
+
+// ─── AUTH ─────────────────────────────────────────────
+async function doLogin() {
+  const email = $('li-email').value.trim();
+  const pass  = $('li-pass').value;
+  if (!email || !pass) { $('li-err').textContent = 'Введіть email та пароль'; return; }
+  $('li-btn').disabled = true;
+  $('li-err').textContent = '';
+  showLoading('Авторизація...');
+  try {
+    const r = await fetch(`${SB_URL}/auth/v1/token?grant_type=password`, {
+      method: 'POST',
+      headers: { 'apikey': SB_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password: pass })
+    });
+    const d = await r.json();
+    if (!d.access_token) {
+      $('li-err').textContent = d.error_description || 'Невірний email або пароль';
+      return;
+    }
+    SESSION = d;
+    localStorage.setItem('odb_session', JSON.stringify({ token: d.access_token, refresh: d.refresh_token, user: d.user?.id, email }));
+    await loadRole();
+    await startApp();
+  } catch(e) {
+    $('li-err').textContent = 'Помилка з\'єднання: ' + e.message;
+  } finally {
+    $('li-btn').disabled = false;
+    hideLoading();
+  }
+}
+
+async function loadRole() {
+  try {
+    const rows = await sbGet(`user_roles?user_id=eq.${SESSION.user.id}&select=role`);
+    ROLE = rows[0]?.role || 'viewer';
+  } catch { ROLE = 'viewer'; }
+}
+
+function doLogout() {
+  SESSION = null; ROLE = null; DB = []; PHOTOS = {};
+  localStorage.removeItem('odb_session');
+  $('scr-app').classList.add('hidden');
+  $('scr-login').style.display = '';
+  $('li-pass').value = '';
+}
+
+// ─── USERS MANAGEMENT ────────────────────────────────
+async function openUsersModal() {
+  $('users-tbody').innerHTML = '<tr><td colspan="3" style="color:var(--text4);padding:12px">Завантаження...</td></tr>';
+  $('u-msg').textContent = '';
+  $('modal-users').classList.add('open');
+  await loadUsers();
+}
+
+async function loadUsers() {
+  try {
+    const rows = await sbGet('user_roles?select=id,user_id,email,role&order=role.asc');
+    if (!rows.length) {
+      $('users-tbody').innerHTML = '<tr><td colspan="3" style="color:var(--text4);padding:12px">Немає користувачів</td></tr>';
+      return;
+    }
+    $('users-tbody').innerHTML = rows.map(u => `
+      <tr>
+        <td style="color:var(--text)">${esc(u.email||'—')}</td>
+        <td><span class="role-pill role-${u.role}">${u.role==='admin'?'⚙ Admin':'👁 Viewer'}</span></td>
+        <td style="display:flex;gap:6px;align-items:center">
+          ${u.email !== 'vmak948@gmail.com' ? `
+          <select onchange="changeRole('${u.id}',this.value)" style="
+            background:var(--bg3);border:1px solid var(--border);color:var(--text);
+            border-radius:5px;padding:3px 6px;font-size:0.72rem;cursor:pointer">
+            <option value="viewer"${u.role==='viewer'?' selected':''}>Viewer</option>
+            <option value="admin"${u.role==='admin'?' selected':''}>Admin</option>
+          </select>
+          <button onclick="removeUser('${u.id}','${esc(u.email||'')}',event)" style="
+            background:#2a0a0a;border:1px solid #5a1a1a;color:#ff6b6b;border-radius:5px;
+            padding:3px 8px;font-size:0.72rem;cursor:pointer">✕</button>
+          ` : '<span style="color:var(--text4);font-size:0.72rem">Головний адмін</span>'}
+        </td>
+      </tr>`).join('');
+  } catch(e) {
+    $('users-tbody').innerHTML = `<tr><td colspan="3" style="color:#ff6b6b">${e.message}</td></tr>`;
+  }
+}
+
+async function changeRole(rowId, role) {
+  try {
+    await sbPatch('user_roles', rowId, { role });
+    await loadUsers();
+    uMsg('✓ Роль змінено', 'ok');
+  } catch(e) { uMsg('Помилка: ' + e.message, 'err'); }
+}
+
+async function removeUser(rowId, email, ev) {
+  if (!confirm(`Видалити доступ для ${email}?`)) return;
+  try {
+    await sbFetch(`/rest/v1/user_roles?id=eq.${rowId}`, { method: 'DELETE' });
+    await loadUsers();
+    uMsg('✓ Доступ видалено', 'ok');
+  } catch(e) { uMsg('Помилка: ' + e.message, 'err'); }
+}
+
+async function createUser() {
+  const email = $('u-email').value.trim();
+  const pass  = $('u-pass').value;
+  const role  = $('u-role').value;
+  if (!email || !pass) { uMsg('⚠ Введіть email та пароль', 'warn'); return; }
+  if (pass.length < 8)  { uMsg('⚠ Пароль мінімум 8 символів', 'warn'); return; }
+  uMsg('Створення акаунту...', 'info');
+  try {
+    // Create Supabase account
+    const r = await fetch(`${SB_URL}/auth/v1/signup`, {
+      method: 'POST',
+      headers: { 'apikey': SB_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password: pass })
+    });
+    const d = await r.json();
+    if (!r.ok || (!d.id && !(d.user && d.user.id))) {
+      uMsg('Помилка: ' + (d.msg || d.error_description || JSON.stringify(d)), 'err'); return;
+    }
+    const userId = d.id || d.user?.id;
+    // Add to user_roles
+    await sbPost('user_roles', { user_id: userId, email, role });
+    $('u-email').value = ''; $('u-pass').value = '';
+    await loadUsers();
+    uMsg(`✓ Акаунт створено! Email: ${email}`, 'ok');
+  } catch(e) { uMsg('Помилка: ' + e.message, 'err'); }
+}
+
+function uMsg(text, type='ok') {
+  const el = $('u-msg');
+  const colors = { ok:'#4ddb8a', err:'#ff6b6b', warn:'#ffcc44', info:'var(--text3)' };
+  el.style.color = colors[type] || colors.ok;
+  el.textContent = text;
+}
+
+// ─── START APP ───────────────────────────────────────
+async function startApp() {
+  $('scr-login').style.display = 'none';
+  $('scr-app').classList.remove('hidden');
+  applyRole();
+  await loadPersons();
+}
+
+function applyRole() {
+  const badge = $('role-badge');
+  if (ROLE === 'admin') {
+    badge.textContent = '⚙ ADMIN';
+    badge.className = 'access-badge role-admin';
+  } else {
+    badge.textContent = '👁 VIEWER';
+    badge.className = 'access-badge role-viewer';
+  }
+  document.querySelectorAll('.admin-only').forEach(el => {
+    el.style.display = ROLE === 'admin' ? '' : 'none';
+  });
+}
+
+// ─── LOAD DATA (server-side search) ──────────────────
+const PAGE_SIZE = 100;
+let TOTAL_COUNT = 0;
+let CURRENT_OFFSET = 0;
+let _searchTimer = null;
+
+// Швидкий COUNT через Content-Range header
+async function sbCount(path) {
+  try {
+    const r = await sbFetch('/rest/v1/' + path, {
+      headers: { 'Prefer': 'count=exact', 'Range-Unit': 'items', 'Range': '0-0' }
+    });
+    const cr = r.headers.get('Content-Range');
+    return cr ? (parseInt(cr.split('/')[1]) || 0) : 0;
+  } catch { return 0; }
+}
+
+async function loadStats() {
+  try {
+    const [tot, prison, exch, active, neutral, wanted] = await Promise.all([
+      sbCount('persons'),
+      sbCount('persons?status=eq.%D0%92%20%D0%BF%D0%BE%D0%BB%D0%BE%D0%BD%D1%96'),
+      sbCount('persons?status=eq.%D0%9E%D0%B1%D0%BC%D1%96%D0%BD%D1%8F%D0%BD%D0%B8%D0%B9'),
+      sbCount('persons?status=eq.%D0%90%D0%BA%D1%82%D0%B8%D0%B2%D0%BD%D0%B8%D0%B9'),
+      sbCount('persons?status=eq.%D0%9D%D0%B5%D0%B9%D1%82%D1%80%D0%B0%D0%BB%D1%96%D0%B7%D0%BE%D0%B2%D0%B0%D0%BD%D0%B8%D0%B9'),
+      sbCount('persons?status=eq.%D0%A0%D0%BE%D0%B7%D1%88%D1%83%D0%BA%D1%83%D1%94%D1%82%D1%8C%D1%81%D1%8F'),
+    ]);
+    TOTAL_COUNT = tot;
+    $('s-total').textContent    = tot.toLocaleString('uk');
+    $('s-prison').textContent   = prison;
+    $('s-exchange').textContent = exch;
+    $('s-active').textContent   = active.toLocaleString('uk');
+    $('s-neutral').textContent  = neutral;
+    $('s-wanted').textContent   = wanted;
+  } catch(e) { console.warn('Stats error:', e); }
+}
+
+// Санітизація телефону — видаляємо все крім цифр
+function sanitizePhone(s) {
+  return (s || '').replace(/[\s\(\)\-\+]/g, '');
+}
+
+function buildSearchQuery(offset, limit) {
+  const rawQ  = ($('q').value || '').trim();
+  const fStat = $('f-status').value;
+  const fRank = $('f-rank').value.trim();
+  const fUnit = $('f-unit').value.trim();
+  const fReg  = $('f-region').value.trim();
+  const fSort = $('f-sort').value;
+
+  const parts = ['select=*'];
+  if (fStat) parts.push(`status=eq.${encodeURIComponent(fStat)}`);
+  if (fRank) parts.push(`rank=ilike.*${encodeURIComponent(fRank)}*`);
+  if (fUnit) parts.push(`unit=ilike.*${encodeURIComponent(fUnit)}*`);
+  if (fReg)  parts.push(`region=ilike.*${encodeURIComponent(fReg)}*`);
+
+  if (rawQ) {
+    const qEnc       = encodeURIComponent(rawQ);
+    const phoneClean = sanitizePhone(rawQ);
+    const isPhone    = /^\d{6,}$/.test(phoneClean);
+
+    // Базові текстові поля — ilike
+    const orFields = [
+      `name.ilike.*${qEnc}*`,
+      `unit.ilike.*${qEnc}*`,
+      `rank.ilike.*${qEnc}*`,
+      `position.ilike.*${qEnc}*`,
+      `notes.ilike.*${qEnc}*`,
+      `unit_num.ilike.*${qEnc}*`,
+      `dob.ilike.*${qEnc}*`,        // пошук по даті: "10.11.1998" або "1998"
+      `addr_live.ilike.*${qEnc}*`,
+      `addr_reg.ilike.*${qEnc}*`,
+      `passport.ilike.*${qEnc}*`,
+    ];
+
+    // Пошук по телефону — санітизуємо запит і шукаємо в notes
+    // (phones[] в Supabase ilike не підтримує, але нотатки містять телефони)
+    if (isPhone && phoneClean !== rawQ) {
+      orFields.push(`notes.ilike.*${encodeURIComponent(phoneClean)}*`);
+    }
+
+    parts.push(`or=(${orFields.join(',')})`);
+  }
+
+  const order = fSort==='name' ? 'name.asc' : fSort==='dob' ? 'dob.asc' :
+                fSort==='old'  ? 'created_at.asc' : 'created_at.desc';
+  parts.push(`order=${order}&limit=${limit}&offset=${offset}`);
+  return `persons?${parts.join('&')}`;
+}
+
+async function loadPage(offset, reset) {
+  try {
+    const batch = await sbGet(buildSearchQuery(offset, PAGE_SIZE));
+    if (reset) { DB = batch; PHOTOS = {}; }
+    else        DB = DB.concat(batch);
+    CURRENT_OFFSET = DB.length;
+
+    // Завантажуємо фото тільки для цього батчу
+    if (batch.length) {
+      const ids = batch.map(p => p.id).join(',');
+      const photos = await sbGet(
+        `person_photos?person_id=in.(${ids})&select=person_id,storage_path,is_primary&order=is_primary.desc`
+      );
+      for (const ph of photos) {
+        if (!PHOTOS[ph.person_id]) PHOTOS[ph.person_id] = [];
+        PHOTOS[ph.person_id].push(ph.storage_path);
+      }
+    }
+
+    renderGrid();
+    const wrap = $('loadmore-wrap');
+    if (wrap) wrap.style.display = batch.length === PAGE_SIZE ? '' : 'none';
+  } catch(e) {
+    toast('Помилка завантаження: ' + e.message, 'err');
+  }
+}
+
+async function loadMore() {
+  $('btn-loadmore').disabled = true;
+  $('btn-loadmore').textContent = '⏳ Завантаження...';
+  await loadPage(CURRENT_OFFSET, false);
+  $('btn-loadmore').disabled = false;
+  $('btn-loadmore').textContent = '↓ Показати ще';
+}
+
+function triggerSearch() {
+  clearTimeout(_searchTimer);
+  _searchTimer = setTimeout(async () => {
+    showLoading('Пошук...');
+    try { await loadPage(0, true); }
+    finally { hideLoading(); }
+  }, 400);
+}
+
+async function loadPersons() {
+  showLoading('Завантаження бази...');
+  try {
+    await Promise.all([loadStats(), loadPage(0, true)]);
+    $('s-time').textContent = 'Оновлено: ' + new Date().toLocaleTimeString('uk');
+  } catch(e) {
+    toast('Помилка завантаження: ' + e.message, 'err');
+  } finally {
+    hideLoading();
+  }
+}
+
+// ─── STATS ───────────────────────────────────────────
+function updateStats() { /* тепер через loadStats() — async */ }
+function populateFilters() { /* не потрібно — серверна фільтрація */ }
+
+function setFilter(field, val) {
+  const el = $('f-' + field);
+  if (el) el.value = val;
+  triggerSearch();
+}
+function resetFilters() {
+  ['q','f-status','f-rank','f-unit','f-region'].forEach(id => {
+    const el = $(id); if(el) el.value = '';
+  });
+  triggerSearch();
+}
+
+// ─── GRID RENDERING ──────────────────────────────────
+const STATUS_CLASS = {
+  'В полоні': 'b-prison', 'Обміняний': 'b-exchange',
+  'Активний': 'b-active', 'Нейтралізований': 'b-neutral',
+  'Розшукується': 'b-wanted'
+};
+
+function getPhotoUrl(path) {
+  return `${SB_URL}/storage/v1/object/public/odb-media/${path}`;
+}
+function getSignedPhotoUrl(path) {
+  // Bucket is public — use direct public URL
+  return `${SB_URL}/storage/v1/object/public/odb-media/${path}`;
+}
+
+async function preloadPhotos() {
+  // Bucket is public — no signing needed
+}
+
+function renderGrid() {
+  // Основна фільтрація — на сервері.
+  // Клієнтська пост-фільтрація: лише для полів які Supabase не підтримує (phones[])
+  const rawQ = ($('q').value || '').trim();
+  const phoneClean = sanitizePhone(rawQ);
+  const isPhone = rawQ && /^\d{6,}$/.test(phoneClean);
+
+  let data = DB;
+  if (isPhone) {
+    // Додатково фільтруємо по масиву phones з санітизацією
+    data = DB.filter(p => {
+      const phones = (p.phones || []).map(ph => sanitizePhone(String(ph)));
+      return phones.some(ph => ph.includes(phoneClean));
+    });
+    // Якщо клієнтський фільтр дав результат — показуємо, інакше — всі (можуть бути в notes)
+    if (data.length === 0) data = DB;
+  }
+
+  $('s-shown').textContent = data.length;
+  const filterActive = rawQ || $('f-status').value || $('f-rank').value || $('f-unit').value || $('f-region').value;
+  $('grid-meta').textContent = filterActive
+    ? `Знайдено: ${data.length} | Всього в базі: ${TOTAL_COUNT.toLocaleString('uk')}`
+    : `Показано ${data.length} з ${TOTAL_COUNT.toLocaleString('uk')} записів`;
+
+  const noRes = $('no-res');
+  noRes.classList.toggle('show', data.length === 0);
+
+  const grid = $('grid');
+  grid.innerHTML = '';
+  grid.appendChild(noRes);
+
+  data.forEach(p => {
+    const photos = PHOTOS[p.id] || [];
+    const photo1 = photos[0];
+    const statusCls = STATUS_CLASS[p.status] || 'b-neutral';
+    const photoHtml = photo1
+      ? `<img class="card-photo" src="${getSignedPhotoUrl(photo1)}" alt=""
+           loading="lazy" style="cursor:pointer"
+           onclick="event.stopPropagation();cardPhotoClick('${p.id}')"
+           onerror="this.parentNode.innerHTML=cardNoPhoto()">`
+      : `<div class="card-no-photo">👤</div>`;
+
+    const tags = (p.tags || []).slice(0,3).map(t =>
+      `<span class="badge b-tag">${esc(t)}</span>`).join('');
+
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.setAttribute('data-id', p.id);
+    card.innerHTML = `
+      <div class="card-head">
+        <div class="card-photo-col">
+          ${photoHtml}
+          ${photos.length > 1 ? `<div class="photo-count">📷 ${photos.length}</div>` : ''}
+        </div>
+        <div class="card-main">
+          <div class="card-num">#${(p.unit_num||'').slice(0,12) || p.id.slice(-6).toUpperCase()}</div>
+          <div class="card-name">${esc(p.name)}</div>
+          <div class="badges">
+            <span class="badge ${statusCls}">${esc(p.status||'Активний')}</span>
+            ${p.rank ? `<span class="badge b-rank">${esc(p.rank)}</span>` : ''}
+            ${p.region ? `<span class="badge b-region">${esc(p.region)}</span>` : ''}
+            ${tags}
+          </div>
+          <div class="card-fields">
+            ${p.dob ? `<div class="cf-row"><span class="cf-lbl">Нар.:</span><span class="cf-val">${esc(p.dob)}</span></div>` : ''}
+            ${p.unit ? `<div class="cf-row"><span class="cf-lbl">Підрозділ:</span><span class="cf-val">${esc(p.unit)}</span></div>` : ''}
+            ${p.position ? `<div class="cf-row"><span class="cf-lbl">Посада:</span><span class="cf-val">${esc(p.position)}</span></div>` : ''}
+          </div>
+        </div>
+      </div>
+      <div class="card-foot">
+        <button class="cf-btn" onclick="openDetail('${p.id}',event)">🔍 Детальніше</button>
+        ${ROLE==='admin' ? `
+        <button class="cf-btn" onclick="openEdit('${p.id}',event)">✏️ Ред.</button>
+        <select class="status-quick" onchange="quickStatus('${p.id}',this.value,event)">
+          <option value="" disabled selected>Статус...</option>
+          <option>В полоні</option><option>Обміняний</option>
+          <option>Активний</option><option>Нейтралізований</option><option>Розшукується</option>
+        </select>
+        <button class="cf-btn del" onclick="confirmDelete('${p.id}',event)">🗑</button>
+        ` : ''}
+      </div>`;
+    grid.appendChild(card);
+  });
+}
+
+function cardNoPhoto() { return '<div class="card-no-photo">👤</div>'; }
+
+// ─── DETAIL PANEL ─────────────────────────────────────
+function openDetail(id, ev) {
+  if (ev) ev.stopPropagation();
+  const p = DB.find(x => x.id === id);
+  if (!p) return;
+  detailId = id;
+
+  $('dp-title').textContent = p.name || 'Деталі';
+
+  // Photos
+  const photos = PHOTOS[id] || [];
+  $('dp-photos').innerHTML = photos.length
+    ? photos.map((ph,i) =>
+        `<img class="dp-photo" src="${getSignedPhotoUrl(ph)}" alt=""
+          loading="lazy" style="cursor:pointer"
+          onclick="detailPhotoClick(${i})">`
+      ).join('')
+    : '<div style="color:var(--text4);font-size:0.78rem;padding:4px">📷 Фото відсутні</div>';
+
+  // Body
+  const statusCls = STATUS_CLASS[p.status] || 'b-neutral';
+  let html = `
+    <div class="dp-name">${esc(p.name)}</div>
+    <div class="dp-badges">
+      <span class="badge ${statusCls}" style="font-size:0.8rem;padding:4px 10px">${esc(p.status||'Активний')}</span>
+      ${p.rank?`<span class="badge b-rank">${esc(p.rank)}</span>`:''}
+      ${p.region?`<span class="badge b-region">${esc(p.region)}</span>`:''}
+      ${(p.tags||[]).map(t=>`<span class="dp-tag">${esc(t)}</span>`).join('')}
+    </div>`;
+
+  html += `<div class="dp-section">📋 Особисті дані</div>`;
+  const personal = [
+    ['Дата нар.',p.dob],['Місце нар.',p.birth_place],
+    ['Паспорт',p.passport],['ІПН / СНІЛС',p.ipn],
+    ['Адреса прожив.',p.addr_live],['Адреса реєстр.',p.addr_reg],
+  ];
+  personal.filter(([,v])=>v).forEach(([l,v]) =>
+    html += `<div class="dp-row"><span class="dp-lbl">${l}:</span><span class="dp-val">${esc(v)}</span></div>`);
+
+  html += `<div class="dp-section">🎖 Службові дані</div>`;
+  const service = [
+    ['Звання',p.rank],['Посада',p.position],
+    ['Підрозділ',p.unit],['Особистий №',p.unit_num],['Регіон',p.region],
+  ];
+  service.filter(([,v])=>v).forEach(([l,v]) =>
+    html += `<div class="dp-row"><span class="dp-lbl">${l}:</span><span class="dp-val">${esc(v)}</span></div>`);
+
+  // Contacts
+  const phones = p.phones || [];
+  const social  = p.social  || [];
+  if (phones.length || p.email || social.length) {
+    html += `<div class="dp-section">📞 Контакти</div>`;
+    if (phones.length) html += `<div class="dp-row"><span class="dp-lbl">Телефони:</span><span class="dp-val">${phones.map(esc).join('<br>')}</span></div>`;
+    if (p.email) html += `<div class="dp-row"><span class="dp-lbl">Email:</span><span class="dp-val">${esc(p.email)}</span></div>`;
+    if (social.length) html += `<div class="dp-row"><span class="dp-lbl">Соцмережі:</span><span class="dp-val">${social.map(s=>esc(typeof s==='string'?s:s.platform+': '+s.val)).join('<br>')}</span></div>`;
+  }
+
+  // Status details
+  if (p.detained_date || p.detained_place) {
+    html += `<div class="dp-section">🚨 Статус / Затримання</div>`;
+    if (p.detained_date)  html += `<div class="dp-row"><span class="dp-lbl">Дата затрим.:</span><span class="dp-val">${esc(p.detained_date)}</span></div>`;
+    if (p.detained_place) html += `<div class="dp-row"><span class="dp-lbl">Місце затрим.:</span><span class="dp-val">${esc(p.detained_place)}</span></div>`;
+  }
+
+  // Links
+  const links = p.links || [];
+  if (links.length) {
+    html += `<div class="dp-section">🔗 Посилання</div>`;
+    links.forEach(l => {
+      const url = typeof l==='string'?l:l.url;
+      const label = (typeof l==='object'&&l.label)?l.label:url;
+      html += `<div class="dp-row"><a href="${esc(url)}" target="_blank" class="flink">${esc(label)}</a></div>`;
+    });
+  }
+
+  // Relatives
+  const rels = p.relatives || [];
+  if (rels.length) {
+    html += `<div class="dp-section">👨‍👩‍👧 Родичі / Зв'язки</div>`;
+    rels.forEach(r => {
+      const line = typeof r==='string'?r:[r.name,r.rel,r.contact].filter(Boolean).join(' · ');
+      html += `<div class="dp-row" style="padding:3px 0"><span class="dp-val">${esc(line)}</span></div>`;
+    });
+  }
+
+  // Notes
+  if (p.notes) {
+    html += `<div class="dp-section">📝 Нотатки</div>`;
+    html += `<div class="dp-notes">${esc(p.notes)}</div>`;
+  }
+  if (p.sources) {
+    html += `<div class="dp-row" style="margin-top:8px"><span class="dp-lbl">Джерела:</span><span class="dp-val">${esc(p.sources)}</span></div>`;
+  }
+
+  // Meta
+  html += `<div class="dp-section">ℹ️ Метадані</div>`;
+  html += `<div class="dp-row"><span class="dp-lbl">Додано:</span><span class="dp-val">${new Date(p.created_at||'').toLocaleString('uk')}</span></div>`;
+  html += `<div class="dp-row"><span class="dp-lbl">Оновлено:</span><span class="dp-val">${new Date(p.updated_at||'').toLocaleString('uk')}</span></div>`;
+  html += `<div class="dp-row"><span class="dp-lbl">ID:</span><span class="dp-val" style="font-size:0.65rem;color:var(--text4)">${p.id}</span></div>`;
+
+  $('dp-body').innerHTML = html;
+
+  // Admin actions visibility
+  $('dp-admin-acts').style.display = ROLE === 'admin' ? 'flex' : 'none';
+
+  $('detail-overlay').classList.add('open');
+}
+
+function closeDetail(e) {
+  if (e.target === $('detail-overlay')) closeDetailDirect();
+}
+function closeDetailDirect() {
+  $('detail-overlay').classList.remove('open');
+  detailId = null;
+}
+function editFromDetail() {
+  if (detailId) { closeDetailDirect(); openEdit(detailId); }
+}
+function deleteFromDetail() {
+  if (detailId) { closeDetailDirect(); confirmDelete(detailId); }
+}
+
+// ─── PHOTO VIEWER ─────────────────────────────────────
+let pvPersonName = ''; let pvPersonDob = '';
+function pvOpen(urls, idx, personName, personDob) {
+  pvUrls = urls; pvIdx = idx;
+  pvPersonName = personName || ''; pvPersonDob = personDob || '';
+  pvShow();
+  $('pv').classList.add('open');
+}
+function pvShow() {
+  $('pv-img').src = pvUrls[pvIdx];
+  $('pv-cnt').textContent = `${pvIdx+1} / ${pvUrls.length}`;
+  $('pv-name').textContent = pvPersonName;
+  $('pv-dob').textContent  = pvPersonDob ? `Дата народження: ${pvPersonDob}` : '';
+}
+function pvNav(dir) { pvIdx = (pvIdx+dir+pvUrls.length)%pvUrls.length; pvShow(); }
+function pvClose(e) { if(e.target===$('pv')) pvCloseDirect(); }
+function pvCloseDirect() { $('pv').classList.remove('open'); }
+
+function cardPhotoClick(personId) {
+  const p = DB.find(x => x.id === personId);
+  const paths = PHOTOS[personId] || [];
+  if (!paths.length) return;
+  pvOpen(paths.map(getSignedPhotoUrl), 0, p ? p.name : '', p ? (p.dob || '') : '');
+}
+
+function detailPhotoClick(idx) {
+  const p = DB.find(x => x.id === detailId);
+  const paths = PHOTOS[detailId] || [];
+  if (!paths.length) return;
+  pvOpen(paths.map(getSignedPhotoUrl), idx, p ? p.name : '', p ? (p.dob || '') : '');
+}
+
+// ─── ADD / EDIT MODAL ─────────────────────────────────
+function openAddModal() {
+  editingId = null; tmpPhotos = [];
+  resetForm();
+  $('modal-title').textContent = 'Додати нову особу';
+  $('modal-person').classList.add('open');
+}
+
+function openEdit(id, ev) {
+  if (ev) ev.stopPropagation();
+  const p = DB.find(x => x.id === id);
+  if (!p) return;
+  editingId = id; tmpPhotos = [];
+  resetForm();
+  fillForm(p);
+  $('modal-title').textContent = 'Редагувати: ' + p.name;
+  $('modal-person').classList.add('open');
+}
+
+function resetForm() {
+  ['f-name','f-dob','f-birth-place','f-addr-live','f-addr-reg',
+   'f-passport','f-ipn','f-rank-v','f-position','f-unit-v','f-unit-num',
+   'f-region-v','f-email','f-det-date','f-det-place','f-tags','f-sources','f-notes']
+    .forEach(id => $(id).value = '');
+  $('f-status-v').value = 'Активний';
+  $('phones-list').innerHTML  = '';
+  $('social-list').innerHTML  = '';
+  $('links-list').innerHTML   = '';
+  $('photo-previews').innerHTML = '';
+  tmpPhotos = [];
+  deletedPhotoPaths = [];
+}
+
+function fillForm(p) {
+  const set = (id, val) => { const el=$(id); if(el&&val!=null) el.value=val; };
+  set('f-name', p.name); set('f-dob', p.dob); set('f-birth-place', p.birth_place);
+  set('f-addr-live', p.addr_live); set('f-addr-reg', p.addr_reg);
+  set('f-passport', p.passport); set('f-ipn', p.ipn);
+  set('f-rank-v', p.rank); set('f-position', p.position);
+  set('f-unit-v', p.unit); set('f-unit-num', p.unit_num);
+  set('f-region-v', p.region); set('f-email', p.email);
+  set('f-status-v', p.status||'Активний');
+  set('f-det-date', p.detained_date); set('f-det-place', p.detained_place);
+  set('f-tags', (p.tags||[]).join(', '));
+  set('f-sources', p.sources); set('f-notes', p.notes);
+
+  (p.phones||[]).forEach(ph => addRow('phones-list', '📱 Телефон', ph));
+  (p.social||[]).forEach(s => addSocRow(typeof s==='string'?s:(s.platform||'')+'|'+(s.val||'')));
+  (p.links||[]).forEach(l => addLinkRow(typeof l==='string'?l:(l.label||'')+'|'+(l.url||'')));
+
+  // Show existing photos
+  const photos = PHOTOS[p.id] || [];
+  photos.forEach(ph => {
+    const url = getSignedPhotoUrl(ph);
+    tmpPhotos.push({ existing: true, path: ph, previewUrl: url });
+    addPhotoPreview(url, tmpPhotos.length-1);
+  });
+}
+
+function addRow(listId, placeholder, value='') {
+  const row = document.createElement('div');
+  row.className = 'multi-row';
+  const idx = $$(listId).length;
+  row.innerHTML = `<input type="text" placeholder="${placeholder}" value="${esc(value)}">
+    <button class="btn-rm" onclick="this.parentNode.remove()">✕</button>`;
+  $(listId).appendChild(row);
+}
+function $$(id) { return $(id).querySelectorAll('.multi-row'); }
+
+function addSocRow(val='') {
+  const [platform='', v=''] = val.split('|');
+  const row = document.createElement('div');
+  row.className = 'multi-row';
+  row.innerHTML = `
+    <input type="text" placeholder="Платформа (VK, TG...)" value="${esc(platform)}" style="flex:0.8">
+    <input type="text" placeholder="Логін / URL" value="${esc(v)}" style="flex:1.2">
+    <button class="btn-rm" onclick="this.parentNode.remove()">✕</button>`;
+  $('social-list').appendChild(row);
+}
+
+function addLinkRow(val='') {
+  const [label='', url=''] = val.split('|');
+  const row = document.createElement('div');
+  row.className = 'multi-row';
+  row.innerHTML = `
+    <input type="text" placeholder="Назва (необов.)" value="${esc(label)}" style="flex:0.8">
+    <input type="text" placeholder="URL" value="${esc(url)}" style="flex:1.2">
+    <button class="btn-rm" onclick="this.parentNode.remove()">✕</button>`;
+  $('links-list').appendChild(row);
+}
+
+// Photos
+function addPhotoFiles(e) {
+  [...e.target.files].forEach(f => {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      tmpPhotos.push({ file: f, previewUrl: ev.target.result });
+      addPhotoPreview(ev.target.result, tmpPhotos.length-1);
+    };
+    reader.readAsDataURL(f);
+  });
+  e.target.value = '';
+}
+function dropPhotos(e) {
+  e.preventDefault(); $('photo-drop').classList.remove('over');
+  const files = [...e.dataTransfer.files].filter(f => f.type.startsWith('image/'));
+  const inp = $('photo-file');
+  const dt = new DataTransfer();
+  files.forEach(f => dt.items.add(f));
+  inp.files = dt.files;
+  addPhotoFiles({ target: inp });
+}
+function addPhotoPreview(url, idx) {
+  const wrap = document.createElement('div');
+  wrap.className = 'prev-wrap';
+  wrap.setAttribute('data-idx', idx);
+  wrap.innerHTML = `<img class="prev-img" src="${url}" alt="">
+    <button class="prev-rm" onclick="removePhoto(${idx})">✕</button>`;
+  $('photo-previews').appendChild(wrap);
+}
+function removePhoto(idx) {
+  const ph = tmpPhotos[idx];
+  if (ph && ph.existing && ph.path) {
+    deletedPhotoPaths.push(ph.path); // mark for deletion on save
+  }
+  tmpPhotos[idx] = null;
+  const wrap = $('photo-previews').querySelector(`[data-idx="${idx}"]`);
+  if (wrap) wrap.remove();
+}
+
+// ─── SAVE ─────────────────────────────────────────────
+async function savePerson() {
+  const name = $('f-name').value.trim();
+  if (!name) { toast('Введіть ПІБ особи', 'err'); return; }
+
+  $('save-btn').disabled = true;
+  showLoading(editingId ? 'Оновлення запису...' : 'Збереження...');
+
+  try {
+    // Collect phones
+    const phones = [...$$('phones-list')].map(r => r.querySelector('input').value.trim()).filter(Boolean);
+
+    // Collect social
+    const social = [...$('social-list').querySelectorAll('.multi-row')].map(r => {
+      const inputs = r.querySelectorAll('input');
+      const plat = inputs[0].value.trim(), val = inputs[1].value.trim();
+      return (plat||val) ? { platform:plat, val:val } : null;
+    }).filter(Boolean);
+
+    // Collect links
+    const links = [...$('links-list').querySelectorAll('.multi-row')].map(r => {
+      const inputs = r.querySelectorAll('input');
+      const label = inputs[0].value.trim(), url = inputs[1].value.trim();
+      return url ? { label:label||url, url:url } : null;
+    }).filter(Boolean);
+
+    const data = {
+      name,
+      dob:           $('f-dob').value.trim()||null,
+      birth_place:   $('f-birth-place').value.trim()||null,
+      addr_live:     $('f-addr-live').value.trim()||null,
+      addr_reg:      $('f-addr-reg').value.trim()||null,
+      passport:      $('f-passport').value.trim()||null,
+      ipn:           $('f-ipn').value.trim()||null,
+      rank:          $('f-rank-v').value.trim()||null,
+      position:      $('f-position').value.trim()||null,
+      unit:          $('f-unit-v').value.trim()||null,
+      unit_num:      $('f-unit-num').value.trim()||null,
+      region:        $('f-region-v').value.trim()||null,
+      email:         $('f-email').value.trim()||null,
+      phones:        phones.length ? phones : null,
+      social:        social.length ? social : null,
+      status:        $('f-status-v').value,
+      detained_date: $('f-det-date').value.trim()||null,
+      detained_place:$('f-det-place').value.trim()||null,
+      links:         links.length ? links : null,
+      tags:          $('f-tags').value.split(',').map(t=>t.trim()).filter(Boolean),
+      sources:       $('f-sources').value.trim()||null,
+      notes:         $('f-notes').value.trim()||null,
+    };
+
+    let pid;
+    if (editingId) {
+      await sbPatch('persons', editingId, data);
+      pid = editingId;
+    } else {
+      const rows = await sbPost('persons', data);
+      pid = rows[0].id;
+    }
+
+    // Upload new photos
+    for (const ph of tmpPhotos) {
+      if (!ph || ph.existing || !ph.file) continue;
+      await uploadPhoto(pid, ph.file);
+    }
+
+    // Delete removed existing photos
+    for (const path of deletedPhotoPaths) {
+      try {
+        // Remove from person_photos table
+        await sbFetch(`/rest/v1/person_photos?storage_path=eq.${encodeURIComponent(path)}`, { method: 'DELETE' });
+        // Remove from storage
+        await fetch(`${SB_URL}/storage/v1/object/odb-media/${path}`, {
+          method: 'DELETE',
+          headers: { 'apikey': SB_KEY, 'Authorization': `Bearer ${SESSION.access_token}` }
+        });
+      } catch(e) { console.warn('Photo delete failed:', e); }
+    }
+    deletedPhotoPaths = [];
+
+    toast(editingId ? 'Запис оновлено ✓' : 'Запис збережено ✓', 'ok');
+    closeModal('modal-person');
+    // Оновлюємо тільки один запис локально — не перевантажуємо всю базу
+    try {
+      const fresh = await sbGet(`persons?id=eq.${pid}&select=*`);
+      if (fresh && fresh.length) {
+        const idx = DB.findIndex(x => x.id === pid);
+        if (idx >= 0) DB[idx] = fresh[0]; else DB.unshift(fresh[0]);
+      }
+      // Оновити фото для цього запису
+      const freshPh = await sbGet(`person_photos?person_id=eq.${pid}&select=person_id,storage_path,is_primary&order=is_primary.desc`);
+      PHOTOS[pid] = freshPh.map(p => p.storage_path);
+    } catch(e) { console.warn('Refresh single record failed:', e); }
+    loadStats();
+    renderGrid();
+
+  } catch(e) {
+    toast('Помилка збереження: ' + e.message, 'err');
+    console.error(e);
+  } finally {
+    $('save-btn').disabled = false;
+    hideLoading();
+  }
+}
+
+async function uploadPhoto(personId, file) {
+  const ext = file.name.split('.').pop();
+  const fname = `${Date.now()}.${ext}`;
+  const path  = `${personId}/${fname}`;
+  const r = await fetch(`${SB_URL}/storage/v1/object/odb-media/${path}`, {
+    method: 'POST',
+    headers: { 'apikey': SB_KEY, 'Authorization': `Bearer ${SESSION.access_token}`,
+               'Content-Type': file.type },
+    body: file
+  });
+  if (!r.ok) { console.error('Photo upload failed:', await r.text()); return; }
+  await sbPost('person_photos', { person_id: personId, storage_path: path, is_primary: true });
+}
+
+// ─── QUICK STATUS ────────────────────────────────────
+async function quickStatus(id, status, ev) {
+  if (ev) ev.stopPropagation();
+  if (!status) return;
+  try {
+    await sbPatch('persons', id, { status });
+    const p = DB.find(x => x.id === id);
+    if (p) p.status = status;
+    loadStats();
+    renderGrid();
+    toast(`Статус змінено: ${status}`);
+  } catch(e) { toast('Помилка: ' + e.message, 'err'); }
+}
+
+// ─── DELETE ───────────────────────────────────────────
+let pendingDeleteId = null;
+function confirmDelete(id, ev) {
+  if (ev) ev.stopPropagation();
+  const p = DB.find(x => x.id === id);
+  pendingDeleteId = id;
+  $('confirm-text').textContent = `Видалити "${p?.name||id}"? Ця дія незворотня.`;
+  $('confirm-ok').onclick = () => doDelete();
+  $('modal-confirm').classList.add('open');
+}
+async function doDelete() {
+  closeModal('modal-confirm');
+  if (!pendingDeleteId) return;
+  showLoading('Видалення...');
+  try {
+    await sbDelete('persons', pendingDeleteId);
+    DB = DB.filter(p => p.id !== pendingDeleteId);
+    delete PHOTOS[pendingDeleteId];
+    if (detailId === pendingDeleteId) closeDetailDirect();
+    loadStats(); renderGrid();
+    toast('Запис видалено');
+  } catch(e) { toast('Помилка видалення: ' + e.message, 'err'); }
+  finally { hideLoading(); pendingDeleteId = null; }
+}
+
+// ─── IMPORT JSON ─────────────────────────────────────
+async function importJSON(ev) {
+  const file = ev.target.files[0];
+  if (!file) return;
+  ev.target.value = '';
+  const text = await file.text();
+  let data;
+  try { data = JSON.parse(text); } catch { toast('Невалідний JSON файл', 'err'); return; }
+  if (!Array.isArray(data)) data = [data];
+  showLoading(`Імпорт ${data.length} записів...`);
+  let ok = 0, err = 0;
+  for (const p of data) {
+    try { await sbPost('persons', p); ok++; }
+    catch { err++; }
+  }
+  await loadPersons();
+  hideLoading();
+  toast(`Імпортовано: ${ok} ✓, помилок: ${err}`, ok > 0 ? 'ok' : 'err');
+}
+
+// ─── КОМБАЙН (локальний сервер) ───────────────────────
+const INGEST_URL = 'http://localhost:8000';
+let _ingestPersons = [];
+let _ingestFile    = null;  // зберігаємо файл для повного push
+
+async function checkIngestServer() {
+  const el = $('ingest-server-status');
+  if (!el) return false;
+  try {
+    const r = await fetch(`${INGEST_URL}/`, { signal: AbortSignal.timeout(3000) });
+    if (!r.ok) throw new Error('not ok');
+
+    // Автоматично передаємо токен серверу — без ручного копіювання
+    if (SESSION?.access_token) {
+      await fetch(`${INGEST_URL}/auth/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: SESSION.access_token }),
+      }).catch(() => {});
+    }
+
+    el.style.background = '#052e16';
+    el.style.color = '#4ade80';
+    el.textContent = '✅ Сервер підключено — авторизація передана автоматично';
+    return true;
+  } catch {
+    el.style.background = '#450a0a';
+    el.style.color = '#f87171';
+    el.innerHTML = '❌ Сервер недоступний.<br><small>Відкрий PowerShell → <b>cd C:\\Users\\Valeriiy\\Desktop\\ODB_Server</b> → <b>.\\venv\\Scripts\\activate</b> → <b>uvicorn main:app --reload --port 8000</b></small>';
+    return false;
+  }
+}
+
+async function openIngestModal(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  event.target.value = '';
+
+  $('modal-ingest').style.display = 'block';
+  $('ingest-file-info').textContent = `📄 Файл: ${file.name} (${(file.size/1024).toFixed(0)} KB)`;
+  $('ingest-preview').style.display = 'none';
+  $('ingest-raw').style.display = 'none';
+  $('ingest-push-btn').disabled = true;
+  $('ingest-push-btn').style.opacity = '0.4';
+  _ingestPersons = [];
+
+  _ingestFile = file;  // зберігаємо для повного push
+
+  const ok = await checkIngestServer();
+  if (!ok) return;
+
+  // Відправляємо на preview
+  $('ingest-file-info').textContent += ' — ⏳ Аналіз...';
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const r   = await fetch(`${INGEST_URL}/ingest/preview`, { method: 'POST', body: fd });
+    const res = await r.json();
+
+    if (!r.ok) {
+      toast('Помилка сервера: ' + (res.detail || r.statusText), 'err');
+      return;
+    }
+
+    $('ingest-file-info').textContent = `📄 ${file.name} — знайдено ${res.total_parsed.toLocaleString('uk')} записів (пропущено: ${res.skipped || 0})`;
+
+    if (res.raw_text) {
+      $('ingest-raw').style.display = '';
+      $('ingest-raw-text').textContent = res.raw_text;
+      return;
+    }
+
+    if (res.preview && res.preview.length) {
+      _ingestPersons = res.preview; // для push беремо всі — preview тільки для показу
+      renderIngestPreview(res.preview, res.total_parsed);
+      $('ingest-preview').style.display = '';
+      $('ingest-push-btn').disabled = false;
+      $('ingest-push-btn').style.opacity = '1';
+      // Зберігаємо повний список для подальшого push
+      _ingestPersons = res._all_persons || res.preview;
+    } else {
+      toast('Записів не знайдено у файлі', 'warn');
+    }
+
+  } catch (e) {
+    toast('Не вдалось зв\'язатись з сервером: ' + e.message, 'err');
+  }
+}
+
+function renderIngestPreview(persons, total) {
+  if (!persons.length) return;
+  const fields = ['name', 'dob', 'rank', 'unit', 'unit_num', 'status'];
+  const labels = { name:'ПІБ', dob:'Дата нар.', rank:'Звання', unit:'Підрозділ', unit_num:'Ос. номер', status:'Статус' };
+
+  $('ingest-thead').innerHTML = '<tr>' +
+    fields.map(f => `<th style="padding:6px 10px;text-align:left;white-space:nowrap">${labels[f]||f}</th>`).join('') + '</tr>';
+
+  $('ingest-tbody').innerHTML = persons.map(p =>
+    '<tr style="border-top:1px solid #1a2540">' +
+    fields.map(f => `<td style="padding:5px 10px;white-space:nowrap">${esc(String(p[f]||''))}</td>`).join('') +
+    '</tr>'
+  ).join('');
+
+  $('ingest-count').textContent =
+    `Показано 5 з ${total.toLocaleString('uk')}. Після підтвердження — всі ${total.toLocaleString('uk')} записів потраплять в базу (з дедуплікацією).`;
+}
+
+async function ingestPush() {
+  const btn = $('ingest-push-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Завантаження...';
+
+  if (!_ingestFile) {
+    toast('Файл не знайдено. Спробуй ще раз.', 'err');
+    btn.disabled = false;
+    btn.textContent = '✅ Завантажити в базу';
+    return;
+  }
+
+  try {
+    // Відправляємо оригінальний файл на сервер з push_to_db=true
+    const fd = new FormData();
+    fd.append('file', _ingestFile);
+    const r   = await fetch(`${INGEST_URL}/ingest/file?push_to_db=true`, {
+      method: 'POST', body: fd
+    });
+    const res = await r.json();
+
+    if (!r.ok) {
+      toast('Помилка: ' + (res.detail || r.statusText), 'err');
+    } else if (res.push_errors && res.push_errors.length) {
+      toast(`⚠ Завантажено: ${res.pushed}, помилок: ${res.push_errors.length}`, 'warn');
+    } else {
+      const pushed = res.pushed ?? res.total ?? 0;
+      toast(`✅ Завантажено: ${pushed.toLocaleString('uk')} записів в базу`, 'ok');
+      closeIngestModal();
+      await Promise.all([loadStats(), loadPage(0, true)]);
+    }
+  } catch (e) {
+    toast('Помилка з\'єднання з сервером: ' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '✅ Завантажити в базу';
+  }
+}
+
+function closeIngestModal() {
+  $('modal-ingest').style.display = 'none';
+  _ingestPersons = [];
+}
+
+// ══════════════════════════════════════════════════════════
+// OCR МОДУЛЬ
+// ══════════════════════════════════════════════════════════
+
+let _ocrFile = null;
+
+async function openOCRModal() {
+  $('modal-ocr').style.display = 'block';
+  _ocrFile = null;
+  $('ocr-img-preview').style.display = 'none';
+  $('ocr-results').style.display = 'none';
+  $('ocr-run-btn').disabled = true;
+  $('ocr-run-btn').style.opacity = '0.4';
+  $('ocr-loading').style.display = 'none';
+  $('ocr-push-msg').style.display = 'none';
+  $('ocr-file-input').value = '';
+
+  // Перевірка сервера + передача токена + статус OCR
+  const el = $('ocr-server-status');
+  el.style.background = '#0f1e3a';
+  el.style.color = '#93c5fd';
+  el.textContent = '⏳ Перевірка сервера та OCR модуля...';
+  try {
+    // Перевіряємо доступність
+    await fetch(`${INGEST_URL}/`, { signal: AbortSignal.timeout(3000) });
+
+    // Передаємо токен авторизації (як у Комбайні)
+    if (SESSION?.access_token) {
+      await fetch(`${INGEST_URL}/auth/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: SESSION.access_token }),
+      }).catch(() => {});
+    }
+
+    // Перевіряємо статус OCR
+    const r = await fetch(`${INGEST_URL}/ocr/status`, { signal: AbortSignal.timeout(5000) });
+    const d = await r.json();
+    if (!d.available) {
+      el.style.background = '#451a03';
+      el.style.color = '#fb923c';
+      el.innerHTML = '⚠️ EasyOCR не встановлено. У PowerShell: <b>.\\venv\\Scripts\\activate</b> → <b>pip install easyocr pillow numpy</b>';
+    } else {
+      el.style.background = '#052e16';
+      el.style.color = '#4ade80';
+      el.textContent = d.model_loaded
+        ? '✅ Сервер та OCR модель готові'
+        : '✅ Сервер підключено. Токен передано. OCR завантажиться при першому запиті (~30 сек)';
+    }
+  } catch {
+    el.style.background = '#450a0a';
+    el.style.color = '#f87171';
+    el.innerHTML = '❌ Сервер недоступний. Запусти <b>start_server.bat</b>';
+  }
+}
+
+function closeOCRModal() {
+  $('modal-ocr').style.display = 'none';
+  _ocrFile = null;
+}
+
+function handleOCRDrop(e) {
+  e.preventDefault();
+  $('ocr-dropzone').style.borderColor = '#1a2540';
+  const file = e.dataTransfer.files[0];
+  if (file) loadOCRFile(file);
+}
+
+function handleOCRFile(e) {
+  const file = e.target.files[0];
+  if (file) loadOCRFile(file);
+}
+
+function loadOCRFile(file) {
+  _ocrFile = file;
+  $('ocr-results').style.display = 'none';
+  $('ocr-push-msg').style.display = 'none';
+
+  // Показати прев'ю
+  const reader = new FileReader();
+  reader.onload = ev => {
+    $('ocr-img-el').src = ev.target.result;
+    $('ocr-img-preview').style.display = 'block';
+    $('ocr-img-name').textContent = `${file.name} (${(file.size/1024).toFixed(0)} KB)`;
+  };
+  reader.readAsDataURL(file);
+
+  $('ocr-run-btn').disabled = false;
+  $('ocr-run-btn').style.opacity = '1';
+}
+
+async function runOCR() {
+  if (!_ocrFile) return;
+  const btn = $('ocr-run-btn');
+  btn.disabled = true;
+  btn.style.opacity = '0.5';
+  $('ocr-loading').style.display = 'block';
+  $('ocr-results').style.display = 'none';
+
+  try {
+    const fd = new FormData();
+    fd.append('file', _ocrFile);
+    const r = await fetch(`${INGEST_URL}/ingest/ocr`, { method: 'POST', body: fd });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({ detail: r.statusText }));
+      toast('Помилка OCR: ' + (err.detail || r.statusText), 'err');
+      return;
+    }
+    const res = await r.json();
+
+    // Заповнюємо поля форми
+    const p = res.person || {};
+    $('ocr-f-name').value     = p.name     || '';
+    $('ocr-f-dob').value      = p.dob      || '';
+    $('ocr-f-rank').value     = p.rank     || '';
+    $('ocr-f-position').value = p.position || '';
+    $('ocr-f-unit').value     = p.unit     || '';
+    $('ocr-f-unit_num').value = p.unit_num || '';
+    $('ocr-f-region').value   = p.region   || '';
+    $('ocr-f-passport').value = p.passport || '';
+    $('ocr-f-addr_reg').value = p.addr_reg || '';
+    $('ocr-f-status').value   = p.status   || 'Активний';
+    $('ocr-f-notes').value    = (p.phones ? 'Тел: ' + p.phones.join(', ') + '\n' : '') +
+                                (p.notes || '');
+
+    $('ocr-raw-text').textContent = res.raw_text || '(текст не розпізнано)';
+    $('ocr-results').style.display = 'block';
+    $('ocr-push-msg').style.display = 'none';
+
+    if (!p.name) {
+      toast('⚠️ ПІБ не розпізнано — заповни вручну перед збереженням', 'warn');
+    }
+  } catch (e) {
+    toast('Помилка: ' + e.message, 'err');
+  } finally {
+    $('ocr-loading').style.display = 'none';
+    btn.disabled = false;
+    btn.style.opacity = '1';
+  }
+}
+
+async function ocrPush(force = false) {
+  const name = $('ocr-f-name').value.trim();
+  if (!name) { toast('Введи ПІБ перед збереженням', 'err'); return; }
+
+  const person = {
+    name:     name,
+    dob:      $('ocr-f-dob').value.trim()      || null,
+    rank:     $('ocr-f-rank').value.trim()     || null,
+    position: $('ocr-f-position').value.trim() || null,
+    unit:     $('ocr-f-unit').value.trim()     || null,
+    unit_num: $('ocr-f-unit_num').value.trim() || null,
+    region:   $('ocr-f-region').value.trim()   || null,
+    passport: $('ocr-f-passport').value.trim() || null,
+    addr_reg: $('ocr-f-addr_reg').value.trim() || null,
+    status:   $('ocr-f-status').value          || 'Активний',
+    notes:    $('ocr-f-notes').value.trim()    || null,
+  };
+
+  const btn = $('ocr-push-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Збереження...';
+
+  try {
+    const r = await fetch(`${INGEST_URL}/ingest/ocr/push`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ person, force }),
+    });
+    const res = await r.json();
+    const msg = $('ocr-push-msg');
+    msg.style.display = 'block';
+    if (res.pushed > 0) {
+      msg.style.background = '#052e16';
+      msg.style.color = '#4ade80';
+      msg.textContent = `✅ Запис "${name}" успішно додано в базу!`;
+      toast(`✅ "${name}" додано в базу`, 'ok');
+      $('ocr-force-btn').style.display = 'none';
+      setTimeout(closeOCRModal, 1500);
+      await Promise.all([loadStats(), loadPage(0, true)]);
+    } else {
+      msg.style.background = '#451a03';
+      msg.style.color = '#fb923c';
+      if (res.errors?.length) {
+        msg.textContent = `⚠️ ${res.errors[0]}`;
+      } else {
+        msg.innerHTML = `⚠️ Дублікат: запис з таким ПІБ+дата вже є в базі.<br>
+          <small style="color:#fbbf24">Якщо впевнений що це інша людина — натисни "Все одно додати"</small>`;
+        // Показуємо кнопку форс-додавання
+        $('ocr-force-btn').style.display = 'inline-block';
+        $('ocr-force-btn').onclick = () => ocrPushForce(person);
+      }
+    }
+  } catch (e) {
+    toast('Помилка збереження: ' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '✅ Додати в базу';
+  }
+}
+
+async function ocrPushForce(person) {
+  // Форс-додавання: обходить перевірку дублікатів
+  const btn = $('ocr-force-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳...';
+  try {
+    const r = await fetch(`${INGEST_URL}/ingest/ocr/push`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ person, force: true }),
+    });
+    const res = await r.json();
+    if (res.pushed > 0) {
+      toast(`✅ "${person.name}" примусово додано в базу`, 'ok');
+      setTimeout(closeOCRModal, 1000);
+      await Promise.all([loadStats(), loadPage(0, true)]);
+    } else {
+      const errMsg = res.errors?.[0] || 'Сервер не авторизований — перевідкрий OCR модал';
+      toast('Помилка: ' + errMsg, 'err');
+    }
+  } catch(e) {
+    toast('Помилка: ' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '⚠️ Все одно додати';
+  }
+}
+
+// ─── EXPORT CSV ──────────────────────────────────────
+function exportCSV() {
+  const cols = ['name','dob','rank','position','unit','unit_num','region','status','passport','notes'];
+  const headers = ['ПІБ','Дата нар.','Звання','Посада','Підрозділ','Ос. номер','Регіон','Статус','Паспорт','Нотатки'];
+  const rows = [headers.join(';')];
+  DB.forEach(p => {
+    rows.push(cols.map(c => `"${String(p[c]||'').replace(/"/g,'""')}"`).join(';'));
+  });
+  const blob = new Blob(['\ufeff'+rows.join('\n')], { type:'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `ODB_export_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  toast(`Експортовано ${DB.length} записів`);
+}
+
+// ─── MODAL HELPERS ────────────────────────────────────
+function closeModal(id) { $(id).classList.remove('open'); }
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.modal.open').forEach(m => m.classList.remove('open'));
+    $('pv').classList.remove('open');
+    closeDetailDirect();
+  }
+});
+
+// ─── SIGNED PHOTO URL (cached) ───────────────────────
+const signedUrlCache = {};
+
+async function getPhotoUrlSigned(path) {
+  if (signedUrlCache[path]) return signedUrlCache[path];
+  // Try public URL first
+  const pubUrl = `${SB_URL}/storage/v1/object/public/odb-media/${path}`;
+  // Check if bucket is public by trying to load; if not, get signed URL
+  try {
+    const r = await fetch(`${SB_URL}/storage/v1/object/sign/odb-media/${path}`, {
+      method: 'POST',
+      headers: { 'apikey': SB_KEY, 'Authorization': `Bearer ${SESSION.access_token}`,
+                 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expiresIn: 3600 })
+    });
+    if (r.ok) {
+      const d = await r.json();
+      const url = d.signedURL ? SB_URL + d.signedURL : pubUrl;
+      signedUrlCache[path] = url;
+      return url;
+    }
+  } catch {}
+  signedUrlCache[path] = pubUrl;
+  return pubUrl;
+}
+
+// Load photos with signed URLs and update img tags
+async function loadPhotoUrls() {
+  const imgs = document.querySelectorAll('[data-photo-path]');
+  for (const img of imgs) {
+    const path = img.getAttribute('data-photo-path');
+    if (path && !img.src.includes('supabase')) {
+      img.src = await getPhotoUrlSigned(path);
+    }
+  }
+}
+
+// ─── INIT ─────────────────────────────────────────────
+(async function init() {
+  const saved = localStorage.getItem('odb_session');
+  if (!saved) return;
+  try {
+    const s = JSON.parse(saved);
+    if (!s.token) return;
+    // Try to refresh/verify token
+    const r = await fetch(`${SB_URL}/auth/v1/user`, {
+      headers: { 'apikey': SB_KEY, 'Authorization': `Bearer ${s.token}` }
+    });
+    if (r.ok) {
+      const user = await r.json();
+      SESSION = { access_token: s.token, refresh_token: s.refresh, user: user };
+      localStorage.setItem('odb_session', JSON.stringify({
+        token: s.token, refresh: s.refresh, user: user.id, email: user.email
+      }));
+      await loadRole();
+      await startApp();
+    } else if (s.refresh) {
+      // Token expired — try refresh
+      const ok = await refreshSession();
+      if (ok) { await loadRole(); await startApp(); }
+      else { localStorage.removeItem('odb_session'); if (s.email) $('li-email').value = s.email; }
+    } else {
+      localStorage.removeItem('odb_session');
+      if (s.email) $('li-email').value = s.email;
+    }
+  } catch {
+    localStorage.removeItem('odb_session');
+  }
+})();
+</script>
+</body>
+</html>
