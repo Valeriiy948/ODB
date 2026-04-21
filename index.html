@@ -62,6 +62,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',Arial,sans-se
   animation:blink 1.4s infinite;display:inline-block;margin-right:5px;
   vertical-align:middle}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.15}}
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
 .top-sep{flex:1}
 .top-actions{display:flex;gap:6px;align-items:center}
 .top-btn{background:rgba(29,78,216,0.12);border:1px solid rgba(29,78,216,0.35);
@@ -482,6 +483,7 @@ footer{border-top:1px solid var(--border);padding:12px 20px;
     <div id="dp-admin-acts" class="top-actions" style="display:flex;gap:6px;flex-wrap:wrap">
       <button class="top-btn" onclick="generateDossier(detailId)" title="Сформувати PDF досьє">📄 Досьє</button>
       <button class="top-btn" onclick="showConnections(detailId)" title="Знайти зв'язки в базі">🔗 Зв'язки</button>
+      <button class="top-btn" id="osint-btn" onclick="runOSINT(detailId)" title="Пошук в OSINT-джерелах (Myrotvorets та інші)">🔍 OSINT</button>
       <button class="top-btn admin-only" onclick="editFromDetail()">✏️ Ред.</button>
       <button class="top-btn danger admin-only" onclick="deleteFromDetail()">🗑</button>
     </div>
@@ -692,6 +694,79 @@ footer{border-top:1px solid var(--border);padding:12px 20px;
   </div>
   <div id="conn-empty" style="display:none;text-align:center;color:#64748b;padding:30px">
     🔍 Збігів не знайдено. Унікальна особа в базі.
+  </div>
+</div>
+</div>
+
+<!-- ══ OSINT MODAL ════════════════════════════════════ -->
+<div id="modal-osint" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.82);overflow-y:auto">
+<div style="max-width:780px;margin:40px auto;padding:28px;background:#0d1220;border:1px solid #1a2540;border-radius:14px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+    <span id="osint-modal-title" style="font-size:1.05rem;font-weight:700;color:#60a5fa">🔍 OSINT-пошук</span>
+    <button onclick="$('modal-osint').style.display='none'" style="background:none;border:none;color:#94a3b8;font-size:1.4rem;cursor:pointer">✕</button>
+  </div>
+
+  <!-- Статус сервера -->
+  <div id="osint-server-status" style="padding:8px 12px;border-radius:8px;font-size:0.78rem;margin-bottom:14px;background:#0f1e3a;color:#93c5fd">
+    ⏳ Перевірка сервера...
+  </div>
+
+  <!-- Лоадер під час пошуку -->
+  <div id="osint-loading" style="display:none;text-align:center;padding:40px 20px">
+    <div style="font-size:2rem;margin-bottom:12px;animation:spin 1.2s linear infinite;display:inline-block">🔄</div>
+    <div style="color:#60a5fa;font-size:0.9rem;font-weight:600" id="osint-loading-text">Запускаємо headless-браузер...</div>
+    <div style="color:#475569;font-size:0.75rem;margin-top:6px">Пошук займає 15-40 секунд. Не закривай вікно.</div>
+    <div style="margin-top:14px">
+      <div id="osint-progress-bar" style="height:3px;background:#1e3a5f;border-radius:3px;overflow:hidden">
+        <div id="osint-progress-fill" style="height:100%;width:0%;background:linear-gradient(90deg,#1d4ed8,#60a5fa);transition:width 0.5s"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Результати -->
+  <div id="osint-results" style="display:none">
+    <!-- Знайдено / не знайдено -->
+    <div id="osint-verdict" style="padding:12px 16px;border-radius:8px;margin-bottom:16px;font-weight:600;font-size:0.88rem"></div>
+
+    <!-- Посилання на профілі -->
+    <div id="osint-links-section" style="display:none;margin-bottom:16px">
+      <div style="font-size:0.72rem;color:#475569;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">🔗 Профілі на OSINT-ресурсах</div>
+      <div id="osint-links-list"></div>
+    </div>
+
+    <!-- Соцмережі -->
+    <div id="osint-social-section" style="display:none;margin-bottom:16px">
+      <div style="font-size:0.72rem;color:#475569;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">📱 Соціальні мережі</div>
+      <div id="osint-social-list" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+    </div>
+
+    <!-- Нові телефони -->
+    <div id="osint-phones-section" style="display:none;margin-bottom:16px">
+      <div style="font-size:0.72rem;color:#475569;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">📞 Знайдені телефони</div>
+      <div id="osint-phones-list"></div>
+    </div>
+
+    <!-- Зв'язки -->
+    <div id="osint-conn-section" style="display:none;margin-bottom:16px">
+      <div style="font-size:0.72rem;color:#475569;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">👥 Виявлені зв'язки</div>
+      <div id="osint-conn-text" style="background:#060a14;border:1px solid #1a2540;border-radius:8px;padding:12px;font-size:0.82rem;color:#94a3b8;white-space:pre-wrap;max-height:150px;overflow-y:auto"></div>
+    </div>
+
+    <!-- Статус збереження -->
+    <div id="osint-save-status" style="display:none;padding:10px 14px;border-radius:8px;font-size:0.82rem;margin-bottom:14px"></div>
+
+    <!-- Джерела перевірено -->
+    <div id="osint-sources-checked" style="font-size:0.7rem;color:#2d3f5c;margin-top:12px"></div>
+  </div>
+
+  <!-- Початковий стан — підказка -->
+  <div id="osint-idle" style="text-align:center;padding:30px 20px;color:#2d3f5c">
+    <div style="font-size:2.5rem;margin-bottom:10px">🕵️</div>
+    <div style="font-size:0.85rem">Headless Chromium зробить пошук на Myrotvorets та інших відкритих ресурсах.<br>
+    Дані додаються ТІЛЬКИ при підтвердженому збігу ПІБ+ДН.</div>
+    <button id="osint-start-btn" onclick="startOSINTSearch()" style="margin-top:18px;background:#1d4ed8;border:none;color:#fff;padding:10px 28px;border-radius:8px;font-size:0.88rem;font-weight:700;cursor:pointer;letter-spacing:0.5px" disabled>
+      ⏳ Перевірка сервера...
+    </button>
   </div>
 </div>
 </div>
@@ -2473,6 +2548,222 @@ async function ocrPushForce(person) {
     btn.disabled = false;
     btn.textContent = '⚠️ Все одно додати';
   }
+}
+
+// ══════════════════════════════════════════════════════════
+// OSINT МОДУЛЬ — Автоматичне збагачення з відкритих джерел
+// ══════════════════════════════════════════════════════════
+
+let _osintPersonId = null;
+let _osintProgressTimer = null;
+
+async function runOSINT(id) {
+  _osintPersonId = id;
+  const p = DB.find(x => x.id === id);
+  if (!p) return;
+
+  const modal = $('modal-osint');
+  modal.style.display = 'block';
+
+  $('osint-modal-title').textContent = `🔍 OSINT: ${p.name || 'Особа'}`;
+  $('osint-loading').style.display   = 'none';
+  $('osint-results').style.display   = 'none';
+  $('osint-idle').style.display      = 'block';
+  $('osint-start-btn').disabled      = true;
+  $('osint-start-btn').textContent   = '⏳ Перевірка сервера...';
+
+  // Передаємо токен + перевіряємо Playwright статус
+  const el = $('osint-server-status');
+  try {
+    await fetch(`${INGEST_URL}/`, { signal: AbortSignal.timeout(3000) });
+
+    // Передаємо токен
+    if (SESSION?.access_token) {
+      await fetch(`${INGEST_URL}/auth/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: SESSION.access_token }),
+      }).catch(() => {});
+    }
+
+    const r   = await fetch(`${INGEST_URL}/osint/status`, { signal: AbortSignal.timeout(5000) });
+    const d   = await r.json();
+
+    if (!d.available) {
+      el.style.background = '#451a03';
+      el.style.color      = '#fb923c';
+      el.innerHTML = '⚠️ Playwright не встановлено. У PowerShell:<br>'
+        + '<b>.\\venv\\Scripts\\activate</b><br>'
+        + '<b>pip install playwright</b><br>'
+        + '<b>playwright install chromium</b>';
+      $('osint-start-btn').textContent = '❌ Playwright не встановлено';
+      return;
+    }
+
+    el.style.background = '#052e16';
+    el.style.color      = '#4ade80';
+    el.textContent = `✅ Сервер готовий · Джерела: ${(d.sources || []).join(', ')}`;
+
+    $('osint-start-btn').disabled    = false;
+    $('osint-start-btn').textContent = `🔍 Почати пошук "${(p.name||'').split(' ').slice(0,2).join(' ')}"`;
+
+  } catch {
+    el.style.background = '#450a0a';
+    el.style.color      = '#f87171';
+    el.innerHTML = '❌ Сервер недоступний. Запусти <b>start_server.bat</b>';
+    $('osint-start-btn').textContent = '❌ Сервер не відповідає';
+  }
+}
+
+async function startOSINTSearch() {
+  if (!_osintPersonId) return;
+
+  $('osint-idle').style.display    = 'none';
+  $('osint-results').style.display = 'none';
+  $('osint-loading').style.display = 'block';
+  $('osint-progress-fill').style.width = '0%';
+
+  // Анімація прогрес-бару
+  const steps = [
+    [500,  5,  'Запускаємо headless Chromium...'],
+    [3000, 20, 'Підключаємось до Myrotvorets...'],
+    [8000, 45, 'Парсимо результати пошуку...'],
+    [5000, 70, 'Перевіряємо збіги (ПІБ + ДН)...'],
+    [4000, 88, 'Витягуємо деталі профілю...'],
+  ];
+  let elapsed = 0;
+  for (const [delay, pct, msg] of steps) {
+    setTimeout(() => {
+      $('osint-loading-text').textContent   = msg;
+      $('osint-progress-fill').style.width  = pct + '%';
+    }, elapsed);
+    elapsed += delay;
+  }
+
+  try {
+    const r = await fetch(`${INGEST_URL}/osint/enrich/${_osintPersonId}`, {
+      method: 'POST',
+      signal: AbortSignal.timeout(90000), // 90 секунд таймаут
+    });
+
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({ detail: r.statusText }));
+      throw new Error(err.detail || r.statusText);
+    }
+
+    const res = await r.json();
+    $('osint-loading').style.display = 'none';
+    $('osint-progress-fill').style.width = '100%';
+    showOSINTResults(res);
+
+    // Оновлюємо локальний кеш
+    if (res.found) {
+      const idx = DB.findIndex(x => x.id === _osintPersonId);
+      if (idx >= 0) {
+        if (res.source_links?.length)   DB[idx].source_links      = res.source_links;
+        if (res.social_media)           DB[idx].social_media       = res.social_media;
+        if (res.connections)            DB[idx].osint_connections  = res.connections;
+      }
+    }
+
+  } catch (e) {
+    $('osint-loading').style.display = 'none';
+    $('osint-idle').style.display = 'block';
+    $('osint-start-btn').disabled = false;
+    $('osint-start-btn').textContent = '🔄 Спробувати ще раз';
+    const el = $('osint-server-status');
+    el.style.background = '#450a0a';
+    el.style.color = '#f87171';
+    el.textContent = '⚠️ Помилка: ' + e.message;
+  }
+}
+
+function showOSINTResults(res) {
+  $('osint-results').style.display = 'block';
+
+  // Вердикт
+  const verdict = $('osint-verdict');
+  if (res.found) {
+    verdict.style.background = '#052e16';
+    verdict.style.color      = '#4ade80';
+    verdict.style.border     = '1px solid #14532d';
+    verdict.innerHTML = `✅ ЗНАЙДЕНО збіг: <b>${esc(res.matched_name || res.person_name)}</b>`
+      + (res.supabase_updated ? `<br><small style="color:#86efac;font-weight:400">Дані автоматично збережено: ${(res.update_fields||[]).join(', ')}</small>` : '');
+  } else {
+    verdict.style.background = '#1c1917';
+    verdict.style.color      = '#94a3b8';
+    verdict.style.border     = '1px solid #292524';
+    verdict.innerHTML = `🔍 Збігів не знайдено для <b>${esc(res.person_name||'')}</b> у перевірених джерелах.`
+      + `<br><small style="color:#57534e;font-weight:400">Спробуй змінити написання прізвища або перевір вручну.</small>`;
+  }
+
+  // Посилання
+  const linksSection = $('osint-links-section');
+  const linksList    = $('osint-links-list');
+  if (res.source_links?.length) {
+    linksSection.style.display = 'block';
+    linksList.innerHTML = res.source_links.map(url =>
+      `<a href="${url}" target="_blank" rel="noopener"
+        style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;margin:3px;
+               background:#0f1e3a;border:1px solid #1e3a8a;border-radius:6px;
+               color:#60a5fa;font-size:0.8rem;text-decoration:none;
+               transition:background 0.2s"
+        onmouseover="this.style.background='#1e3a8a'"
+        onmouseout="this.style.background='#0f1e3a'">
+        🌐 ${esc(url.replace(/https?:\/\//, '').split('/').slice(0,2).join('/'))}
+      </a>`
+    ).join('');
+  } else {
+    linksSection.style.display = 'none';
+  }
+
+  // Соцмережі
+  const socialSection = $('osint-social-section');
+  const socialList    = $('osint-social-list');
+  const socialIcons   = { vk: '💙', ok: '🟠', telegram: '✈️', facebook: '📘', instagram: '📸' };
+  const socialNames   = { vk: 'ВКонтакте', ok: 'Однокласники', telegram: 'Telegram', facebook: 'Facebook', instagram: 'Instagram' };
+  const socialMedia   = res.social_media || {};
+  if (Object.keys(socialMedia).length) {
+    socialSection.style.display = 'block';
+    socialList.innerHTML = Object.entries(socialMedia).map(([key, url]) =>
+      `<a href="${url}" target="_blank" rel="noopener"
+        style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;
+               background:#0f1e3a;border:1px solid #1e3a8a;border-radius:8px;
+               color:#dde3f0;font-size:0.82rem;text-decoration:none">
+        ${socialIcons[key]||'🔗'} ${socialNames[key]||key}
+      </a>`
+    ).join('');
+  } else {
+    socialSection.style.display = 'none';
+  }
+
+  // Телефони
+  const phonesSection = $('osint-phones-section');
+  const phonesList    = $('osint-phones-list');
+  if (res.phones_found?.length) {
+    phonesSection.style.display = 'block';
+    phonesList.innerHTML = res.phones_found.map(p =>
+      `<span style="display:inline-block;padding:5px 12px;margin:3px;background:#0a1628;
+              border:1px solid #1a2540;border-radius:6px;color:#fde047;font-size:0.82rem;
+              font-family:monospace">${esc(p)}</span>`
+    ).join('');
+  } else {
+    phonesSection.style.display = 'none';
+  }
+
+  // Зв'язки
+  const connSection = $('osint-conn-section');
+  if (res.connections) {
+    connSection.style.display = 'block';
+    $('osint-conn-text').textContent = res.connections;
+  } else {
+    connSection.style.display = 'none';
+  }
+
+  // Підсумок
+  $('osint-sources-checked').textContent =
+    `Перевірено джерел: ${(res.sources_checked||[]).join(', ')} · `
+    + `Знайдено карток: ${(res.raw_cards||[]).length}`;
 }
 
 // ─── EXPORT CSV ──────────────────────────────────────
