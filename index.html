@@ -479,9 +479,11 @@ footer{border-top:1px solid var(--border);padding:12px 20px;
 <div class="detail-panel" id="detail-panel">
   <div class="dp-head">
     <h2 id="dp-title">Деталі</h2>
-    <div class="top-actions admin-only" id="dp-admin-acts">
-      <button class="top-btn" onclick="editFromDetail()">✏️ Редагувати</button>
-      <button class="top-btn danger" onclick="deleteFromDetail()">🗑 Видалити</button>
+    <div class="top-actions" style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="top-btn" onclick="generateDossier(detailId)" title="Сформувати PDF досьє">📄 Досьє</button>
+      <button class="top-btn" onclick="showConnections(detailId)" title="Знайти зв'язки в базі">🔗 Зв'язки</button>
+      <button class="top-btn admin-only" onclick="editFromDetail()">✏️ Ред.</button>
+      <button class="top-btn danger admin-only" onclick="deleteFromDetail()">🗑</button>
     </div>
     <button class="dp-close" onclick="closeDetailDirect()">✕</button>
   </div>
@@ -501,6 +503,13 @@ footer{border-top:1px solid var(--border);padding:12px 20px;
   <!-- Статус з'єднання з сервером -->
   <div id="ingest-server-status" style="font-size:0.78rem;padding:6px 12px;border-radius:6px;margin-bottom:16px;background:#0f1e3a;color:#93c5fd">
     🔌 Перевірка з'єднання з локальним сервером...
+  </div>
+
+  <!-- Джерело (для крос-валідації) -->
+  <div style="margin-bottom:14px">
+    <label style="color:#64748b;font-size:0.75rem;display:block;margin-bottom:4px">📂 Джерело (назва списку для крос-валідації):</label>
+    <input id="ingest-source" type="text" placeholder="напр: 25 ОА, Росгвардія, Гостомель ОМОН..."
+      style="width:100%;background:#0a0e1a;border:1px solid #1a2540;color:#dde3f0;border-radius:6px;padding:7px 12px;font-size:0.83rem;box-sizing:border-box">
   </div>
 
   <!-- Файл інфо -->
@@ -665,6 +674,24 @@ footer{border-top:1px solid var(--border);padding:12px 20px;
         ✅ Додати в базу
       </button>
     </div>
+  </div>
+</div>
+</div>
+
+<!-- ══ CONNECTIONS MODAL ════════════════════════════════ -->
+<div id="modal-connections" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.75);overflow-y:auto">
+<div style="max-width:760px;margin:40px auto;padding:28px;background:#0d1220;border:1px solid #1a2540;border-radius:14px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+    <span id="conn-title" style="font-size:1.05rem;font-weight:700;color:#60a5fa">🔗 Аналіз зв'язків</span>
+    <button onclick="$('modal-connections').style.display='none'" style="background:none;border:none;color:#94a3b8;font-size:1.4rem;cursor:pointer">✕</button>
+  </div>
+  <div id="conn-loading" style="text-align:center;color:#60a5fa;padding:20px">⏳ Сканування бази...</div>
+  <div id="conn-body" style="display:none">
+    <div id="conn-summary" style="font-size:0.82rem;color:#94a3b8;margin-bottom:16px;padding:8px 12px;background:#0a0e1a;border-radius:6px"></div>
+    <div id="conn-sections"></div>
+  </div>
+  <div id="conn-empty" style="display:none;text-align:center;color:#64748b;padding:30px">
+    🔍 Збігів не знайдено. Унікальна особа в базі.
   </div>
 </div>
 </div>
@@ -1976,12 +2003,12 @@ async function ingestPush() {
   }
 
   try {
+    const source = ($('ingest-source')?.value || '').trim();
     // Відправляємо оригінальний файл на сервер з push_to_db=true
     const fd = new FormData();
     fd.append('file', _ingestFile);
-    const r   = await fetch(`${INGEST_URL}/ingest/file?push_to_db=true`, {
-      method: 'POST', body: fd
-    });
+    const url = `${INGEST_URL}/ingest/file?push_to_db=true${source ? '&source=' + encodeURIComponent(source) : ''}`;
+    const r   = await fetch(url, { method: 'POST', body: fd });
     const res = await r.json();
 
     if (!r.ok) {
@@ -2006,6 +2033,239 @@ function closeIngestModal() {
   $('modal-ingest').style.display = 'none';
   _ingestPersons = [];
 }
+
+// ══════════════════════════════════════════════════════════
+// 📄 PDF ДОСЬЄ — генерація у новому вікні + print()
+// ══════════════════════════════════════════════════════════
+
+function generateDossier(id) {
+  const p = DB.find(x => x.id === id);
+  if (!p) return;
+
+  const photos = PHOTOS[id] || [];
+  const photoHtml = photos.length
+    ? photos.slice(0, 3).map(ph =>
+        `<img src="${getSignedPhotoUrl(ph)}" style="max-height:160px;max-width:200px;border:1px solid #ccc;border-radius:4px;margin:4px">`
+      ).join('')
+    : '<span style="color:#999;font-size:0.85rem">Фото відсутні</span>';
+
+  const now = new Date().toLocaleString('uk');
+  const statusColors = { 'В полоні':'#dc2626','Активний':'#16a34a','Обміняний':'#d97706','Нейтралізований':'#6b7280','Розшукується':'#7c3aed' };
+  const statusColor = statusColors[p.status] || '#374151';
+
+  const rows = (label, val) => val
+    ? `<tr><td style="color:#374151;font-weight:600;width:38%;padding:5px 8px;border-bottom:1px solid #e5e7eb">${label}</td><td style="padding:5px 8px;border-bottom:1px solid #e5e7eb">${val}</td></tr>`
+    : '';
+
+  const html = `<!DOCTYPE html><html lang="uk"><head>
+  <meta charset="UTF-8">
+  <title>Досьє — ${p.name}</title>
+  <style>
+    body{font-family:'Arial',sans-serif;font-size:12px;color:#111;margin:0;padding:20px;background:#fff}
+    .header{background:#1e3a5f;color:#fff;padding:12px 20px;display:flex;justify-content:space-between;align-items:center;margin-bottom:0}
+    .header h1{margin:0;font-size:15px;letter-spacing:1px}
+    .dsk-top,.dsk-bot{background:#dc2626;color:#fff;text-align:center;padding:4px;font-weight:700;font-size:11px;letter-spacing:2px}
+    .section-title{background:#1e3a5f;color:#fff;padding:4px 10px;font-size:11px;font-weight:700;letter-spacing:1px;margin:14px 0 0}
+    table{width:100%;border-collapse:collapse;font-size:11.5px}
+    .name-block{padding:12px 0;display:flex;gap:20px;align-items:flex-start;border-bottom:2px solid #1e3a5f}
+    .name-text{flex:1}
+    .person-name{font-size:20px;font-weight:700;color:#1e3a5f;margin-bottom:4px}
+    .status-badge{display:inline-block;padding:3px 10px;border-radius:4px;color:#fff;font-size:11px;font-weight:700;background:${statusColor}}
+    .photos{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+    .footer{margin-top:20px;border-top:1px solid #ccc;padding-top:8px;font-size:10px;color:#666;display:flex;justify-content:space-between}
+    @media print{body{margin:0;padding:10px}.no-print{display:none}}
+  </style>
+</head><body>
+  <div class="dsk-top">ДСК — ДЛЯ СЛУЖБОВОГО ВИКОРИСТАННЯ</div>
+  <div class="header">
+    <h1>🛡 АНАЛІТИЧНЕ ДОСЬЄ</h1>
+    <div style="font-size:10px;text-align:right">Оперативна База Даних<br>Сформовано: ${now}</div>
+  </div>
+
+  <div class="name-block">
+    <div class="photos">${photoHtml}</div>
+    <div class="name-text">
+      <div class="person-name">${p.name || '—'}</div>
+      <span class="status-badge">${p.status || 'Активний'}</span>
+      ${p.rank ? `<span style="margin-left:8px;color:#374151;font-weight:600">${p.rank}</span>` : ''}
+    </div>
+  </div>
+
+  <div class="section-title">📋 ОСОБИСТІ ДАНІ</div>
+  <table>
+    ${rows('Дата народження', p.dob)}
+    ${rows('Місце народження', p.birth_place)}
+    ${rows('Паспорт / документ', p.passport)}
+    ${rows('ІПН / СНІЛС', p.ipn)}
+    ${rows('Адреса проживання', p.addr_live)}
+    ${rows('Адреса реєстрації', p.addr_reg)}
+  </table>
+
+  <div class="section-title">🎖 СЛУЖБОВІ ДАНІ</div>
+  <table>
+    ${rows('Звання', p.rank)}
+    ${rows('Посада', p.position)}
+    ${rows('Підрозділ', p.unit)}
+    ${rows('Особистий номер', p.unit_num)}
+    ${rows('Регіон', p.region)}
+    ${rows('Джерело', p.source)}
+  </table>
+
+  ${(p.phones?.length||p.email) ? `
+  <div class="section-title">📞 КОНТАКТИ</div>
+  <table>
+    ${p.phones?.length ? rows('Телефони', p.phones.join(', ')) : ''}
+    ${rows('Email', p.email)}
+  </table>` : ''}
+
+  ${(p.detained_date||p.detained_place) ? `
+  <div class="section-title">🚨 ЗАТРИМАННЯ / СТАТУС</div>
+  <table>
+    ${rows('Дата затримання', p.detained_date)}
+    ${rows('Місце затримання', p.detained_place)}
+  </table>` : ''}
+
+  ${p.notes ? `
+  <div class="section-title">📝 НОТАТКИ</div>
+  <div style="padding:8px;background:#f9fafb;border:1px solid #e5e7eb;font-size:11.5px;white-space:pre-wrap">${p.notes}</div>` : ''}
+
+  <div class="section-title">ℹ️ МЕТАДАНІ</div>
+  <table>
+    ${rows('ID запису', p.id)}
+    ${rows('Додано до бази', new Date(p.created_at||'').toLocaleString('uk'))}
+    ${rows('Оновлено', new Date(p.updated_at||'').toLocaleString('uk'))}
+  </table>
+
+  <div class="footer">
+    <span>ОБД — Оперативна База Даних · Для службового використання</span>
+    <span>Дата формування: ${now}</span>
+  </div>
+  <div class="dsk-bot">ДСК — ДЛЯ СЛУЖБОВОГО ВИКОРИСТАННЯ</div>
+
+  <script>window.onload=()=>{window.print()}<\/script>
+</body></html>`;
+
+  const w = window.open('', '_blank', 'width=850,height=1100');
+  w.document.write(html);
+  w.document.close();
+}
+
+
+// ══════════════════════════════════════════════════════════
+// 🔗 АНАЛІЗ ЗВ'ЯЗКІВ — пошук перетинів в базі
+// ══════════════════════════════════════════════════════════
+
+async function showConnections(id) {
+  const p = DB.find(x => x.id === id);
+  if (!p) return;
+
+  $('modal-connections').style.display = 'block';
+  $('conn-title').textContent = `🔗 Зв'язки: ${p.name}`;
+  $('conn-loading').style.display = 'block';
+  $('conn-body').style.display = 'none';
+  $('conn-empty').style.display = 'none';
+
+  try {
+    const results = {};
+    const hdrs = { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SESSION?.access_token || SUPABASE_KEY}` };
+
+    // 1. Пошук за телефонами
+    const phones = p.phones || [];
+    for (const ph of phones.slice(0, 3)) {
+      const clean = ph.replace(/\D/g, '');
+      if (clean.length < 7) continue;
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/persons?phones=cs.{"${ph}"}&id=neq.${id}&limit=10&select=id,name,dob,unit,status,source`,
+        { headers: hdrs }
+      );
+      if (r.ok) {
+        const rows = await r.json();
+        if (rows.length) results['📞 Однаковий телефон: ' + ph] = rows;
+      }
+    }
+
+    // 2. Пошук за адресою реєстрації
+    if (p.addr_reg && p.addr_reg.length > 10) {
+      // беремо перші 3 слова адреси для точнішого збігу
+      const addrKey = p.addr_reg.split(/[\s,]+/).slice(0, 3).join(' ');
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/persons?addr_reg=ilike.*${encodeURIComponent(addrKey)}*&id=neq.${id}&limit=10&select=id,name,dob,unit,status,source`,
+        { headers: hdrs }
+      );
+      if (r.ok) {
+        const rows = await r.json();
+        if (rows.length) results[`🏠 Збіг адреси реєстрації: "${addrKey}..."`] = rows;
+      }
+    }
+
+    // 3. Пошук однофамільців у тому ж підрозділі
+    if (p.unit && p.unit.length > 3) {
+      const surname = (p.name || '').split(' ')[0];
+      if (surname && surname.length > 3) {
+        const r = await fetch(
+          `${SUPABASE_URL}/rest/v1/persons?name=ilike.${encodeURIComponent(surname)}*&unit=ilike.*${encodeURIComponent(p.unit.slice(0,10))}*&id=neq.${id}&limit=10&select=id,name,dob,unit,status,source`,
+          { headers: hdrs }
+        );
+        if (r.ok) {
+          const rows = await r.json();
+          if (rows.length) results[`🎖 Однофамільці в підрозділі: "${p.unit}"`] = rows;
+        }
+      }
+    }
+
+    // 4. Крос-валідація: та сама особа в іншому джерелі
+    if (p.dob) {
+      const surname = (p.name || '').split(' ')[0];
+      if (surname && surname.length > 3) {
+        const r = await fetch(
+          `${SUPABASE_URL}/rest/v1/persons?name=ilike.${encodeURIComponent(surname)}*&dob=eq.${p.dob}&id=neq.${id}&limit=10&select=id,name,dob,unit,status,source`,
+          { headers: hdrs }
+        );
+        if (r.ok) {
+          const rows = await r.json();
+          if (rows.length) results[`⚠️ ЗБІГ: Прізвище + дата народження (${p.dob})`] = rows;
+        }
+      }
+    }
+
+    // Рендер результатів
+    $('conn-loading').style.display = 'none';
+    const total = Object.values(results).reduce((s, r) => s + r.length, 0);
+
+    if (total === 0) {
+      $('conn-empty').style.display = 'block';
+      return;
+    }
+
+    let sectHtml = '';
+    for (const [title, rows] of Object.entries(results)) {
+      sectHtml += `<div style="margin-bottom:16px">
+        <div style="color:#f59e0b;font-size:0.8rem;font-weight:700;margin-bottom:8px;padding:4px 8px;background:#1a1a0a;border-radius:4px">${title} (${rows.length})</div>`;
+      rows.forEach(r => {
+        const sc = STATUS_CLASS[r.status] || 'b-neutral';
+        sectHtml += `<div onclick="openDetail('${r.id}',event);$('modal-connections').style.display='none'"
+          style="display:flex;gap:10px;align-items:center;padding:8px 10px;margin-bottom:4px;background:#0a0e1a;border:1px solid #1a2540;border-radius:6px;cursor:pointer;transition:background 0.2s"
+          onmouseover="this.style.background='#0f1e3a'" onmouseout="this.style.background='#0a0e1a'">
+          <span class="badge ${sc}" style="font-size:0.7rem;white-space:nowrap">${r.status||'—'}</span>
+          <div style="flex:1">
+            <div style="color:#dde3f0;font-size:0.85rem;font-weight:600">${esc(r.name||'—')}</div>
+            <div style="color:#64748b;font-size:0.72rem">${r.dob||'—'} · ${esc(r.unit||'підрозділ невідомий')}${r.source?` · <span style="color:#f59e0b">Джерело: ${esc(r.source)}</span>`:''}</div>
+          </div>
+          <span style="color:#3b82f6;font-size:0.72rem">→</span>
+        </div>`;
+      });
+      sectHtml += '</div>';
+    }
+
+    $('conn-summary').textContent = `Знайдено ${total} зв'язків за ${Object.keys(results).length} критеріями`;
+    $('conn-sections').innerHTML = sectHtml;
+    $('conn-body').style.display = 'block';
+
+  } catch (e) {
+    $('conn-loading').textContent = '⚠️ Помилка: ' + e.message;
+  }
+}
+
 
 // ══════════════════════════════════════════════════════════
 // OCR МОДУЛЬ
