@@ -484,6 +484,7 @@ footer{border-top:1px solid var(--border);padding:12px 20px;
       <button class="top-btn" onclick="generateDossier(detailId)" title="Сформувати PDF досьє">📄 Досьє</button>
       <button class="top-btn" onclick="showConnections(detailId)" title="Знайти зв'язки в базі">🔗 Зв'язки</button>
       <button class="top-btn" id="osint-btn" onclick="runOSINT(detailId)" title="Пошук в OSINT-джерелах (Myrotvorets та інші)">🔍 OSINT</button>
+      <button class="top-btn" id="ai-btn" onclick="openAIModal(detailId)" title="AI аналіз та автозаповнення через Llama3">🤖 AI</button>
       <button class="top-btn admin-only" onclick="editFromDetail()">✏️ Ред.</button>
       <button class="top-btn danger admin-only" onclick="deleteFromDetail()">🗑</button>
     </div>
@@ -714,7 +715,7 @@ footer{border-top:1px solid var(--border);padding:12px 20px;
   <!-- Лоадер під час пошуку -->
   <div id="osint-loading" style="display:none;text-align:center;padding:40px 20px">
     <div style="font-size:2rem;margin-bottom:12px;animation:spin 1.2s linear infinite;display:inline-block">🔄</div>
-    <div style="color:#60a5fa;font-size:0.9rem;font-weight:600" id="osint-loading-text">Запускаємо headless-браузер...</div>
+    <div style="color:#60a5fa;font-size:0.9rem;font-weight:600" id="osint-loading-text">Пошук у відкритих джерелах...</div>
     <div style="color:#475569;font-size:0.75rem;margin-top:6px">Пошук займає 15-40 секунд. Не закривай вікно.</div>
     <div style="margin-top:14px">
       <div id="osint-progress-bar" style="height:3px;background:#1e3a5f;border-radius:3px;overflow:hidden">
@@ -767,6 +768,72 @@ footer{border-top:1px solid var(--border);padding:12px 20px;
     <button id="osint-start-btn" onclick="startOSINTSearch()" style="margin-top:18px;background:#1d4ed8;border:none;color:#fff;padding:10px 28px;border-radius:8px;font-size:0.88rem;font-weight:700;cursor:pointer;letter-spacing:0.5px" disabled>
       ⏳ Перевірка сервера...
     </button>
+  </div>
+</div>
+</div>
+
+<!-- ══ AI MODAL ════════════════════════════════════════ -->
+<div id="modal-ai" style="display:none;position:fixed;inset:0;z-index:1100;background:rgba(0,0,0,0.88);overflow-y:auto">
+<div style="max-width:820px;margin:40px auto;padding:28px;background:#0d1220;border:1px solid #1a2540;border-radius:14px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+    <span style="font-size:1.05rem;font-weight:700;color:#a78bfa">🤖 AI Аналітик — Llama3</span>
+    <button onclick="closeAIModal()" style="background:none;border:none;color:#94a3b8;font-size:1.4rem;cursor:pointer">✕</button>
+  </div>
+
+  <!-- Статус AI -->
+  <div id="ai-status-bar" style="padding:8px 12px;border-radius:8px;font-size:0.78rem;margin-bottom:16px;background:#0f1e3a;color:#93c5fd">
+    ⏳ Перевірка AI...
+  </div>
+
+  <!-- Вибір режиму -->
+  <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+    <button onclick="setAIMode('extract')" id="ai-mode-extract"
+      style="flex:1;min-width:140px;padding:10px;border-radius:8px;border:2px solid #7c3aed;background:#1e1040;color:#c4b5fd;font-size:0.82rem;font-weight:700;cursor:pointer">
+      📋 Автозаповнення<br><span style="font-size:0.7rem;font-weight:400;opacity:0.7">витягти ПІБ/дату/звання з тексту</span>
+    </button>
+    <button onclick="setAIMode('analyze')" id="ai-mode-analyze"
+      style="flex:1;min-width:140px;padding:10px;border-radius:8px;border:1px solid #1a2540;background:#0a0e1a;color:#94a3b8;font-size:0.82rem;font-weight:700;cursor:pointer">
+      🔬 Аналіз тексту<br><span style="font-size:0.7rem;font-weight:400;opacity:0.7">перехоплення, звіти, документи</span>
+    </button>
+    <button onclick="setAIMode('osint_summary')" id="ai-mode-osint_summary"
+      style="flex:1;min-width:140px;padding:10px;border-radius:8px;border:1px solid #1a2540;background:#0a0e1a;color:#94a3b8;font-size:0.82rem;font-weight:700;cursor:pointer">
+      🕵️ OSINT-профіль<br><span style="font-size:0.7rem;font-weight:400;opacity:0.7">підсумок зібраних даних</span>
+    </button>
+  </div>
+
+  <!-- Текст для аналізу -->
+  <div style="margin-bottom:14px">
+    <div style="font-size:0.72rem;color:#475569;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Текст для аналізу</div>
+    <textarea id="ai-input-text" placeholder="Вставте текст документа, перехоплення або OSINT-даних..."
+      style="width:100%;height:160px;background:#060a14;border:1px solid #1a2540;border-radius:8px;color:#dde3f0;font-size:0.85rem;padding:12px;resize:vertical;font-family:inherit;outline:none"></textarea>
+  </div>
+
+  <button onclick="runAIAnalysis()" id="ai-run-btn"
+    style="width:100%;background:#7c3aed;border:none;color:#fff;padding:11px;border-radius:8px;font-size:0.9rem;font-weight:700;cursor:pointer;letter-spacing:0.5px;margin-bottom:16px">
+    🤖 Запустити AI аналіз
+  </button>
+
+  <!-- Лоадер -->
+  <div id="ai-loading" style="display:none;text-align:center;padding:30px">
+    <div style="font-size:2rem;margin-bottom:10px;animation:spin 1.2s linear infinite;display:inline-block">🔄</div>
+    <div style="color:#a78bfa;font-size:0.9rem">Llama3 аналізує... (~10-30 сек)</div>
+  </div>
+
+  <!-- Результат -->
+  <div id="ai-result" style="display:none">
+    <div style="font-size:0.72rem;color:#475569;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">📊 Результат AI</div>
+
+    <!-- Таблиця для режиму extract -->
+    <div id="ai-extract-result" style="display:none">
+      <div style="background:#060a14;border:1px solid #1a2540;border-radius:8px;padding:14px;margin-bottom:14px" id="ai-extract-table"></div>
+      <button onclick="applyAIToCard()" id="ai-apply-btn"
+        style="background:#1d4ed8;border:none;color:#fff;padding:10px 24px;border-radius:8px;font-size:0.85rem;font-weight:700;cursor:pointer">
+        ✅ Застосувати до картки
+      </button>
+    </div>
+
+    <!-- Текст для інших режимів -->
+    <div id="ai-text-result" style="display:none;background:#060a14;border:1px solid #1a2540;border-radius:8px;padding:14px;font-size:0.85rem;color:#dde3f0;white-space:pre-wrap;max-height:350px;overflow-y:auto"></div>
   </div>
 </div>
 </div>
@@ -2769,10 +2836,64 @@ function showOSINTResults(res) {
     connSection.style.display = 'none';
   }
 
+  // ── Всі знайдені картки (YouTube + інші) ────────────────
+  const rawCards = res.raw_cards || [];
+  let rawCardsHtml = '';
+  if (rawCards.length) {
+    // YouTube окремо
+    const ytCards = rawCards.filter(c => c.url && c.url.includes('youtube.com'));
+    const otherCards = rawCards.filter(c => !c.url || !c.url.includes('youtube.com'));
+
+    if (ytCards.length) {
+      rawCardsHtml += `<div style="font-size:0.72rem;color:#475569;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;margin-top:12px">▶️ YouTube відео</div>`;
+      rawCardsHtml += ytCards.map(c => {
+        const vidId = (c.url.match(/v=([^&]+)/) || [])[1];
+        const thumb = vidId ? `https://img.youtube.com/vi/${vidId}/mqdefault.jpg` : '';
+        return `<a href="${c.url}" target="_blank" rel="noopener"
+          style="display:flex;gap:10px;align-items:flex-start;padding:10px;margin:4px 0;
+                 background:#0a0f1a;border:1px solid #1a2540;border-radius:8px;
+                 color:#e2e8f0;text-decoration:none;transition:background 0.2s"
+          onmouseover="this.style.background='#111827'"
+          onmouseout="this.style.background='#0a0f1a'">
+          ${thumb ? `<img src="${thumb}" style="width:80px;height:45px;object-fit:cover;border-radius:4px;flex-shrink:0">` : '<div style="width:80px;height:45px;background:#1a2540;border-radius:4px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#475569">▶</div>'}
+          <div>
+            <div style="font-size:0.82rem;font-weight:600;color:#f8fafc;margin-bottom:3px">${esc(c.title)}</div>
+            <div style="font-size:0.73rem;color:#64748b">${esc((c.snippet||c.description||'').slice(0,120))}</div>
+          </div>
+        </a>`;
+      }).join('');
+    }
+
+    if (otherCards.length && !res.found) {
+      // Показуємо інші картки тільки якщо точного збігу не знайшли
+      rawCardsHtml += `<div style="font-size:0.72rem;color:#475569;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;margin-top:12px">🔍 Схожі результати</div>`;
+      rawCardsHtml += otherCards.slice(0,5).map(c =>
+        `<a href="${c.url||'#'}" target="_blank" rel="noopener"
+          style="display:block;padding:8px 12px;margin:3px 0;background:#0a0f1a;
+                 border:1px solid #1a2540;border-radius:6px;color:#94a3b8;
+                 font-size:0.8rem;text-decoration:none"
+          onmouseover="this.style.borderColor='#1e3a8a'"
+          onmouseout="this.style.borderColor='#1a2540'">
+          <span style="color:#60a5fa">${esc(c.title)}</span><br>
+          <span style="font-size:0.72rem;color:#475569">${esc((c.snippet||c.description||'').slice(0,100))}</span>
+        </a>`
+      ).join('');
+    }
+  }
+
+  // Вставляємо картки після зв'язків
+  let rawSection = document.getElementById('osint-raw-cards');
+  if (!rawSection) {
+    rawSection = document.createElement('div');
+    rawSection.id = 'osint-raw-cards';
+    $('osint-conn-section').insertAdjacentElement('afterend', rawSection);
+  }
+  rawSection.innerHTML = rawCardsHtml;
+
   // Підсумок
   $('osint-sources-checked').textContent =
     `Перевірено джерел: ${(res.sources_checked||[]).join(', ')} · `
-    + `Знайдено карток: ${(res.raw_cards||[]).length}`;
+    + `Знайдено карток: ${rawCards.length}`;
 }
 
 // ─── EXPORT CSV ──────────────────────────────────────
@@ -2870,6 +2991,180 @@ async function loadPhotoUrls() {
     localStorage.removeItem('odb_session');
   }
 })();
+
+// ═══════════════════════════════════════════════════════
+//  AI МОДУЛЬ — Llama3 через Ollama
+// ═══════════════════════════════════════════════════════
+let _aiMode = 'extract';
+let _aiPersonId = null;
+let _aiLastResult = null;
+
+function setAIMode(mode) {
+  _aiMode = mode;
+  ['extract','analyze','osint_summary'].forEach(m => {
+    const btn = $('ai-mode-' + m);
+    if (!btn) return;
+    if (m === mode) {
+      btn.style.borderColor = '#7c3aed';
+      btn.style.background  = '#1e1040';
+      btn.style.color       = '#c4b5fd';
+    } else {
+      btn.style.borderColor = '#1a2540';
+      btn.style.background  = '#0a0e1a';
+      btn.style.color       = '#94a3b8';
+    }
+  });
+}
+
+async function openAIModal(personId) {
+  _aiPersonId = personId;
+  _aiLastResult = null;
+  $('modal-ai').style.display = 'block';
+  $('ai-result').style.display = 'none';
+  $('ai-loading').style.display = 'none';
+  $('ai-input-text').value = '';
+  setAIMode('extract');
+
+  // Перевірка статусу AI
+  $('ai-status-bar').style.color = '#93c5fd';
+  $('ai-status-bar').textContent = '⏳ Перевірка AI...';
+  try {
+    const r = await fetch(SERVER + '/ai/status');
+    const d = await r.json();
+    if (d.available) {
+      $('ai-status-bar').style.color = '#4ade80';
+      $('ai-status-bar').textContent = `✅ Llama3 готова · Модель: ${d.models[0] || 'llama3'}`;
+    } else {
+      $('ai-status-bar').style.color = '#f87171';
+      $('ai-status-bar').textContent = '❌ Ollama не запущена. Виконай: ollama run llama3';
+    }
+  } catch {
+    $('ai-status-bar').style.color = '#fde047';
+    $('ai-status-bar').textContent = '⚠️ Локальний сервер не відповідає';
+  }
+
+  // Якщо osint_summary і є дані картки — підставляємо автоматично
+  if (personId && _aiMode === 'osint_summary') {
+    try {
+      const r2 = await fetch(`${SB_URL}/rest/v1/persons?id=eq.${personId}&select=*`, {
+        headers: { 'apikey': SB_KEY, 'Authorization': `Bearer ${SESSION?.access_token}` }
+      });
+      const rows = await r2.json();
+      if (rows && rows[0]) $('ai-input-text').value = JSON.stringify(rows[0], null, 2);
+    } catch {}
+  }
+}
+
+function closeAIModal() {
+  $('modal-ai').style.display = 'none';
+}
+
+async function runAIAnalysis() {
+  const text = $('ai-input-text').value.trim();
+  if (!text) { alert('Введіть текст для аналізу'); return; }
+
+  $('ai-run-btn').disabled = true;
+  $('ai-run-btn').textContent = '⏳ Аналіз...';
+  $('ai-loading').style.display = 'block';
+  $('ai-result').style.display = 'none';
+
+  try {
+    const r = await fetch(SERVER + '/ai/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json',
+                 'Authorization': 'Bearer ' + (SESSION?.access_token || '') },
+      body: JSON.stringify({ text, mode: _aiMode })
+    });
+    const data = await r.json();
+    _aiLastResult = data;
+    showAIResult(data);
+  } catch (e) {
+    alert('Помилка зв\'язку з AI: ' + e.message);
+  } finally {
+    $('ai-run-btn').disabled = false;
+    $('ai-run-btn').textContent = '🤖 Запустити AI аналіз';
+    $('ai-loading').style.display = 'none';
+  }
+}
+
+function showAIResult(data) {
+  $('ai-result').style.display = 'block';
+  $('ai-extract-result').style.display = 'none';
+  $('ai-text-result').style.display = 'none';
+
+  if (_aiMode === 'extract' && data.result && typeof data.result === 'object') {
+    // Табличний вигляд для автозаповнення
+    const fields = {
+      surname: 'Прізвище', name: "Ім'я", patronymic: 'По-батькові',
+      dob: 'Дата народження', rank: 'Звання', position: 'Посада',
+      unit: 'Підрозділ', region: 'Регіон', phones: 'Телефони', notes: 'Примітки'
+    };
+    let html = '<table style="width:100%;border-collapse:collapse">';
+    for (const [key, label] of Object.entries(fields)) {
+      const val = data.result[key];
+      if (!val || val === 'null' || (Array.isArray(val) && val.length === 0)) continue;
+      const display = Array.isArray(val) ? val.join(', ') : val;
+      html += `<tr>
+        <td style="padding:6px 10px;font-size:0.72rem;color:#475569;width:38%;border-bottom:1px solid #1a2540">${label}</td>
+        <td style="padding:6px 10px;font-size:0.85rem;color:#dde3f0;border-bottom:1px solid #1a2540;font-weight:600">${display}</td>
+      </tr>`;
+    }
+    html += '</table>';
+    if (data.warning) html += `<div style="color:#fde047;font-size:0.78rem;margin-top:8px">⚠️ ${data.warning}</div>`;
+    $('ai-extract-table').innerHTML = html;
+    $('ai-extract-result').style.display = 'block';
+  } else {
+    // Текстовий вигляд
+    const text = (data.result && typeof data.result === 'string') ? data.result
+                 : (data.raw || JSON.stringify(data.result, null, 2));
+    $('ai-text-result').textContent = text;
+    $('ai-text-result').style.display = 'block';
+  }
+}
+
+async function applyAIToCard() {
+  if (!_aiLastResult || !_aiPersonId) return;
+  const d = _aiLastResult.result;
+  if (!d || typeof d !== 'object') { alert('Немає даних для застосування'); return; }
+
+  // Збираємо поля для оновлення
+  const updates = {};
+  if (d.surname)    updates.surname    = d.surname;
+  if (d.name)       updates.name       = d.name;
+  if (d.patronymic) updates.patronymic = d.patronymic;
+  if (d.dob)        updates.dob        = d.dob;
+  if (d.rank)       updates.rank       = d.rank;
+  if (d.position)   updates.position   = d.position;
+  if (d.unit)       updates.unit       = d.unit;
+  if (d.region)     updates.region     = d.region;
+  if (d.notes)      updates.notes      = d.notes;
+  if (Array.isArray(d.phones) && d.phones.length > 0) updates.phones = d.phones;
+
+  if (Object.keys(updates).length === 0) { alert('AI не знайшов даних для заповнення'); return; }
+
+  const fields = Object.keys(updates).join(', ');
+  if (!confirm(`AI знайшов дані:\n${fields}\n\nЗастосувати до картки?`)) return;
+
+  try {
+    const resp = await fetch(`${SB_URL}/rest/v1/persons?id=eq.${_aiPersonId}`, {
+      method: 'PATCH',
+      headers: {
+        'apikey': SB_KEY,
+        'Authorization': `Bearer ${SESSION.access_token}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=minimal'
+      },
+      body: JSON.stringify(updates)
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    alert('✅ Картку оновлено!');
+    closeAIModal();
+    if (typeof openDetail === 'function') openDetail(_aiPersonId);
+    if (typeof loadPersons === 'function') loadPersons();
+  } catch (e) {
+    alert('Помилка збереження: ' + e.message);
+  }
+}
 </script>
 </body>
 </html>
