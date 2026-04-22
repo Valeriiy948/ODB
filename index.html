@@ -2827,6 +2827,33 @@ function showOSINTResults(res) {
     phonesSection.style.display = 'none';
   }
 
+  // ── Фото з myrotvorets ────────────────────────────────────────
+  const photos = res.photos_found || [];
+  let photosSection = document.getElementById('osint-photos-section');
+  if (!photosSection) {
+    photosSection = document.createElement('div');
+    photosSection.id = 'osint-photos-section';
+    $('osint-phones-section').insertAdjacentElement('afterend', photosSection);
+  }
+  if (photos.length) {
+    photosSection.innerHTML = `
+      <div style="font-size:0.72rem;color:#475569;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;margin-top:12px">
+        📷 Фото з Myrotvorets (${photos.length})
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+        ${photos.map((url, i) => `
+          <a href="${url}" target="_blank" rel="noopener" title="Відкрити фото">
+            <img src="${url}" style="width:80px;height:80px;object-fit:cover;border-radius:6px;
+                 border:2px solid #1a2540;cursor:pointer;transition:border-color 0.2s"
+              onerror="this.style.display='none'"
+              onmouseover="this.style.borderColor='#3b82f6'"
+              onmouseout="this.style.borderColor='#1a2540'">
+          </a>`).join('')}
+      </div>`;
+  } else {
+    photosSection.innerHTML = '';
+  }
+
   // Зв'язки
   const connSection = $('osint-conn-section');
   if (res.connections) {
@@ -3147,21 +3174,42 @@ async function applyAIToCard() {
 
   // Збираємо поля для оновлення
   const updates = {};
-  if (d.surname)    updates.surname    = d.surname;
-  if (d.name)       updates.name       = d.name;
-  if (d.patronymic) updates.patronymic = d.patronymic;
-  if (d.dob)        updates.dob        = d.dob;
-  if (d.rank)       updates.rank       = d.rank;
-  if (d.position)   updates.position   = d.position;
-  if (d.unit)       updates.unit       = d.unit;
-  if (d.region)     updates.region     = d.region;
-  if (d.notes)      updates.notes      = d.notes;
-  if (Array.isArray(d.phones) && d.phones.length > 0) updates.phones = d.phones;
 
-  if (Object.keys(updates).length === 0) { alert('AI не знайшов даних для заповнення'); return; }
+  // ПІБ: AI може повернути окремо або разом
+  // Якщо surname/name/patronymic — об'єднуємо в "name" (Supabase зберігає як повне ПІБ)
+  const nameParts = [d.surname, d.name, d.patronymic].filter(p => p && p !== 'null' && p.length > 1);
+  if (nameParts.length >= 2) {
+    updates.name = nameParts.join(' ');
+  } else if (d.name && d.name.includes(' ')) {
+    // AI повернув повне ім'я в полі name
+    updates.name = d.name;
+  }
 
-  const fields = Object.keys(updates).join(', ');
-  if (!confirm(`AI знайшов дані:\n${fields}\n\nЗастосувати до картки?`)) return;
+  // Інші поля
+  const isValid = v => v && v !== 'null' && v !== 'null.' && v.length > 1;
+  if (isValid(d.dob))      updates.dob      = d.dob;
+  if (isValid(d.rank))     updates.rank     = d.rank;
+  if (isValid(d.position)) updates.position = d.position;
+  if (isValid(d.unit))     updates.unit     = d.unit;
+  if (isValid(d.region))   updates.region   = d.region;
+  if (isValid(d.notes))    updates.notes    = d.notes;
+  if (isValid(d.passport)) updates.passport = d.passport;
+
+  // Телефони — фільтруємо "телефон1" та інші шаблонні значення
+  if (Array.isArray(d.phones)) {
+    const realPhones = d.phones.filter(p =>
+      p && /[\d\+]/.test(p) && !p.includes('телефон') && !p.includes('phone') && p.length >= 7
+    );
+    if (realPhones.length > 0) updates.phones = realPhones;
+  }
+
+  if (Object.keys(updates).length === 0) { alert('AI не знайшов корисних даних. Перевір текст.'); return; }
+
+  // Показуємо preview що буде записано
+  const preview = Object.entries(updates).map(([k,v]) =>
+    `${k}: ${Array.isArray(v) ? v.join(', ') : v}`
+  ).join('\n');
+  if (!confirm(`AI знайшов:\n${preview}\n\nЗастосувати до картки?`)) return;
 
   try {
     const resp = await fetch(`${SB_URL}/rest/v1/persons?id=eq.${_aiPersonId}`, {
