@@ -2864,10 +2864,16 @@ function showOSINTResults(res) {
       }).join('');
     }
 
-    if (otherCards.length && !res.found) {
-      // Показуємо інші картки тільки якщо точного збігу не знайшли
-      rawCardsHtml += `<div style="font-size:0.72rem;color:#475569;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;margin-top:12px">🔍 Схожі результати</div>`;
-      rawCardsHtml += otherCards.slice(0,5).map(c =>
+    // Показуємо "Схожі результати" ТІЛЬКИ з відомих OSINT-джерел
+    // Інші широкі результати (нерелевантні сайти) приховуємо
+    const OSINT_DOMAINS = ['myrotvorets.center','informnapalm.org'];
+    const osintSimilar = otherCards.filter(c =>
+      c.is_osint_source === true ||
+      (c.url && OSINT_DOMAINS.some(d => c.url.includes(d)))
+    );
+    if (osintSimilar.length && !res.found) {
+      rawCardsHtml += `<div style="font-size:0.72rem;color:#475569;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;margin-top:12px">🔍 Схожі результати (OSINT)</div>`;
+      rawCardsHtml += osintSimilar.slice(0,5).map(c =>
         `<a href="${c.url||'#'}" target="_blank" rel="noopener"
           style="display:block;padding:8px 12px;margin:3px 0;background:#0a0f1a;
                  border:1px solid #1a2540;border-radius:6px;color:#94a3b8;
@@ -3029,7 +3035,7 @@ async function openAIModal(personId) {
   $('ai-status-bar').style.color = '#93c5fd';
   $('ai-status-bar').textContent = '⏳ Перевірка AI...';
   try {
-    const r = await fetch(SERVER + '/ai/status');
+    const r = await fetch(INGEST_URL + '/ai/status');
     const d = await r.json();
     if (d.available) {
       $('ai-status-bar').style.color = '#4ade80';
@@ -3069,7 +3075,7 @@ async function runAIAnalysis() {
   $('ai-result').style.display = 'none';
 
   try {
-    const r = await fetch(SERVER + '/ai/analyze', {
+    const r = await fetch(INGEST_URL + '/ai/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json',
                  'Authorization': 'Bearer ' + (SESSION?.access_token || '') },
