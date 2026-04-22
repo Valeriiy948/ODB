@@ -2621,6 +2621,15 @@ async function startOSINTSearch() {
   $('osint-idle').style.display    = 'none';
   $('osint-results').style.display = 'none';
   $('osint-loading').style.display = 'block';
+
+  // Передаємо токен безпосередньо перед запитом (на випадок перезапуску сервера)
+  if (SESSION?.access_token) {
+    await fetch(`${INGEST_URL}/auth/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: SESSION.access_token }),
+    }).catch(() => {});
+  }
   $('osint-progress-fill').style.width = '0%';
 
   // Анімація прогрес-бару
