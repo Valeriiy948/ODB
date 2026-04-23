@@ -1780,10 +1780,11 @@ function openDetail(id, ev) {
 
   html += `<div class="dp-section">📋 Особисті дані</div>`;
   const personal = [
+    p.name_ru ? ['🇷🇺 ФИО (рос.)',p.name_ru] : null,
     ['Дата нар.',p.dob],['Місце нар.',p.birth_place],
-    ['Паспорт',p.passport],['ІПН / СНІЛС',p.ipn],
+    ['Паспорт',p.passport],['ІПН / СНІЛС',p.ipn || p.snils],
     ['Адреса прожив.',p.addr_live],['Адреса реєстр.',p.addr_reg],
-  ];
+  ].filter(Boolean);
   personal.filter(([,v])=>v).forEach(([l,v]) =>
     html += `<div class="dp-row"><span class="dp-lbl">${l}:</span><span class="dp-val">${esc(v)}</span></div>`);
 
@@ -3366,6 +3367,28 @@ async function runAIosint(id) {
     .forEach(id => { { const el = $(id); if (el) el.textContent = ''; }; });
   const parseBtn = $('osint-parse-btn');
   if (parseBtn) { parseBtn.disabled = true; parseBtn.style.opacity = '0.5'; parseBtn.style.cursor = 'not-allowed'; }
+
+  // Автозаповнення: ім'я РОСІЙСЬКОЮ і ДН з картки
+  const nameRu = (p.name_ru || '').trim();
+  const dobVal = (p.dob || '').trim();
+
+  // Форматуємо ДН у формат ДД.ММ.РРРР для бота
+  let dobForBot = dobVal;
+  if (dobVal && dobVal.includes('-')) {
+    // ISO формат 1989-05-13 → 13.05.1989
+    const pts = dobVal.split('-');
+    if (pts.length === 3) dobForBot = `${pts[2]}.${pts[1]}.${pts[0]}`;
+  }
+
+  const nameField = $('lb-query-name');
+  const dobField  = $('lb-query-dob');
+  if (nameField) {
+    nameField.value = nameRu;
+    // Якщо немає name_ru — підсвітити жовтим як нагадування
+    nameField.style.borderColor = nameRu ? '#1e3a8a' : '#ca8a04';
+    nameField.placeholder = nameRu ? 'Іванов Іван Іванович' : '⚠️ Введи ПІБ РОСІЙСЬКОЮ';
+  }
+  if (dobField)  dobField.value = dobForBot;
 
   $('modal-ai-osint').style.display = 'block';
   _osintShowBlock(null); // приховати всі
