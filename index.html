@@ -1591,14 +1591,15 @@ function renderGrid() {
 
   let data = DB;
   if (isPhone) {
-    // Додатково фільтруємо по масиву phones з санітизацією
     data = DB.filter(p => {
       const phones = (p.phones || []).map(ph => sanitizePhone(String(ph)));
       return phones.some(ph => ph.includes(phoneClean));
     });
-    // Якщо клієнтський фільтр дав результат — показуємо, інакше — всі (можуть бути в notes)
     if (data.length === 0) data = DB;
   }
+
+  // Сортування за повнотою профілю (більше даних = вище)
+  data = [...data].sort((a, b) => _profileScore(b) - _profileScore(a));
 
   $('s-shown').textContent = data.length;
   const filterActive = rawQ || $('f-status').value || $('f-rank').value || $('f-unit').value || $('f-region').value;
@@ -3815,10 +3816,32 @@ async function applyAIToCard() {
   }
 }
 
+// ─── Рейтинг повноти профілю ─────────────────────────
+function _profileScore(p) {
+  let s = 0;
+  if (PHOTOS[p.id]?.length)                           s += 30; // фото — найважливіше
+  if ((p.source_links||[]).some(u=>u?.includes('myrotvorets'))) s += 20; // є на Миротворці
+  if (p.dob)        s += 10;
+  if (p.rank)       s += 8;
+  if (p.position)   s += 8;
+  if (p.unit)       s += 8;
+  if ((p.phones||[]).length) s += p.phones.length * 5;
+  if (p.passport)   s += 6;
+  if (p.notes && p.notes.length > 50) s += 5;
+  if (p.addr_live)  s += 4;
+  if (p.region)     s += 3;
+  if ((p.osint_photos||[]).length) s += 5;
+  if (p.social_media && Object.keys(p.social_media).length) s += 6;
+  return s;
+}
+
 // ═══════════════════════════════════════════════════════
 //  🔍 OSINTKIT — автопошук на osintkit.net
 // ═══════════════════════════════════════════════════════
+let _osintKitPersonId = null;
+
 function openOsintKit(id) {
+  _osintKitPersonId = id;
   const p = DB.find(x => x.id === id) || {};
   const name = (p.name || '').trim();
   const dob  = (p.dob  || '').trim(); // DD.MM.YYYY
@@ -3838,7 +3861,9 @@ function openOsintKit(id) {
   $('osintkit-month-input').value         = month;
   $('osintkit-day-input').value           = day;
   $('osintkit-copy-status').textContent   = '';
-  $('modal-osintkit').style.display       = 'block';
+  $('osintkit-paste-area').value          = '';
+  $('osintkit-parse-status').textContent  = '';
+  $('modal-osintkit').style.display       = 'flex';
 
   // Будуємо URL з параметрами (якщо OsintKit їх підтримує)
   const params = new URLSearchParams();
@@ -3993,11 +4018,135 @@ async function startBatchMyrot() {
   $('batch-stop-btn').style.display = 'none';
   if (typeof loadPersons === 'function') loadPersons();
 }
+
+// ═══════════════════════════════════════════════════════
+//  📋 OSINTKIT — парсинг вставленого тексту → картка
+// ═══════════════════════════════════════════════════════
+async function parseAndApplyOsintKit() {
+  const text = ($('osintkit-paste-area').value || '').trim();
+  const status = $('osintkit-parse-status');
+  if (!text) {
+    status.style.color = '#f87171';
+    status.textContent = '⚠️ Вставте текст результатів OsintKit';
+    return;
+  }
+  if (!_osintKitPersonId) {
+    status.style.color = '#f87171';
+    status.textContent = '⚠️ Помилка: картку не визначено. Закрийте та відкрийте знову.';
+    return;
+  }
+
+  status.style.color = '#60a5fa';
+  status.textContent = '⏳ Аналізую текст...';
+
+  // ── Витягуємо телефони (UA/RU формати) ──
+  const phoneRaw = [...text.matchAll(/(?:\+?7|8|\+?380)[\s\-\(]?\d{3}[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}/g)].map(m => m[0].replace(/[\s\-\(\)]/g, ''));
+  const phones = [...new Set(phoneRaw)];
+
+  // ── Витягуємо дату народження (DD.MM.YYYY або YYYY-MM-DD або DD/MM/YYYY) ──
+  let dob = null;
+  const dobMatch = text.match(/\b(\d{2})[.\-\/](\d{2})[.\-\/](\d{4})\b/) ||
+                   text.match(/\b(\d{4})[.\-\/](\d{2})[.\-\/](\d{2})\b/);
+  if (dobMatch) {
+    const [, a, b, c] = dobMatch;
+    // Якщо перший — 4 цифри, то YYYY-MM-DD → перетворюємо в DD.MM.YYYY
+    if (a.length === 4) dob = `${c}.${b}.${a}`;
+    else dob = `${a}.${b}.${c}`;
+  }
+
+  // ── Витягуємо адресу (рядки з "вул.", "пров.", "обл.", "м.", "с.") ──
+  const addrLines = text.split('\n').filter(l =>
+    /(?:вул\.|провул|обл\.|р-н|місто|м\.\s|с\.\s|пр-т|просп|шосе|буд\.|кв\.|квартир|адрес)/i.test(l)
+  );
+  const addr = addrLines.map(l => l.trim()).filter(Boolean).join('; ').substring(0, 500);
+
+  // ── Витягуємо соцмережі ──
+  const social = {};
+  const vkMatch   = text.match(/vk\.com\/([^\s,\n"'<>]+)/i);
+  const fbMatch   = text.match(/facebook\.com\/([^\s,\n"'<>]+)/i);
+  const tgMatch   = text.match(/t\.me\/([^\s,\n"'<>]+)/i) || text.match(/@([a-zA-Z0-9_]{4,32})\b/);
+  const okMatch   = text.match(/ok\.ru\/([^\s,\n"'<>]+)/i);
+  const igMatch   = text.match(/instagram\.com\/([^\s,\n"'<>]+)/i);
+  if (vkMatch)  social.vk        = 'https://vk.com/' + vkMatch[1];
+  if (fbMatch)  social.facebook  = 'https://facebook.com/' + fbMatch[1];
+  if (tgMatch)  social.telegram  = tgMatch[0].startsWith('@') ? tgMatch[0] : 'https://t.me/' + tgMatch[1];
+  if (okMatch)  social.odnoklassniki = 'https://ok.ru/' + okMatch[1];
+  if (igMatch)  social.instagram = 'https://instagram.com/' + igMatch[1];
+
+  // ── Перевіряємо чи є що зберігати ──
+  const hasData = phones.length || dob || addr || Object.keys(social).length;
+  if (!hasData) {
+    status.style.color = '#fde047';
+    status.textContent = '⚠️ Не вдалося розпізнати структуровані дані. Перевірте формат тексту.';
+    return;
+  }
+
+  // ── Формуємо payload ──
+  const existing = DB.find(x => x.id === _osintKitPersonId) || {};
+  const payload = {};
+
+  if (phones.length) {
+    const merged = [...new Set([...(existing.phones || []), ...phones])];
+    payload.phones = merged;
+  }
+  if (dob && !existing.dob) payload.dob = dob;
+  if (addr && !existing.addr_live) payload.addr_live = addr;
+  if (Object.keys(social).length) {
+    payload.social_media = { ...(existing.social_media || {}), ...social };
+  }
+
+  // ── Показуємо превью та підтвердження ──
+  const preview = [];
+  if (payload.phones)       preview.push(`Телефони: ${payload.phones.join(', ')}`);
+  if (payload.dob)          preview.push(`Дата народження: ${payload.dob}`);
+  if (payload.addr_live)    preview.push(`Адреса: ${payload.addr_live}`);
+  if (payload.social_media) preview.push(`Соцмережі: ${Object.values(payload.social_media).join(', ')}`);
+
+  if (!confirm(`Знайдено:\n\n${preview.join('\n')}\n\nДодати до картки?`)) {
+    status.textContent = '';
+    return;
+  }
+
+  status.style.color = '#60a5fa';
+  status.textContent = '⏳ Збереження...';
+
+  try {
+    const resp = await fetch(`${SB_URL}/rest/v1/persons?id=eq.${_osintKitPersonId}`, {
+      method: 'PATCH',
+      headers: {
+        'apikey': SB_KEY,
+        'Authorization': `Bearer ${SESSION.access_token}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=minimal'
+      },
+      body: JSON.stringify(payload)
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+    // Оновлюємо локальний DB
+    const idx = DB.findIndex(x => x.id === _osintKitPersonId);
+    if (idx >= 0) Object.assign(DB[idx], payload);
+
+    status.style.color = '#4ade80';
+    status.textContent = `✅ Збережено: ${preview.join(' · ')}`;
+    $('osintkit-paste-area').value = '';
+
+    setTimeout(() => {
+      $('modal-osintkit').style.display = 'none';
+      if (typeof openDetail === 'function') openDetail(_osintKitPersonId);
+      if (typeof loadPersons === 'function') loadPersons();
+    }, 1500);
+
+  } catch (e) {
+    status.style.color = '#f87171';
+    status.textContent = '❌ Помилка збереження: ' + e.message;
+  }
+}
 </script>
 
 <!-- ══ OSINTKIT MODAL ════════════════════════════════ -->
-<div id="modal-osintkit" style="display:none;position:fixed;inset:0;z-index:1200;background:rgba(0,0,0,0.88);overflow-y:auto">
-<div style="max-width:620px;margin:60px auto;padding:28px;background:#0d1220;border:1px solid #065f46;border-radius:14px;box-shadow:0 0 60px rgba(52,211,153,0.12)">
+<div id="modal-osintkit" style="display:none;position:fixed;inset:0;z-index:1200;background:rgba(0,0,0,0.88);display:none;align-items:center;justify-content:center;padding:20px">
+<div style="max-width:620px;width:100%;max-height:92vh;overflow-y:auto;padding:28px;background:#0d1220;border:1px solid #065f46;border-radius:14px;box-shadow:0 0 60px rgba(52,211,153,0.12);scrollbar-width:thin;scrollbar-color:#065f46 #060a14">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
     <span style="font-size:1.05rem;font-weight:700;color:#34d399">🔍 OsintKit — пошук особи</span>
     <button onclick="$('modal-osintkit').style.display='none'" style="background:none;border:none;color:#94a3b8;font-size:1.4rem;cursor:pointer">✕</button>
@@ -4044,12 +4193,35 @@ async function startBatchMyrot() {
   <div id="osintkit-copy-status" style="font-size:0.82rem;min-height:20px;text-align:center"></div>
 
   <!-- Підказка по полях форми OsintKit -->
-  <div style="margin-top:16px;padding:12px;background:#060a14;border:1px solid #1a2540;border-radius:8px;font-size:0.75rem;color:#475569">
-    <div style="color:#94a3b8;font-weight:600;margin-bottom:6px">Як заповнити форму OsintKit вручну:</div>
-    <div>1. Поле "Шукати за" → обери <strong style="color:#dde3f0">Повне ім'я</strong></div>
-    <div>2. Введи ПІБ: <strong style="color:#34d399" id="osintkit-hint-name"></strong></div>
-    <div>3. Додай умову "Дата народження" → вкажи рік/місяць/день</div>
-    <div>4. Натисни <strong style="color:#dde3f0">ПОШУК</strong></div>
+  <div style="margin-top:16px;padding:12px;background:#060a14;border:1px solid #1a2540;border-radius:8px;font-size:0.75rem;color:#475569;margin-bottom:16px">
+    <div style="color:#94a3b8;font-weight:600;margin-bottom:6px">Як заповнити форму OsintKit:</div>
+    <div>1. "Шукати за" → <strong style="color:#dde3f0">Повне ім'я</strong> → введи: <strong style="color:#34d399" id="osintkit-hint-name"></strong></div>
+    <div>2. Додай "Дата народження" → вкажи рік/місяць/день</div>
+    <div>3. Натисни <strong style="color:#dde3f0">ПОШУК</strong></div>
+  </div>
+
+  <!-- Вставка результатів OsintKit у картку -->
+  <div style="border-top:1px solid #1a2540;padding-top:16px">
+    <div style="font-size:0.72rem;color:#065f46;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">
+      📋 Вставити результати OsintKit у картку
+    </div>
+    <div style="font-size:0.75rem;color:#475569;margin-bottom:8px">
+      Скопіюй весь текст результату з OsintKit і встав сюди — система сама витягне телефони, адреси, дати.
+    </div>
+    <textarea id="osintkit-paste-area" placeholder="Вставте текст результатів OsintKit тут..."
+      style="width:100%;height:120px;background:#060a14;border:1px solid #064e3b;border-radius:8px;
+             color:#dde3f0;font-size:0.82rem;padding:10px;resize:vertical;font-family:inherit;outline:none;margin-bottom:8px"></textarea>
+    <div style="display:flex;gap:8px">
+      <button onclick="parseAndApplyOsintKit()"
+        style="background:#065f46;border:none;color:#34d399;padding:10px 20px;border-radius:8px;font-size:0.85rem;font-weight:700;cursor:pointer;flex:1">
+        ➕ Розпізнати та додати до картки
+      </button>
+      <button onclick="$('osintkit-paste-area').value='';$('osintkit-parse-status').textContent=''"
+        style="background:#1a2540;border:none;color:#94a3b8;padding:10px 14px;border-radius:8px;cursor:pointer;font-size:0.8rem">
+        🗑
+      </button>
+    </div>
+    <div id="osintkit-parse-status" style="font-size:0.8rem;margin-top:8px;min-height:18px"></div>
   </div>
 </div>
 </div>
