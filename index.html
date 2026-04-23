@@ -408,6 +408,7 @@ footer{border-top:1px solid var(--border);padding:12px 20px;
     <button class="top-btn admin-only" onclick="openOCRModal()" title="OCR — розпізнавання тексту з фото документа">📷 OCR</button>
     <button class="top-btn admin-only" onclick="openBatchMyrot()" title="Пошук усіх осіб бази на Myrotvorets" style="background:rgba(127,29,29,0.25);border-color:#7f1d1d;color:#fca5a5">☠️ База→Миротворець</button>
     <button class="top-btn" onclick="exportCSV()">⬇ Експорт CSV</button>
+    <button class="top-btn" onclick="openServerSettings()" id="server-btn" title="Налаштування сервера OSINT">⚙️ Сервер</button>
     <button class="top-btn danger" onclick="doLogout()">🚪 Вийти</button>
   </div>
 </div>
@@ -830,12 +831,21 @@ footer{border-top:1px solid var(--border);padding:12px 20px;
       <input id="tg-code-input" type="text" placeholder="12345" maxlength="6"
         style="width:200px;background:#060a14;border:1px solid #1e3a8a;border-radius:8px;color:#dde3f0;padding:9px 12px;font-size:1.2rem;letter-spacing:4px;outline:none;text-align:center">
     </div>
+    <!-- 2FA поле — показується тільки якщо потрібен пароль -->
+    <div id="tg-2fa-block" style="display:none;margin-bottom:10px">
+      <div style="padding:10px 14px;background:#1a0f00;border:1px solid #92400e;border-radius:8px;margin-bottom:10px;font-size:0.82rem;color:#fbbf24">
+        🔐 У тебе увімкнена двофакторна автентифікація. Введи пароль 2FA (той що встановив у Telegram → Налаштування → Конфіденційність → Двоетапна перевірка).
+      </div>
+      <div style="font-size:0.7rem;color:#475569;margin-bottom:5px;text-transform:uppercase">Пароль 2FA</div>
+      <input id="tg-2fa-input" type="password" placeholder="Твій 2FA пароль"
+        style="width:100%;background:#060a14;border:1px solid #92400e;border-radius:8px;color:#dde3f0;padding:9px 12px;font-size:0.95rem;outline:none">
+    </div>
     <div style="display:flex;gap:10px">
       <button onclick="tgVerify()"
         style="background:#14532d;border:none;color:#4ade80;padding:11px 28px;border-radius:8px;font-size:0.9rem;font-weight:700;cursor:pointer">
         ✅ Підтвердити
       </button>
-      <button onclick="$('tg-code-block').style.display='none';$('tg-setup-block').style.display='block'"
+      <button onclick="_osintShowBlock('tg-setup-block')"
         style="background:#1a2540;border:none;color:#94a3b8;padding:11px 18px;border-radius:8px;cursor:pointer;font-size:0.85rem">
         ← Назад
       </button>
@@ -868,8 +878,9 @@ footer{border-top:1px solid var(--border);padding:12px 20px;
       </div>
     </div>
 
-    <div style="font-size:0.75rem;color:#2d3f5c;margin-bottom:14px">
-      ℹ️ Введи ім'я <b style="color:#475569">РОСІЙСЬКОЮ</b> — саме так бот знайде людину в базах. Наприклад: "Цыганков Николай Юрьевич"
+    <div id="lb-name-hint" style="font-size:0.75rem;margin-bottom:10px;min-height:16px"></div>
+    <div style="font-size:0.72rem;color:#2d3f5c;margin-bottom:14px">
+      ℹ️ Ім'я має бути <b style="color:#475569">РОСІЙСЬКОЮ</b> — саме так бот знайде в базах. Наприклад: "Цыганков Николай Юрьевич"
     </div>
 
     <button onclick="startLeakbaseQuery()"
@@ -944,6 +955,53 @@ footer{border-top:1px solid var(--border);padding:12px 20px;
     <div id="osint-save-status" style="font-size:0.82rem;margin-top:10px;min-height:18px"></div>
   </div>
 
+</div>
+</div>
+
+<!-- ══ SERVER SETTINGS MODAL ══════════════════════════ -->
+<div id="modal-server" style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,0.88);display:none;align-items:center;justify-content:center">
+<div style="max-width:520px;width:95%;background:#0d1220;border:1px solid #1e3a8a;border-radius:14px;padding:28px;box-shadow:0 0 60px rgba(29,78,216,0.25)">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+    <span style="font-size:1rem;font-weight:700;color:#60a5fa">⚙️ Налаштування сервера OSINT</span>
+    <button onclick="closeServerSettings()" style="background:none;border:none;color:#94a3b8;font-size:1.4rem;cursor:pointer">✕</button>
+  </div>
+
+  <div style="font-size:0.82rem;color:#94a3b8;margin-bottom:16px;line-height:1.7">
+    Для роботи AI OSINT (OCR, Telegram, парсинг) потрібен локальний Python сервер.<br>
+    <b style="color:#60a5fa">Для колег:</b> введи адресу сервера де він запущений.
+  </div>
+
+  <div style="margin-bottom:14px">
+    <div style="font-size:0.7rem;color:#475569;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Поточна адреса сервера</div>
+    <input id="server-url-input" type="text" placeholder="http://192.168.1.100:8000"
+      style="width:100%;background:#060a14;border:1px solid #1e3a8a;border-radius:8px;color:#dde3f0;padding:10px 14px;font-size:0.9rem;outline:none;font-family:monospace">
+    <div style="margin-top:6px;font-size:0.72rem;color:#2d3f5c">
+      Приклади: <code style="color:#475569">http://localhost:8000</code> · <code style="color:#475569">http://192.168.1.5:8000</code> · <code style="color:#475569">https://abc.ngrok.io</code>
+    </div>
+  </div>
+
+  <div style="background:#060a14;border:1px solid #1a2540;border-radius:8px;padding:12px;margin-bottom:16px;font-size:0.78rem;color:#475569;line-height:1.8">
+    <b style="color:#60a5fa">Як колезі підключитись (локальна мережа):</b><br>
+    1. Ти запускаєш сервер: <code style="color:#94a3b8">python main.py</code><br>
+    2. Дізнаєшся свій IP: <code style="color:#94a3b8">ipconfig</code> → IPv4 (напр. 192.168.1.5)<br>
+    3. Колега відкриває: <code style="color:#34d399">http://192.168.1.5:8000</code><br>
+    <b style="color:#60a5fa">Через інтернет (ngrok):</b><br>
+    1. Встанови: <code style="color:#94a3b8">python -m pip install ngrok</code> або quality ngrok.com<br>
+    2. Запусти: <code style="color:#94a3b8">ngrok http 8000</code><br>
+    3. Скопіюй URL типу <code style="color:#94a3b8">https://abc123.ngrok-free.app</code> → вставляй сюди
+  </div>
+
+  <div style="display:flex;gap:10px">
+    <button onclick="saveServerSettings()"
+      style="flex:1;background:#1d4ed8;border:none;color:#fff;padding:11px;border-radius:8px;font-size:0.9rem;font-weight:700;cursor:pointer">
+      💾 Зберегти і перевірити
+    </button>
+    <button onclick="closeServerSettings()"
+      style="background:#1a2540;border:none;color:#94a3b8;padding:11px 18px;border-radius:8px;cursor:pointer">
+      Скасувати
+    </button>
+  </div>
+  <div id="server-check-status" style="font-size:0.82rem;margin-top:10px;min-height:18px"></div>
 </div>
 </div>
 
@@ -2253,7 +2311,28 @@ async function importJSON(ev) {
 }
 
 // ─── КОМБАЙН (локальний сервер) ───────────────────────
-const INGEST_URL = 'http://localhost:8000';
+// ── Авто-визначення URL сервера ─────────────────────────────────────────────
+// Якщо сторінка відкрита з самого сервера (localhost або IP:8000) — використовуємо origin
+// Якщо з GitHub Pages — беремо ?server= параметр або збережений в sessionStorage
+function _detectServerUrl() {
+  const loc = window.location;
+  // Відкрито з самого сервера (port 8000 або localhost)
+  if (loc.port === '8000' || loc.hostname === 'localhost' || loc.hostname === '127.0.0.1') {
+    return loc.origin; // http://192.168.x.x:8000 або http://localhost:8000
+  }
+  // Параметр ?server=https://xxx.ngrok.io
+  const urlParam = new URLSearchParams(loc.search).get('server');
+  if (urlParam) {
+    sessionStorage.setItem('odb_server_url', urlParam);
+    return urlParam.replace(/\/$/, '');
+  }
+  // Збережений з попередніх налаштувань
+  const saved = sessionStorage.getItem('odb_server_url');
+  if (saved) return saved.replace(/\/$/, '');
+  // Fallback — localhost
+  return 'http://localhost:8000';
+}
+const INGEST_URL = _detectServerUrl();
 let _ingestPersons = [];
 let _ingestFile    = null;  // зберігаємо файл для повного push
 
@@ -3368,27 +3447,43 @@ async function runAIosint(id) {
   const parseBtn = $('osint-parse-btn');
   if (parseBtn) { parseBtn.disabled = true; parseBtn.style.opacity = '0.5'; parseBtn.style.cursor = 'not-allowed'; }
 
-  // Автозаповнення: ім'я РОСІЙСЬКОЮ і ДН з картки
-  const nameRu = (p.name_ru || '').trim();
-  const dobVal = (p.dob || '').trim();
+  // Автозаповнення: ПІБ і ДН з картки
+  const nameRu   = (p.name_ru || '').trim();
+  const nameUkr  = (p.name    || '').trim();
+  const dobVal   = (p.dob     || '').trim();
 
-  // Форматуємо ДН у формат ДД.ММ.РРРР для бота
+  // Форматуємо ДН у ДД.ММ.РРРР для бота
   let dobForBot = dobVal;
   if (dobVal && dobVal.includes('-')) {
-    // ISO формат 1989-05-13 → 13.05.1989
     const pts = dobVal.split('-');
     if (pts.length === 3) dobForBot = `${pts[2]}.${pts[1]}.${pts[0]}`;
   }
 
+  // Визначаємо яке ім'я підставити
+  const autoName = nameRu || nameUkr;  // спочатку рос., потім укр.
+  const needsTranslation = !nameRu && !!nameUkr;  // є укр. але нема рос.
+
   const nameField = $('lb-query-name');
   const dobField  = $('lb-query-dob');
+  const nameHint  = $('lb-name-hint');
+
   if (nameField) {
-    nameField.value = nameRu;
-    // Якщо немає name_ru — підсвітити жовтим як нагадування
-    nameField.style.borderColor = nameRu ? '#1e3a8a' : '#ca8a04';
-    nameField.placeholder = nameRu ? 'Іванов Іван Іванович' : '⚠️ Введи ПІБ РОСІЙСЬКОЮ';
+    nameField.value = autoName;
+    nameField.style.borderColor = nameRu ? '#14532d' : (nameUkr ? '#92400e' : '#ca8a04');
   }
-  if (dobField)  dobField.value = dobForBot;
+  if (dobField) dobField.value = dobForBot;
+  if (nameHint) {
+    if (nameRu) {
+      nameHint.style.color = '#4ade80';
+      nameHint.textContent = '✅ ПІБ автозаповнено з картки (рос.)';
+    } else if (needsTranslation) {
+      nameHint.style.color = '#fbbf24';
+      nameHint.textContent = '⚠️ Підставлено УКР. ім\'я — перевір та виправ на РОСІЙСЬКЕ перед запитом';
+    } else {
+      nameHint.style.color = '#f87171';
+      nameHint.textContent = '❌ Немає ім\'я — введи ПІБ РОСІЙСЬКОЮ вручну';
+    }
+  }
 
   $('modal-ai-osint').style.display = 'block';
   _osintShowBlock(null); // приховати всі
@@ -3450,8 +3545,9 @@ async function tgSetup() {
 }
 
 async function tgVerify() {
-  const code   = ($('tg-code-input').value || '').trim();
-  const status = $('tg-verify-status');
+  const code     = ($('tg-code-input').value || '').trim();
+  const password = ($('tg-2fa-input') ? $('tg-2fa-input').value : '') || '';
+  const status   = $('tg-verify-status');
 
   if (!code) {
     status.style.color = '#f87171';
@@ -3466,17 +3562,26 @@ async function tgVerify() {
     const r = await fetch(`${INGEST_URL}/telegram/verify`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code }),
+      body: JSON.stringify({ code, password }),
       signal: AbortSignal.timeout(20000)
     });
+
+    // HTTP 428 = потрібен 2FA пароль
+    if (r.status === 428) {
+      status.style.color = '#fbbf24';
+      status.textContent = '🔐 Потрібен 2FA пароль — введи нижче';
+      $('tg-2fa-block').style.display = 'block';
+      $('tg-2fa-input').focus();
+      return;
+    }
+
     const d = await r.json();
     if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
 
     status.style.color = '#4ade80';
-    status.textContent = '✅ Підключено!';
-
-    $('tg-connected-info').textContent = `✅ Telegram підключено: ${d.phone || ''}`;
-    setTimeout(() => _osintShowBlock('ai-osint-query-block'), 700);
+    status.textContent = `✅ Підключено! ${d.name || ''}`;
+    $('tg-connected-info').textContent = `✅ Telegram: ${d.phone || ''} (${d.name || ''})`;
+    setTimeout(() => _osintShowBlock('ai-osint-query-block'), 800);
 
   } catch (e) {
     status.style.color = '#f87171';
@@ -3614,45 +3719,50 @@ async function startOsintParse() {
 }
 
 function _showOsintParseResult(res) {
-  $('ai-osint-result').style.display = 'block';
   _osintNewFields = res.new_fields || {};
 
-  // Секції знайдені
-  const sections = res.sections_found || [];
-  $('osint-sections-bar').innerHTML = sections.length
-    ? sections.map(s => `<span style="background:#0f1e3a;border:1px solid #1e3a8a;color:#93c5fd;padding:3px 9px;border-radius:12px;font-size:0.7rem;font-weight:600">${s}</span>`).join('')
-    : '<span style="color:#475569;font-size:0.78rem">Секцій не визначено (нестандартний формат)</span>';
+  // Ховаємо секції (джерела) — користувачу не потрібно
+  const sectionsBar = $('osint-sections-bar');
+  if (sectionsBar) sectionsBar.style.display = 'none';
 
-  // Ліва колонка — всі витягнуті дані
+  // Ліва колонка — всі витягнуті дані (чиста анкета без джерел)
   const ext = res.extracted || {};
   let allHtml = '';
-  const fieldOrder = ['name_ru','dob','passport','ipn','snils','phones','email','addr_reg','addr_live'];
-  for (const f of fieldOrder) {
+
+  // Головні поля анкети
+  const mainFields = [
+    ['name_ru',   '👤 ПІБ (рос.)'],
+    ['dob',       '📅 Дата народження'],
+    ['passport',  '🪪 Паспорт'],
+    ['ipn',       '🔢 ІПН'],
+    ['snils',     '🆔 СНІЛС'],
+    ['phones',    '📞 Телефони'],
+    ['email',     '📧 Email'],
+    ['addr_live', '🏠 Адреса проживання'],
+    ['addr_reg',  '📋 Адреса реєстрації'],
+  ];
+  for (const [f, label] of mainFields) {
     const val = ext[f];
     if (!val || (Array.isArray(val) && !val.length)) continue;
     const display = Array.isArray(val) ? val.join('\n') : String(val);
-    allHtml += `<div style="margin-bottom:10px">
-      <div style="font-size:0.65rem;color:#475569;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:2px">${OSINT_FIELD_LABELS[f]||f}</div>
-      <div style="color:#dde3f0;font-weight:600;white-space:pre-wrap">${esc(display)}</div>
+    allHtml += `<div style="margin-bottom:9px;padding:7px 10px;background:#060a14;border-radius:6px">
+      <div style="font-size:0.62rem;color:#475569;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:2px">${label}</div>
+      <div style="color:#dde3f0;font-weight:600;white-space:pre-wrap;font-size:0.85rem">${esc(display)}</div>
     </div>`;
   }
-  // Соцмережі
-  if (ext.social_links && Object.keys(ext.social_links).length) {
-    allHtml += `<div style="margin-bottom:10px">
-      <div style="font-size:0.65rem;color:#475569;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:2px">Соцмережі</div>
-      ${Object.entries(ext.social_links).map(([k,v])=>`<div><a href="${v}" target="_blank" style="color:#60a5fa;font-size:0.82rem">${k}: ${v}</a></div>`).join('')}
+  // Банківські картки
+  if (ext.bank_cards?.length) {
+    allHtml += `<div style="margin-bottom:9px;padding:7px 10px;background:#060a14;border-radius:6px">
+      <div style="font-size:0.62rem;color:#475569;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px">💳 Банківські картки</div>
+      ${ext.bank_cards.map(c=>`<div style="color:#fbbf24;font-weight:600;font-size:0.82rem">• ${esc(c)}</div>`).join('')}
     </div>`;
   }
-  // Банки, картки, родичі, авто
-  const extras = [
-    ext.banks?.length       && `<b>Банки:</b> ${ext.banks.join(', ')}`,
-    ext.bank_cards?.length  && `<b>Картки:</b> ${ext.bank_cards.join(', ')}`,
-    ext.work                && `<b>Робота:</b> ${ext.work}`,
-    ext.vehicle             && `<b>Транспорт:</b> ${ext.vehicle}`,
-    ext.relatives?.length   && `<b>Зв'язки:</b><br>${ext.relatives.map(r=>`• ${r}`).join('<br>')}`,
-  ].filter(Boolean);
-  if (extras.length) {
-    allHtml += `<div style="margin-top:8px;padding-top:8px;border-top:1px solid #1a2540;font-size:0.78rem;color:#94a3b8;line-height:1.8">${extras.join('<br>')}</div>`;
+  // Родичі/зв'язки
+  if (ext.relatives?.length) {
+    allHtml += `<div style="margin-bottom:9px;padding:7px 10px;background:#060a14;border-radius:6px">
+      <div style="font-size:0.62rem;color:#475569;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px">👨‍👩‍👧 Родичі / Зв'язки</div>
+      ${ext.relatives.map(r=>`<div style="color:#94a3b8;font-size:0.82rem">• ${esc(r)}</div>`).join('')}
+    </div>`;
   }
   $('osint-all-extracted').innerHTML = allHtml || '<span style="color:#2d3f5c">Нічого не знайдено</span>';
 
@@ -3755,6 +3865,47 @@ async function saveOsintToCard() {
 
 function closeAIOsintModal() {
   $('modal-ai-osint').style.display = 'none';
+}
+
+// ── Server Settings ────────────────────────────────────────────────────────
+function openServerSettings() {
+  $('server-url-input').value = INGEST_URL;
+  $('server-check-status').textContent = '';
+  $('modal-server').style.display = 'flex';
+}
+
+function closeServerSettings() {
+  $('modal-server').style.display = 'none';
+}
+
+async function saveServerSettings() {
+  const url = ($('server-url-input').value || '').trim().replace(/\/$/, '');
+  if (!url) return;
+  const statusEl = $('server-check-status');
+  statusEl.style.color = '#60a5fa';
+  statusEl.textContent = '⏳ Перевіряємо підключення...';
+
+  try {
+    const r = await fetch(`${url}/`, { signal: AbortSignal.timeout(5000) });
+    if (r.ok) {
+      sessionStorage.setItem('odb_server_url', url);
+      // Оновлюємо глобальну змінну
+      window._INGEST_URL_OVERRIDE = url;
+      statusEl.style.color = '#4ade80';
+      statusEl.textContent = `✅ З'єднання успішне! Перезавантаж сторінку щоб застосувати: ${url}`;
+      // Автоматично перезавантажуємо через 1.5 сек
+      setTimeout(() => {
+        const newUrl = new URL(window.location.href);
+        sessionStorage.setItem('odb_server_url', url);
+        window.location.reload();
+      }, 1500);
+    } else {
+      throw new Error(`HTTP ${r.status}`);
+    }
+  } catch (e) {
+    statusEl.style.color = '#f87171';
+    statusEl.textContent = `❌ Сервер недоступний: ${e.message}. Перевір IP та чи запущено python main.py`;
+  }
 }
 
 function refreshAndClose() {
