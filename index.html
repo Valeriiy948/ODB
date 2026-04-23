@@ -780,100 +780,164 @@ footer{border-top:1px solid var(--border);padding:12px 20px;
 </div>
 
 <!-- ══ AI OSINT MODAL ═════════════════════════════════ -->
-<!-- ══ AI OSINT MODAL (HTML Report Parser) ══════════════════════════════ -->
+<!-- ══ AI OSINT MODAL (LeakBase @PeopleFindBaseBot) ══════════════════════ -->
 <div id="modal-ai-osint" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.92);overflow-y:auto">
-<div style="max-width:860px;margin:30px auto;padding:28px;background:#0d1220;border:1px solid #1e3a8a;border-radius:14px;box-shadow:0 0 60px rgba(29,78,216,0.2)">
+<div style="max-width:880px;margin:24px auto;padding:28px;background:#0d1220;border:1px solid #1e3a8a;border-radius:14px;box-shadow:0 0 60px rgba(29,78,216,0.2)">
 
-  <!-- Заголовок -->
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
-    <span id="ai-osint-title" style="font-size:1.05rem;font-weight:700;color:#60a5fa">🤖 AI OSINT: <span id="ai-osint-person-name"></span></span>
+    <span style="font-size:1.05rem;font-weight:700;color:#60a5fa">🤖 AI OSINT: <span id="ai-osint-person-name"></span></span>
     <button onclick="closeAIOsintModal()" style="background:none;border:none;color:#94a3b8;font-size:1.4rem;cursor:pointer">✕</button>
   </div>
 
-  <!-- СТАН 1: Завантаження файлу -->
-  <div id="ai-osint-upload-block">
-    <div style="font-size:0.8rem;color:#475569;margin-bottom:14px;line-height:1.7">
-      Завантаж HTML-звіт з OSINT бази (RosPasport, MTS, Sogaz, Gosuslugi, Adengi та ін.).<br>
-      Система автоматично витягне: паспорт, ІПН, телефони, адреси, банківські картки, соцмережі.
+  <!-- ── СТАН 0: Налаштування Telegram ── -->
+  <div id="tg-setup-block" style="display:none">
+    <div style="padding:14px;background:#0a0f1a;border:1px solid #1e3a8a;border-radius:10px;margin-bottom:16px;font-size:0.82rem;color:#93c5fd;line-height:1.7">
+      Для автоматичного OSINT через @PeopleFindBaseBot потрібні дані Telegram API.<br>
+      1. Відкрий <a href="https://my.telegram.org" target="_blank" style="color:#60a5fa">my.telegram.org</a> → "API development tools" → створи додаток<br>
+      2. Скопіюй <b>App api_id</b> і <b>App api_hash</b>
     </div>
-
-    <!-- Drag & Drop zone -->
-    <div id="osint-drop-zone"
-      ondragover="event.preventDefault();this.style.borderColor='#3b82f6'"
-      ondragleave="this.style.borderColor='#1e3a8a'"
-      ondrop="osintDropFile(event)"
-      onclick="$('osint-file-input').click()"
-      style="border:2px dashed #1e3a8a;border-radius:12px;padding:32px;text-align:center;cursor:pointer;transition:border-color 0.2s;margin-bottom:14px">
-      <div style="font-size:2rem;margin-bottom:8px">📂</div>
-      <div style="color:#60a5fa;font-weight:700;font-size:0.9rem;margin-bottom:4px">Клікни або перетягни файл сюди</div>
-      <div style="color:#475569;font-size:0.75rem">Підтримуються: .html, .htm, .txt | Кодування: UTF-8, CP1251</div>
-      <div id="osint-file-name" style="margin-top:10px;color:#34d399;font-size:0.82rem;font-weight:600"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div>
+        <div style="font-size:0.7rem;color:#475569;margin-bottom:5px;text-transform:uppercase">API ID (число)</div>
+        <input id="tg-api-id" type="number" placeholder="12345678"
+          style="width:100%;background:#060a14;border:1px solid #1e3a8a;border-radius:8px;color:#dde3f0;padding:9px 12px;font-size:0.9rem;outline:none">
+      </div>
+      <div>
+        <div style="font-size:0.7rem;color:#475569;margin-bottom:5px;text-transform:uppercase">API Hash</div>
+        <input id="tg-api-hash" type="text" placeholder="abcdef1234567890abcdef..."
+          style="width:100%;background:#060a14;border:1px solid #1e3a8a;border-radius:8px;color:#dde3f0;padding:9px 12px;font-size:0.9rem;outline:none">
+      </div>
     </div>
-    <input type="file" id="osint-file-input" accept=".html,.htm,.txt" style="display:none" onchange="osintFileSelected(this)">
+    <div style="margin-bottom:10px">
+      <div style="font-size:0.7rem;color:#475569;margin-bottom:5px;text-transform:uppercase">Номер телефону (з кодом країни)</div>
+      <input id="tg-phone" type="text" placeholder="+380XXXXXXXXX"
+        style="width:100%;background:#060a14;border:1px solid #1e3a8a;border-radius:8px;color:#dde3f0;padding:9px 12px;font-size:0.9rem;outline:none">
+    </div>
+    <button onclick="tgSetup()"
+      style="background:#1d4ed8;border:none;color:#fff;padding:11px 28px;border-radius:8px;font-size:0.9rem;font-weight:700;cursor:pointer">
+      📲 Надіслати код у Telegram
+    </button>
+    <div id="tg-setup-status" style="font-size:0.82rem;margin-top:10px;min-height:18px"></div>
+  </div>
 
-    <!-- Кнопки -->
+  <!-- ── СТАН 0b: Введення коду підтвердження ── -->
+  <div id="tg-code-block" style="display:none">
+    <div style="padding:12px 16px;background:#0a1a0a;border:1px solid #14532d;border-radius:10px;margin-bottom:16px;font-size:0.85rem;color:#4ade80">
+      ✅ Код надіслано у Telegram! Перевір повідомлення.
+    </div>
+    <div style="margin-bottom:10px">
+      <div style="font-size:0.7rem;color:#475569;margin-bottom:5px;text-transform:uppercase">Код підтвердження з Telegram</div>
+      <input id="tg-code-input" type="text" placeholder="12345" maxlength="6"
+        style="width:200px;background:#060a14;border:1px solid #1e3a8a;border-radius:8px;color:#dde3f0;padding:9px 12px;font-size:1.2rem;letter-spacing:4px;outline:none;text-align:center">
+    </div>
     <div style="display:flex;gap:10px">
+      <button onclick="tgVerify()"
+        style="background:#14532d;border:none;color:#4ade80;padding:11px 28px;border-radius:8px;font-size:0.9rem;font-weight:700;cursor:pointer">
+        ✅ Підтвердити
+      </button>
+      <button onclick="$('tg-code-block').style.display='none';$('tg-setup-block').style.display='block'"
+        style="background:#1a2540;border:none;color:#94a3b8;padding:11px 18px;border-radius:8px;cursor:pointer;font-size:0.85rem">
+        ← Назад
+      </button>
+    </div>
+    <div id="tg-verify-status" style="font-size:0.82rem;margin-top:10px;min-height:18px"></div>
+  </div>
+
+  <!-- ── СТАН 1: Форма запиту ── -->
+  <div id="ai-osint-query-block" style="display:none">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding:10px 14px;background:#060a14;border:1px solid #14532d;border-radius:8px">
+      <span style="font-size:1.2rem">✅</span>
+      <div>
+        <div style="font-size:0.78rem;font-weight:700;color:#4ade80" id="tg-connected-info">Telegram підключено</div>
+        <div style="font-size:0.7rem;color:#475569">@PeopleFindBaseBot готовий до запиту</div>
+      </div>
+      <button onclick="$('ai-osint-query-block').style.display='none';$('tg-setup-block').style.display='block'"
+        style="margin-left:auto;background:none;border:1px solid #1a2540;color:#475569;padding:4px 10px;border-radius:6px;font-size:0.72rem;cursor:pointer">⚙️ Налаштування</button>
+    </div>
+
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;margin-bottom:14px">
+      <div>
+        <div style="font-size:0.7rem;color:#475569;margin-bottom:5px;text-transform:uppercase">ПІБ (РОСІЙСЬКОЮ для запиту)</div>
+        <input id="lb-query-name" type="text" placeholder="Іванов Іван Іванович"
+          style="width:100%;background:#060a14;border:1px solid #1e3a8a;border-radius:8px;color:#dde3f0;padding:10px 12px;font-size:0.9rem;outline:none;font-family:inherit">
+      </div>
+      <div>
+        <div style="font-size:0.7rem;color:#475569;margin-bottom:5px;text-transform:uppercase">Дата народження</div>
+        <input id="lb-query-dob" type="text" placeholder="16.04.1998"
+          style="width:100%;background:#060a14;border:1px solid #1e3a8a;border-radius:8px;color:#dde3f0;padding:10px 12px;font-size:0.9rem;outline:none;font-family:inherit">
+      </div>
+    </div>
+
+    <div style="font-size:0.75rem;color:#2d3f5c;margin-bottom:14px">
+      ℹ️ Введи ім'я <b style="color:#475569">РОСІЙСЬКОЮ</b> — саме так бот знайде людину в базах. Наприклад: "Цыганков Николай Юрьевич"
+    </div>
+
+    <button onclick="startLeakbaseQuery()"
+      style="background:#1d4ed8;border:none;color:#fff;padding:13px 32px;border-radius:8px;font-size:0.95rem;font-weight:700;cursor:pointer;width:100%;letter-spacing:0.5px">
+      🚀 Надіслати запит до @PeopleFindBaseBot
+    </button>
+    <div id="lb-query-error" style="font-size:0.82rem;color:#f87171;margin-top:10px;min-height:18px"></div>
+
+    <!-- Ручне завантаження HTML -->
+    <div style="margin-top:20px;padding-top:16px;border-top:1px solid #1a2540">
+      <div style="font-size:0.72rem;color:#2d3f5c;margin-bottom:10px;text-transform:uppercase;letter-spacing:1px">Або завантаж HTML файл вручну</div>
+      <div id="osint-drop-zone"
+        ondragover="event.preventDefault();this.style.borderColor='#3b82f6'"
+        ondragleave="this.style.borderColor='#1a2540'"
+        ondrop="osintDropFile(event)"
+        onclick="$('osint-file-input').click()"
+        style="border:2px dashed #1a2540;border-radius:10px;padding:18px;text-align:center;cursor:pointer;transition:border-color 0.2s">
+        <span style="color:#475569;font-size:0.82rem">📂 Клікни або перетягни .html файл від бота</span>
+        <div id="osint-file-name" style="margin-top:6px;color:#34d399;font-size:0.8rem;font-weight:600"></div>
+      </div>
+      <input type="file" id="osint-file-input" accept=".html,.htm,.txt" style="display:none" onchange="osintFileSelected(this)">
       <button id="osint-parse-btn" onclick="startOsintParse()" disabled
-        style="background:#1e3a8a;border:none;color:#93c5fd;padding:12px 28px;border-radius:8px;font-size:0.9rem;font-weight:700;cursor:not-allowed;flex:1;opacity:0.5">
-        🔍 Аналізувати звіт
-      </button>
-      <button onclick="closeAIOsintModal()"
-        style="background:#1a2540;border:none;color:#94a3b8;padding:12px 18px;border-radius:8px;font-size:0.85rem;cursor:pointer">
-        Скасувати
+        style="margin-top:10px;background:#1a2540;border:none;color:#475569;padding:9px 20px;border-radius:8px;font-size:0.82rem;cursor:not-allowed;width:100%;opacity:0.5">
+        🔍 Аналізувати файл вручну
       </button>
     </div>
-    <div id="osint-parse-error" style="font-size:0.82rem;color:#f87171;margin-top:10px;min-height:18px"></div>
+    <div id="osint-parse-error" style="font-size:0.82rem;color:#f87171;margin-top:8px;min-height:16px"></div>
   </div>
 
-  <!-- СТАН 2: Прогрес парсингу -->
+  <!-- ── СТАН 2: Прогрес ── -->
   <div id="ai-osint-loading" style="display:none;padding:30px 0;text-align:center">
-    <div style="font-size:2rem;margin-bottom:12px;animation:spin 1.2s linear infinite;display:inline-block">⚙️</div>
-    <div style="color:#60a5fa;font-weight:700;font-size:0.95rem;margin-bottom:6px" id="ai-osint-step">Аналіз файлу...</div>
-    <div style="color:#475569;font-size:0.78rem">Парсимо структуру звіту, шукаємо дані...</div>
+    <div style="font-size:2.2rem;margin-bottom:14px;animation:spin 1.5s linear infinite;display:inline-block">⚙️</div>
+    <div style="color:#60a5fa;font-weight:700;font-size:0.98rem;margin-bottom:8px" id="ai-osint-step">Надсилаємо запит...</div>
+    <div style="color:#475569;font-size:0.78rem;max-width:340px;margin:0 auto;line-height:1.6" id="ai-osint-substep">Підключення до @PeopleFindBaseBot</div>
+    <div style="margin-top:16px;background:#0a0f1a;border-radius:6px;height:5px;overflow:hidden;max-width:320px;margin:16px auto 0">
+      <div id="ai-osint-bar" style="height:100%;background:linear-gradient(90deg,#1d4ed8,#60a5fa);border-radius:6px;animation:pulse-bar 2s ease-in-out infinite"></div>
+    </div>
   </div>
 
-  <!-- СТАН 3: Результати -->
+  <!-- ── СТАН 3: Результати ── -->
   <div id="ai-osint-result" style="display:none">
+    <div id="osint-sections-bar" style="margin-bottom:14px;display:flex;flex-wrap:wrap;gap:5px"></div>
 
-    <!-- Знайдено секції -->
-    <div id="osint-sections-bar" style="margin-bottom:16px;display:flex;flex-wrap:wrap;gap:6px"></div>
-
-    <!-- Порівняння: 2 колонки -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px">
-
-      <!-- Ліво: всі витягнуті дані -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
       <div>
-        <div style="font-size:0.7rem;color:#475569;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">📄 Знайдено у звіті</div>
-        <div id="osint-all-extracted" style="background:#060a14;border:1px solid #1a2540;border-radius:8px;padding:12px;font-size:0.78rem;line-height:1.9;max-height:400px;overflow-y:auto"></div>
+        <div style="font-size:0.68rem;color:#475569;text-transform:uppercase;letter-spacing:1px;margin-bottom:7px">📄 Знайдено у звіті</div>
+        <div id="osint-all-extracted" style="background:#060a14;border:1px solid #1a2540;border-radius:8px;padding:12px;font-size:0.78rem;line-height:1.9;max-height:380px;overflow-y:auto;scrollbar-width:thin"></div>
       </div>
-
-      <!-- Право: нові дані (яких немає в картці) -->
       <div>
-        <div style="font-size:0.7rem;color:#14532d;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">🆕 НОВІ дані (немає в картці)</div>
-        <div id="osint-new-fields" style="background:#051a0e;border:1px solid #14532d;border-radius:8px;padding:12px;font-size:0.78rem;line-height:1.9;max-height:400px;overflow-y:auto"></div>
+        <div style="font-size:0.68rem;color:#14532d;text-transform:uppercase;letter-spacing:1px;margin-bottom:7px">🆕 НОВІ дані для картки</div>
+        <div id="osint-new-fields" style="background:#051a0e;border:1px solid #14532d;border-radius:8px;padding:12px;font-size:0.78rem;line-height:1.9;max-height:380px;overflow-y:auto;scrollbar-width:thin"></div>
       </div>
     </div>
 
-    <!-- Вибір що додавати -->
-    <div id="osint-select-block" style="margin-bottom:18px">
-      <div style="font-size:0.7rem;color:#1d4ed8;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">
-        ✅ Обери що додати до картки:
-      </div>
-      <div id="osint-checkboxes" style="display:flex;flex-direction:column;gap:8px"></div>
-    </div>
+    <div style="font-size:0.68rem;color:#1d4ed8;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">✅ Обери що додати до картки:</div>
+    <div id="osint-checkboxes" style="display:flex;flex-direction:column;gap:7px;margin-bottom:16px"></div>
 
-    <!-- Кнопки дії -->
     <div style="display:flex;gap:10px;flex-wrap:wrap">
       <button id="osint-save-btn" onclick="saveOsintToCard()"
         style="background:#1d4ed8;border:none;color:#fff;padding:12px 32px;border-radius:8px;font-size:0.9rem;font-weight:700;cursor:pointer;flex:1">
         ➕ Додати вибране до картки
       </button>
-      <button onclick="$('ai-osint-result').style.display='none';$('ai-osint-upload-block').style.display='block';$('osint-file-name').textContent='';$('osint-parse-btn').disabled=true;$('osint-parse-btn').style.opacity='0.5';_osintFile=null"
-        style="background:#1a2540;border:none;color:#94a3b8;padding:12px 18px;border-radius:8px;font-size:0.82rem;cursor:pointer">
-        📂 Інший файл
+      <button onclick="resetAIOsint()"
+        style="background:#1a2540;border:none;color:#94a3b8;padding:12px 16px;border-radius:8px;font-size:0.82rem;cursor:pointer">
+        🔄 Новий запит
       </button>
       <button onclick="closeAIOsintModal()"
-        style="background:#1a2540;border:none;color:#94a3b8;padding:12px 18px;border-radius:8px;font-size:0.82rem;cursor:pointer">
+        style="background:#1a2540;border:none;color:#94a3b8;padding:12px 16px;border-radius:8px;font-size:0.82rem;cursor:pointer">
         Закрити
       </button>
     </div>
@@ -3282,7 +3346,14 @@ const OSINT_FIELD_LABELS = {
   notes:     'Нотатки (банки, картки, родичі)',
 };
 
-function runAIosint(id) {
+// ─── ДОПОМІЖНА: показати тільки один блок у модалці ──
+function _osintShowBlock(blockId) {
+  ['tg-setup-block','tg-code-block','ai-osint-query-block','ai-osint-loading','ai-osint-result']
+    .forEach(id => { const el = $(id); if (el) el.style.display = 'none'; });
+  if (blockId) { const el = $(blockId); if (el) el.style.display = 'block'; }
+}
+
+async function runAIosint(id) {
   _aiOsintPersonId = id;
   _osintFile = null;
   _osintNewFields = {};
@@ -3290,17 +3361,156 @@ function runAIosint(id) {
   const p = DB.find(x => x.id === id) || {};
   $('ai-osint-person-name').textContent = p.name || 'Особа';
 
-  // Скидаємо стани
-  $('ai-osint-upload-block').style.display = 'block';
-  $('ai-osint-loading').style.display      = 'none';
-  $('ai-osint-result').style.display       = 'none';
-  $('osint-file-name').textContent         = '';
-  $('osint-parse-error').textContent       = '';
-  $('osint-parse-btn').disabled            = true;
-  $('osint-parse-btn').style.opacity       = '0.5';
-  $('osint-parse-btn').style.cursor        = 'not-allowed';
+  // Скидаємо похибки/поля
+  ['osint-file-name','osint-parse-error','lb-query-error','tg-setup-status','tg-verify-status','osint-save-status']
+    .forEach(id => { { const el = $(id); if (el) el.textContent = ''; }; });
+  const parseBtn = $('osint-parse-btn');
+  if (parseBtn) { parseBtn.disabled = true; parseBtn.style.opacity = '0.5'; parseBtn.style.cursor = 'not-allowed'; }
 
   $('modal-ai-osint').style.display = 'block';
+  _osintShowBlock(null); // приховати всі
+
+  // Перевіряємо стан Telegram на сервері
+  try {
+    const r = await fetch(`${INGEST_URL}/telegram/status`, { signal: AbortSignal.timeout(4000) });
+    if (r.ok) {
+      const s = await r.json();
+      if (s.connected) {
+        $('tg-connected-info').textContent = `✅ Telegram підключено: ${s.phone || ''}`;
+        _osintShowBlock('ai-osint-query-block');
+      } else {
+        _osintShowBlock('tg-setup-block');
+      }
+    } else {
+      _osintShowBlock('tg-setup-block');
+    }
+  } catch {
+    // Сервер не відповідає — показати форму запиту (ручне завантаження)
+    _osintShowBlock('ai-osint-query-block');
+    $('lb-query-error').textContent = '⚠️ Локальний сервер не відповідає. Можна завантажити HTML вручну.';
+  }
+}
+
+async function tgSetup() {
+  const api_id   = ($('tg-api-id').value || '').trim();
+  const api_hash = ($('tg-api-hash').value || '').trim();
+  const phone    = ($('tg-phone').value || '').trim();
+  const status   = $('tg-setup-status');
+
+  if (!api_id || !api_hash || !phone) {
+    status.style.color = '#f87171';
+    status.textContent = '❌ Заповни всі поля: API ID, API Hash та номер телефону';
+    return;
+  }
+
+  status.style.color = '#60a5fa';
+  status.textContent = '⏳ Надсилаємо код...';
+
+  try {
+    const r = await fetch(`${INGEST_URL}/telegram/setup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ api_id: parseInt(api_id), api_hash, phone }),
+      signal: AbortSignal.timeout(30000)
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+
+    status.style.color = '#4ade80';
+    status.textContent = '✅ Код надіслано!';
+    setTimeout(() => _osintShowBlock('tg-code-block'), 600);
+
+  } catch (e) {
+    status.style.color = '#f87171';
+    status.textContent = '❌ ' + e.message;
+  }
+}
+
+async function tgVerify() {
+  const code   = ($('tg-code-input').value || '').trim();
+  const status = $('tg-verify-status');
+
+  if (!code) {
+    status.style.color = '#f87171';
+    status.textContent = '❌ Введи код з Telegram';
+    return;
+  }
+
+  status.style.color = '#60a5fa';
+  status.textContent = '⏳ Підтверджуємо...';
+
+  try {
+    const r = await fetch(`${INGEST_URL}/telegram/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+      signal: AbortSignal.timeout(20000)
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+
+    status.style.color = '#4ade80';
+    status.textContent = '✅ Підключено!';
+
+    $('tg-connected-info').textContent = `✅ Telegram підключено: ${d.phone || ''}`;
+    setTimeout(() => _osintShowBlock('ai-osint-query-block'), 700);
+
+  } catch (e) {
+    status.style.color = '#f87171';
+    status.textContent = '❌ ' + e.message;
+  }
+}
+
+async function startLeakbaseQuery() {
+  const name = ($('lb-query-name').value || '').trim();
+  const dob  = ($('lb-query-dob').value || '').trim();
+  const errEl = $('lb-query-error');
+
+  if (!name) {
+    errEl.textContent = '❌ Введи ПІБ (РОСІЙСЬКОЮ)';
+    return;
+  }
+  errEl.textContent = '';
+
+  // Показуємо прогрес
+  _osintShowBlock('ai-osint-loading');
+  $('ai-osint-step').textContent    = '📡 Надсилаємо запит до @PeopleFindBaseBot...';
+  $('ai-osint-substep').textContent = `"${name}${dob ? ' ' + dob : ''}"`;
+
+  try {
+    const r = await fetch(`${INGEST_URL}/leakbase_query/${_aiOsintPersonId}`, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + (SESSION?.access_token || ''),
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ name, dob }),
+      signal: AbortSignal.timeout(120000)  // 2 хвилини — бот може відповідати повільно
+    });
+
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({ detail: r.statusText }));
+      throw new Error(err.detail || `HTTP ${r.status}`);
+    }
+
+    const res = await r.json();
+    _osintShowBlock('ai-osint-result');
+    _showOsintParseResult(res);
+
+  } catch (e) {
+    _osintShowBlock('ai-osint-query-block');
+    errEl.style.color = '#f87171';
+    errEl.textContent = '❌ ' + (e.name === 'TimeoutError' ? 'Timeout 2хв — бот не відповів' : e.message);
+  }
+}
+
+function resetAIOsint() {
+  _osintFile = null;
+  _osintNewFields = {};
+  ['lb-query-error','osint-file-name','osint-parse-error'].forEach(id => { { const el = $(id); if (el) el.textContent = ''; }; });
+  const parseBtn = $('osint-parse-btn');
+  if (parseBtn) { parseBtn.disabled = true; parseBtn.style.opacity = '0.5'; parseBtn.style.cursor = 'not-allowed'; }
+  _osintShowBlock('ai-osint-query-block');
 }
 
 function osintFileSelected(input) {
@@ -3350,10 +3560,9 @@ async function startOsintParse() {
   }
 
   // Перемикаємо стан → завантаження
-  $('ai-osint-upload-block').style.display = 'none';
-  $('ai-osint-loading').style.display      = 'block';
-  $('ai-osint-result').style.display       = 'none';
-  $('ai-osint-step').textContent           = `Аналізую: ${_osintFile.name}`;
+  _osintShowBlock('ai-osint-loading');
+  $('ai-osint-step').textContent    = `Аналізую: ${_osintFile.name}`;
+  $('ai-osint-substep').textContent = 'Парсинг LeakBase HTML...';
 
   try {
     const fd = new FormData();
@@ -3372,12 +3581,11 @@ async function startOsintParse() {
     }
 
     const res = await r.json();
-    $('ai-osint-loading').style.display = 'none';
+    _osintShowBlock('ai-osint-result');
     _showOsintParseResult(res);
 
   } catch (e) {
-    $('ai-osint-loading').style.display      = 'none';
-    $('ai-osint-upload-block').style.display = 'block';
+    _osintShowBlock('ai-osint-query-block');
     $('osint-parse-error').textContent = '❌ ' + (e.name === 'TimeoutError' ? 'Timeout 30s — файл занадто великий?' : e.message);
   }
 }
