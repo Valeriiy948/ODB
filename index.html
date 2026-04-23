@@ -483,8 +483,8 @@ footer{border-top:1px solid var(--border);padding:12px 20px;
     <div id="dp-admin-acts" class="top-actions" style="display:flex;gap:6px;flex-wrap:wrap">
       <button class="top-btn" onclick="generateDossier(detailId)" title="Сформувати PDF досьє">📄 Досьє</button>
       <button class="top-btn" onclick="showConnections(detailId)" title="Знайти зв'язки в базі">🔗 Зв'язки</button>
-      <button class="top-btn" id="osint-btn" onclick="runOSINT(detailId)" title="Пошук в OSINT-джерелах (Myrotvorets та інші)">🔍 OSINT</button>
-      <button class="top-btn" id="ai-btn" onclick="openAIModal(detailId)" title="AI аналіз та автозаповнення через Llama3">🤖 AI</button>
+      <button class="top-btn" id="myrot-btn" onclick="runMyrotvorets(detailId)" title="Швидкий пошук на Myrotvorets (до 20 сек)">☠️ Миротворець</button>
+      <button class="top-btn" id="ai-osint-btn" onclick="runAIosint(detailId)" title="AI OSINT — збирає, аналізує, зберігає в картку">🤖 AI OSINT</button>
       <button class="top-btn admin-only" onclick="editFromDetail()">✏️ Ред.</button>
       <button class="top-btn danger admin-only" onclick="deleteFromDetail()">🗑</button>
     </div>
@@ -699,76 +699,172 @@ footer{border-top:1px solid var(--border);padding:12px 20px;
 </div>
 </div>
 
-<!-- ══ OSINT MODAL ════════════════════════════════════ -->
-<div id="modal-osint" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.82);overflow-y:auto">
-<div style="max-width:780px;margin:40px auto;padding:28px;background:#0d1220;border:1px solid #1a2540;border-radius:14px">
+<!-- ══ MYROTVORETS MODAL ═══════════════════════════════ -->
+<div id="modal-myrot" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.88);overflow-y:auto">
+<div style="max-width:700px;margin:40px auto;padding:28px;background:#0d1220;border:1px solid #7f1d1d;border-radius:14px;box-shadow:0 0 60px rgba(239,68,68,0.15)">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
-    <span id="osint-modal-title" style="font-size:1.05rem;font-weight:700;color:#60a5fa">🔍 OSINT-пошук</span>
-    <button onclick="$('modal-osint').style.display='none'" style="background:none;border:none;color:#94a3b8;font-size:1.4rem;cursor:pointer">✕</button>
+    <span id="myrot-modal-title" style="font-size:1.05rem;font-weight:700;color:#f87171">☠️ Миротворець — прямий пошук</span>
+    <button onclick="$('modal-myrot').style.display='none'" style="background:none;border:none;color:#94a3b8;font-size:1.4rem;cursor:pointer">✕</button>
   </div>
 
-  <!-- Статус сервера -->
-  <div id="osint-server-status" style="padding:8px 12px;border-radius:8px;font-size:0.78rem;margin-bottom:14px;background:#0f1e3a;color:#93c5fd">
-    ⏳ Перевірка сервера...
+  <!-- Статус -->
+  <div id="myrot-status" style="padding:8px 12px;border-radius:8px;font-size:0.78rem;margin-bottom:14px;background:#1a0a0a;color:#fca5a5;border:1px solid #7f1d1d">
+    ⏳ Підключення до myrotvorets.center...
   </div>
 
-  <!-- Лоадер під час пошуку -->
-  <div id="osint-loading" style="display:none;text-align:center;padding:40px 20px">
-    <div style="font-size:2rem;margin-bottom:12px;animation:spin 1.2s linear infinite;display:inline-block">🔄</div>
-    <div style="color:#60a5fa;font-size:0.9rem;font-weight:600" id="osint-loading-text">Пошук у відкритих джерелах...</div>
-    <div style="color:#475569;font-size:0.75rem;margin-top:6px">Пошук займає 15-40 секунд. Не закривай вікно.</div>
-    <div style="margin-top:14px">
-      <div id="osint-progress-bar" style="height:3px;background:#1e3a5f;border-radius:3px;overflow:hidden">
-        <div id="osint-progress-fill" style="height:100%;width:0%;background:linear-gradient(90deg,#1d4ed8,#60a5fa);transition:width 0.5s"></div>
-      </div>
+  <!-- Лоадер -->
+  <div id="myrot-loading" style="display:none;text-align:center;padding:40px 20px">
+    <div style="font-size:2.5rem;margin-bottom:12px;animation:spin 1.2s linear infinite;display:inline-block">☠️</div>
+    <div style="color:#f87171;font-size:0.95rem;font-weight:700" id="myrot-loading-text">Пошук на Myrotvorets...</div>
+    <div style="color:#475569;font-size:0.75rem;margin-top:8px">Прямий запит до БД. До 20 секунд.</div>
+    <div style="margin-top:14px;background:#1a0a0a;border-radius:6px;height:4px;overflow:hidden">
+      <div id="myrot-progress" style="height:100%;width:0%;background:linear-gradient(90deg,#7f1d1d,#f87171);transition:width 0.4s"></div>
     </div>
   </div>
 
-  <!-- Результати -->
-  <div id="osint-results" style="display:none">
-    <!-- Знайдено / не знайдено -->
-    <div id="osint-verdict" style="padding:12px 16px;border-radius:8px;margin-bottom:16px;font-weight:600;font-size:0.88rem"></div>
+  <!-- Результат -->
+  <div id="myrot-result" style="display:none">
+    <!-- Вердикт -->
+    <div id="myrot-verdict" style="padding:14px 18px;border-radius:10px;margin-bottom:16px;font-weight:700;font-size:0.92rem"></div>
 
-    <!-- Посилання на профілі -->
-    <div id="osint-links-section" style="display:none;margin-bottom:16px">
-      <div style="font-size:0.72rem;color:#475569;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">🔗 Профілі на OSINT-ресурсах</div>
-      <div id="osint-links-list"></div>
+    <!-- Профіль -->
+    <div id="myrot-profile-section" style="display:none;margin-bottom:16px">
+      <a id="myrot-profile-link" href="#" target="_blank" rel="noopener"
+        style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:#1a0a0a;border:1px solid #7f1d1d;border-radius:10px;color:#f87171;text-decoration:none;font-weight:600;font-size:0.88rem;transition:background 0.2s"
+        onmouseover="this.style.background='#2d0f0f'" onmouseout="this.style.background='#1a0a0a'">
+        <span style="font-size:1.4rem">☠️</span>
+        <div>
+          <div id="myrot-profile-title" style="margin-bottom:2px">—</div>
+          <div id="myrot-profile-url" style="font-size:0.72rem;color:#6b2121;word-break:break-all"></div>
+        </div>
+        <span style="margin-left:auto;font-size:0.8rem;opacity:0.7">→ відкрити</span>
+      </a>
+    </div>
+
+    <!-- Фото -->
+    <div id="myrot-photos-section" style="display:none;margin-bottom:16px">
+      <div style="font-size:0.72rem;color:#7f1d1d;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">📷 Фото з профілю</div>
+      <div id="myrot-photos-list" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+    </div>
+
+    <!-- Телефони -->
+    <div id="myrot-phones-section" style="display:none;margin-bottom:16px">
+      <div style="font-size:0.72rem;color:#7f1d1d;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">📞 Телефони</div>
+      <div id="myrot-phones-list" style="display:flex;gap:8px;flex-wrap:wrap"></div>
     </div>
 
     <!-- Соцмережі -->
-    <div id="osint-social-section" style="display:none;margin-bottom:16px">
-      <div style="font-size:0.72rem;color:#475569;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">📱 Соціальні мережі</div>
-      <div id="osint-social-list" style="display:flex;gap:8px;flex-wrap:wrap"></div>
-    </div>
-
-    <!-- Нові телефони -->
-    <div id="osint-phones-section" style="display:none;margin-bottom:16px">
-      <div style="font-size:0.72rem;color:#475569;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">📞 Знайдені телефони</div>
-      <div id="osint-phones-list"></div>
+    <div id="myrot-social-section" style="display:none;margin-bottom:16px">
+      <div style="font-size:0.72rem;color:#7f1d1d;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">🌐 Соцмережі / контакти</div>
+      <div id="myrot-social-list" style="display:flex;gap:8px;flex-wrap:wrap"></div>
     </div>
 
     <!-- Зв'язки -->
-    <div id="osint-conn-section" style="display:none;margin-bottom:16px">
-      <div style="font-size:0.72rem;color:#475569;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">👥 Виявлені зв'язки</div>
-      <div id="osint-conn-text" style="background:#060a14;border:1px solid #1a2540;border-radius:8px;padding:12px;font-size:0.82rem;color:#94a3b8;white-space:pre-wrap;max-height:150px;overflow-y:auto"></div>
+    <div id="myrot-conn-section" style="display:none;margin-bottom:16px">
+      <div style="font-size:0.72rem;color:#7f1d1d;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">👥 Зв'язки</div>
+      <div id="myrot-conn-text" style="background:#0d0505;border:1px solid #3f0e0e;border-radius:8px;padding:12px;font-size:0.82rem;color:#fca5a5;white-space:pre-wrap;max-height:150px;overflow-y:auto"></div>
     </div>
 
-    <!-- Статус збереження -->
-    <div id="osint-save-status" style="display:none;padding:10px 14px;border-radius:8px;font-size:0.82rem;margin-bottom:14px"></div>
-
-    <!-- Джерела перевірено -->
-    <div id="osint-sources-checked" style="font-size:0.7rem;color:#2d3f5c;margin-top:12px"></div>
+    <!-- Збережено -->
+    <div id="myrot-saved" style="display:none;padding:10px 16px;border-radius:8px;font-size:0.82rem;background:#0a1a0a;border:1px solid #14532d;color:#4ade80;margin-bottom:10px"></div>
   </div>
 
-  <!-- Початковий стан — підказка -->
-  <div id="osint-idle" style="text-align:center;padding:30px 20px;color:#2d3f5c">
-    <div style="font-size:2.5rem;margin-bottom:10px">🕵️</div>
-    <div style="font-size:0.85rem">Headless Chromium зробить пошук на Myrotvorets та інших відкритих ресурсах.<br>
-    Дані додаються ТІЛЬКИ при підтвердженому збігу ПІБ+ДН.</div>
-    <button id="osint-start-btn" onclick="startOSINTSearch()" style="margin-top:18px;background:#1d4ed8;border:none;color:#fff;padding:10px 28px;border-radius:8px;font-size:0.88rem;font-weight:700;cursor:pointer;letter-spacing:0.5px" disabled>
-      ⏳ Перевірка сервера...
+  <!-- Idle -->
+  <div id="myrot-idle" style="text-align:center;padding:30px 20px;color:#6b2121">
+    <div style="font-size:3rem;margin-bottom:10px">☠️</div>
+    <div style="font-size:0.85rem;color:#94a3b8">Прямий пошук за ПІБ у базі даних Myrotvorets.<br>Без пошукових систем. До 20 секунд.</div>
+  </div>
+</div>
+</div>
+
+<!-- ══ AI OSINT MODAL ═════════════════════════════════ -->
+<div id="modal-ai-osint" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.92);overflow-y:auto">
+<div style="max-width:820px;margin:40px auto;padding:28px;background:#0d1220;border:1px solid #1e3a8a;border-radius:14px;box-shadow:0 0 60px rgba(29,78,216,0.2)">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+    <span id="ai-osint-title" style="font-size:1.05rem;font-weight:700;color:#60a5fa">🤖 AI OSINT — збір · аналіз · збереження</span>
+    <button onclick="closeAIOsintModal()" style="background:none;border:none;color:#94a3b8;font-size:1.4rem;cursor:pointer">✕</button>
+  </div>
+
+  <!-- Статус AI -->
+  <div id="ai-osint-status" style="padding:8px 12px;border-radius:8px;font-size:0.78rem;margin-bottom:16px;background:#0f1e3a;color:#93c5fd;border:1px solid #1e3a8a">
+    ⏳ Перевірка AI та сервера...
+  </div>
+
+  <!-- Кнопка запуску -->
+  <div id="ai-osint-idle" style="text-align:center;padding:20px 0 10px">
+    <div style="font-size:2.5rem;margin-bottom:12px">🤖</div>
+    <div style="font-size:0.88rem;color:#94a3b8;margin-bottom:18px">
+      Автоматично:<br>
+      1️⃣ Знаходить профіль на Myrotvorets<br>
+      2️⃣ AI аналізує та систематизує дані<br>
+      3️⃣ Зберігає телефони, посилання, примітки в картку
+    </div>
+    <button id="ai-osint-start-btn" onclick="startAIOsint()"
+      style="background:#1d4ed8;border:none;color:#fff;padding:12px 32px;border-radius:10px;font-size:0.92rem;font-weight:700;cursor:pointer;letter-spacing:0.5px;transition:all 0.2s"
+      onmouseover="this.style.background='#1e40af'" onmouseout="this.style.background='#1d4ed8'" disabled>
+      ⏳ Перевірка...
     </button>
   </div>
+
+  <!-- Прогрес -->
+  <div id="ai-osint-loading" style="display:none;padding:20px 0">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="font-size:1.5rem;animation:spin 1.2s linear infinite;display:inline-block">🔄</div>
+        <div>
+          <div style="color:#60a5fa;font-size:0.92rem;font-weight:700" id="ai-osint-step">Ініціалізація...</div>
+          <div style="color:#475569;font-size:0.75rem" id="ai-osint-substep">Підключення до серверу</div>
+        </div>
+      </div>
+      <div style="background:#0a0f1a;border-radius:6px;height:6px;overflow:hidden">
+        <div id="ai-osint-bar" style="height:100%;width:5%;background:linear-gradient(90deg,#1d4ed8,#60a5fa,#a78bfa);transition:width 0.6s;border-radius:6px"></div>
+      </div>
+      <div style="font-size:0.72rem;color:#2d3f5c;text-align:center" id="ai-osint-note">Процес займає 30-120 секунд залежно від швидкості AI</div>
+    </div>
+  </div>
+
+  <!-- Результат -->
+  <div id="ai-osint-result" style="display:none">
+    <!-- Що знайдено на Myrotvorets -->
+    <div id="ai-osint-myrot-block" style="display:none;margin-bottom:16px">
+      <div style="font-size:0.72rem;color:#7f1d1d;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">☠️ Myrotvorets</div>
+      <a id="ai-osint-myrot-link" href="#" target="_blank" rel="noopener"
+        style="display:inline-flex;align-items:center;gap:8px;padding:8px 14px;background:#1a0a0a;border:1px solid #7f1d1d;border-radius:8px;color:#f87171;text-decoration:none;font-size:0.85rem;font-weight:600">
+        ☠️ <span id="ai-osint-myrot-name">—</span> → відкрити профіль
+      </a>
+    </div>
+
+    <!-- Фото -->
+    <div id="ai-osint-photos-block" style="display:none;margin-bottom:16px">
+      <div style="font-size:0.72rem;color:#475569;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">📷 Фото з Myrotvorets</div>
+      <div id="ai-osint-photos-list" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+    </div>
+
+    <!-- AI аналіз — таблиця -->
+    <div id="ai-osint-analysis-block" style="display:none;margin-bottom:16px">
+      <div style="font-size:0.72rem;color:#475569;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">🤖 AI аналіз — витягнуті дані</div>
+      <div id="ai-osint-analysis-table" style="background:#060a14;border:1px solid #1a2540;border-radius:8px;padding:14px;margin-bottom:8px"></div>
+    </div>
+
+    <!-- Що збережено -->
+    <div id="ai-osint-saved-block" style="margin-bottom:16px">
+      <div style="font-size:0.72rem;color:#475569;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">✅ Збережено в картку</div>
+      <div id="ai-osint-saved-text" style="padding:12px 16px;border-radius:8px;font-size:0.85rem;background:#0a1a0a;border:1px solid #14532d;color:#4ade80;white-space:pre-wrap"></div>
+    </div>
+
+    <!-- Кнопка відкрити картку -->
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">
+      <button onclick="refreshAndClose()" style="background:#1d4ed8;border:none;color:#fff;padding:10px 24px;border-radius:8px;font-size:0.85rem;font-weight:700;cursor:pointer">
+        🔄 Оновити картку
+      </button>
+      <button onclick="closeAIOsintModal()" style="background:#1a2540;border:none;color:#94a3b8;padding:10px 24px;border-radius:8px;font-size:0.85rem;font-weight:600;cursor:pointer">
+        Закрити
+      </button>
+    </div>
+  </div>
+
+  <!-- Помилка -->
+  <div id="ai-osint-error" style="display:none;padding:14px 18px;border-radius:8px;background:#1a0a0a;border:1px solid #7f1d1d;color:#fca5a5;font-size:0.85rem;margin-top:10px"></div>
 </div>
 </div>
 
@@ -826,14 +922,23 @@ footer{border-top:1px solid var(--border);padding:12px 20px;
     <!-- Таблиця для режиму extract -->
     <div id="ai-extract-result" style="display:none">
       <div style="background:#060a14;border:1px solid #1a2540;border-radius:8px;padding:14px;margin-bottom:14px" id="ai-extract-table"></div>
-      <button onclick="applyAIToCard()" id="ai-apply-btn"
-        style="background:#1d4ed8;border:none;color:#fff;padding:10px 24px;border-radius:8px;font-size:0.85rem;font-weight:700;cursor:pointer">
-        ✅ Застосувати до картки
-      </button>
     </div>
 
     <!-- Текст для інших режимів -->
-    <div id="ai-text-result" style="display:none;background:#060a14;border:1px solid #1a2540;border-radius:8px;padding:14px;font-size:0.85rem;color:#dde3f0;white-space:pre-wrap;max-height:350px;overflow-y:auto"></div>
+    <div id="ai-text-result" style="display:none;background:#060a14;border:1px solid #1a2540;border-radius:8px;padding:14px;font-size:0.85rem;color:#dde3f0;white-space:pre-wrap;max-height:260px;overflow-y:auto;margin-bottom:14px"></div>
+
+    <!-- Кнопка "Додати до картки" — у ВСІХ режимах AI -->
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px">
+      <button onclick="applyAIToCard()" id="ai-apply-btn"
+        style="background:#1d4ed8;border:none;color:#fff;padding:11px 28px;border-radius:8px;font-size:0.88rem;font-weight:700;cursor:pointer">
+        ➕ Додати до картки
+      </button>
+      <button onclick="$('ai-result').style.display='none';$('ai-input-text').value=''"
+        style="background:#1a2540;border:none;color:#94a3b8;padding:11px 20px;border-radius:8px;font-size:0.85rem;font-weight:600;cursor:pointer">
+        🔄 Новий запит
+      </button>
+    </div>
+    <div id="ai-apply-status" style="font-size:0.8rem;margin-top:8px;min-height:18px"></div>
   </div>
 </div>
 </div>
@@ -2929,6 +3034,380 @@ function showOSINTResults(res) {
     + `Знайдено карток: ${rawCards.length}`;
 }
 
+// ═══════════════════════════════════════════════════════
+//  ☠️ МИРОТВОРЕЦЬ — прямий пошук через DuckDuckGo
+// ═══════════════════════════════════════════════════════
+let _myrotPersonId = null;
+
+async function runMyrotvorets(id) {
+  _myrotPersonId = id;
+  const p = DB.find(x => x.id === id) || {};
+  $('myrot-modal-title').textContent = `☠️ Миротворець: ${p.name || 'Особа'}`;
+  $('modal-myrot').style.display = 'block';
+  $('myrot-loading').style.display  = 'none';
+  $('myrot-result').style.display   = 'none';
+  $('myrot-idle').style.display     = 'block';
+  $('myrot-saved').style.display    = 'none';
+
+  // Перевірка сервера
+  $('myrot-status').textContent = '⏳ Перевірка з\'єднання...';
+  $('myrot-status').style.color = '#93c5fd';
+  try {
+    const r = await fetch(`${INGEST_URL}/`, { signal: AbortSignal.timeout(4000) });
+    if (r.ok) {
+      $('myrot-status').textContent = '✅ Сервер готовий · DuckDuckGo → myrotvorets.center';
+      $('myrot-status').style.color = '#4ade80';
+      // Автозапуск
+      _doMyrotSearch();
+    } else throw new Error('offline');
+  } catch {
+    $('myrot-status').textContent = '❌ Локальний сервер не відповідає. Запусти python main.py';
+    $('myrot-status').style.color = '#f87171';
+  }
+}
+
+async function _doMyrotSearch() {
+  $('myrot-idle').style.display    = 'none';
+  $('myrot-result').style.display  = 'none';
+  $('myrot-loading').style.display = 'block';
+  $('myrot-loading-text').textContent = 'Пошук через DuckDuckGo → myrotvorets.center...';
+
+  // Анімація прогресу
+  let pct = 5;
+  const ticker = setInterval(() => {
+    pct = Math.min(pct + 4, 85);
+    $('myrot-progress').style.width = pct + '%';
+  }, 800);
+
+  try {
+    const r = await fetch(`${INGEST_URL}/myrotvorets/${_myrotPersonId}`, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + (SESSION?.access_token || '') },
+      signal: AbortSignal.timeout(35000)
+    });
+    clearInterval(ticker);
+    $('myrot-progress').style.width = '100%';
+    $('myrot-loading').style.display = 'none';
+
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({ detail: r.statusText }));
+      throw new Error(err.detail || r.statusText);
+    }
+    const res = await r.json();
+    _showMyrotResult(res);
+  } catch (e) {
+    clearInterval(ticker);
+    $('myrot-loading').style.display = 'none';
+    $('myrot-idle').style.display    = 'block';
+    $('myrot-status').style.color    = '#f87171';
+    $('myrot-status').textContent = e.name === 'TimeoutError'
+      ? '⏰ Перевищено час очікування (35 сек). DuckDuckGo або сервер перевантажені.'
+      : '❌ Помилка: ' + e.message;
+  }
+}
+
+function _showMyrotResult(res) {
+  $('myrot-result').style.display = 'block';
+
+  // Вердикт
+  const v = $('myrot-verdict');
+  if (res.found) {
+    v.style.background = '#0a1a0a';
+    v.style.border = '1px solid #14532d';
+    v.style.color = '#4ade80';
+    v.textContent = `✅ ЗНАЙДЕНО на Myrotvorets: ${res.title || res.person_name}`;
+  } else {
+    v.style.background = '#1a0a0a';
+    v.style.border = '1px solid #7f1d1d';
+    v.style.color = '#f87171';
+    v.textContent = '❌ Не знайдено на Myrotvorets';
+  }
+
+  // Профіль
+  const profSection = $('myrot-profile-section');
+  if (res.found && res.url) {
+    profSection.style.display = 'block';
+    $('myrot-profile-link').href = res.url;
+    $('myrot-profile-title').textContent = res.title || res.person_name || '—';
+    $('myrot-profile-url').textContent = res.url;
+  } else {
+    profSection.style.display = 'none';
+  }
+
+  // Фото
+  const photos = res.photos || [];
+  const photSection = $('myrot-photos-section');
+  if (photos.length) {
+    photSection.style.display = 'block';
+    $('myrot-photos-list').innerHTML = photos.map(url =>
+      `<a href="${url}" target="_blank" rel="noopener">
+        <img src="${url}" style="width:90px;height:90px;object-fit:cover;border-radius:6px;border:2px solid #7f1d1d;cursor:pointer"
+          onerror="this.parentElement.style.display='none'"
+          onmouseover="this.style.borderColor='#f87171'" onmouseout="this.style.borderColor='#7f1d1d'">
+      </a>`
+    ).join('');
+  } else {
+    photSection.style.display = 'none';
+  }
+
+  // Телефони
+  const phones = res.phones || [];
+  const phonSection = $('myrot-phones-section');
+  if (phones.length) {
+    phonSection.style.display = 'block';
+    $('myrot-phones-list').innerHTML = phones.map(p =>
+      `<span style="background:#1a0a0a;border:1px solid #7f1d1d;color:#fca5a5;padding:5px 12px;border-radius:20px;font-size:0.82rem;font-family:monospace">${p}</span>`
+    ).join('');
+  } else {
+    phonSection.style.display = 'none';
+  }
+
+  // Соцмережі
+  const social = res.social_media || {};
+  const socSection = $('myrot-social-section');
+  const socKeys = Object.keys(social);
+  if (socKeys.length) {
+    socSection.style.display = 'block';
+    $('myrot-social-list').innerHTML = socKeys.map(k =>
+      `<a href="${social[k]}" target="_blank" rel="noopener"
+        style="background:#1a0a0a;border:1px solid #7f1d1d;color:#fca5a5;padding:5px 14px;border-radius:20px;font-size:0.82rem;text-decoration:none">
+        ${k.toUpperCase()}
+      </a>`
+    ).join('');
+  } else {
+    socSection.style.display = 'none';
+  }
+
+  // Зв'язки
+  const connSection = $('myrot-conn-section');
+  if (res.connections) {
+    connSection.style.display = 'block';
+    $('myrot-conn-text').textContent = res.connections.slice(0, 1000);
+  } else {
+    connSection.style.display = 'none';
+  }
+
+  // Збережено
+  const savedEl = $('myrot-saved');
+  if (res.saved) {
+    savedEl.style.display = 'block';
+    const fields = res.saved_fields || ['source_links'];
+    savedEl.textContent = `✅ Автоматично збережено в картку: ${fields.join(', ')}`;
+    // Оновлюємо локальний DB
+    const idx = DB.findIndex(x => x.id === _myrotPersonId);
+    if (idx >= 0) {
+      if (res.url) DB[idx].source_links = [res.url];
+      if (phones.length) DB[idx].phones = phones;
+    }
+  } else {
+    savedEl.style.display = 'none';
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+//  🤖 AI OSINT — збір · аналіз · автозбереження
+// ═══════════════════════════════════════════════════════
+let _aiOsintPersonId = null;
+
+async function runAIosint(id) {
+  _aiOsintPersonId = id;
+  const p = DB.find(x => x.id === id) || {};
+  $('ai-osint-title').textContent = `🤖 AI OSINT: ${p.name || 'Особа'}`;
+  $('modal-ai-osint').style.display = 'block';
+  $('ai-osint-idle').style.display    = 'block';
+  $('ai-osint-loading').style.display = 'none';
+  $('ai-osint-result').style.display  = 'none';
+  $('ai-osint-error').style.display   = 'none';
+
+  const startBtn = $('ai-osint-start-btn');
+  startBtn.disabled = true;
+  startBtn.textContent = '⏳ Перевірка...';
+  $('ai-osint-status').textContent = '⏳ Перевірка сервера та AI...';
+  $('ai-osint-status').style.color = '#93c5fd';
+
+  try {
+    const [srvR, aiR] = await Promise.allSettled([
+      fetch(`${INGEST_URL}/`, { signal: AbortSignal.timeout(4000) }),
+      fetch(`${INGEST_URL}/ai/status`, { signal: AbortSignal.timeout(5000) })
+    ]);
+
+    let srvOk = srvR.status === 'fulfilled' && srvR.value.ok;
+    let aiModel = '?';
+    let aiOk = false;
+
+    if (aiR.status === 'fulfilled' && aiR.value.ok) {
+      const d = await aiR.value.json();
+      aiOk = d.available;
+      aiModel = d.active_model || d.models?.[0] || 'llama3';
+    }
+
+    if (!srvOk) {
+      $('ai-osint-status').style.color = '#f87171';
+      $('ai-osint-status').textContent = '❌ Сервер не відповідає. Запусти python main.py';
+      return;
+    }
+    if (!aiOk) {
+      $('ai-osint-status').style.color = '#fde047';
+      $('ai-osint-status').textContent = '⚠️ Ollama не запущена. Виконай: ollama run llama3.2:1b';
+      return;
+    }
+
+    const isFast = aiModel.includes('1b') || aiModel.includes('3b');
+    $('ai-osint-status').style.color = isFast ? '#4ade80' : '#fde047';
+    $('ai-osint-status').textContent = isFast
+      ? `✅ AI готова (${aiModel}) · Myrotvorets через DDG → AI аналіз → автозбереження`
+      : `⚡ ${aiModel} · Процес може тривати 2-4 хв. Рекомендую: ollama pull llama3.2:1b`;
+
+    startBtn.disabled = false;
+    startBtn.textContent = `🚀 Запустити AI OSINT для "${(p.name||'').split(' ').slice(0,2).join(' ')}"`;
+  } catch {
+    $('ai-osint-status').style.color = '#f87171';
+    $('ai-osint-status').textContent = '❌ Сервер не відповідає';
+  }
+}
+
+async function startAIOsint() {
+  if (!_aiOsintPersonId) return;
+  $('ai-osint-idle').style.display    = 'none';
+  $('ai-osint-result').style.display  = 'none';
+  $('ai-osint-error').style.display   = 'none';
+  $('ai-osint-loading').style.display = 'block';
+
+  // Анімований прогрес
+  const steps = [
+    { pct: 10, step: '☠️ Пошук на Myrotvorets...', sub: 'DuckDuckGo site:myrotvorets.center' },
+    { pct: 35, step: '🔗 Відкриваємо профіль...', sub: 'Завантаження даних' },
+    { pct: 55, step: '🤖 AI аналізує дані...', sub: 'Llama3 систематизує інформацію' },
+    { pct: 75, step: '🤖 AI завершує аналіз...', sub: 'Витягуємо структуровані дані' },
+    { pct: 90, step: '💾 Зберігаємо в картку...', sub: 'Запис до бази даних' },
+  ];
+
+  let stepIdx = 0;
+  const advanceStep = () => {
+    if (stepIdx < steps.length) {
+      const s = steps[stepIdx++];
+      $('ai-osint-step').textContent    = s.step;
+      $('ai-osint-substep').textContent = s.sub;
+      $('ai-osint-bar').style.width     = s.pct + '%';
+    }
+  };
+  advanceStep();
+  const ticker = setInterval(advanceStep, 18000);
+
+  try {
+    const r = await fetch(`${INGEST_URL}/ai_osint/${_aiOsintPersonId}`, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + (SESSION?.access_token || '') },
+      signal: AbortSignal.timeout(240000) // 4 хвилини
+    });
+    clearInterval(ticker);
+    $('ai-osint-bar').style.width = '100%';
+
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({ detail: r.statusText }));
+      throw new Error(err.detail || r.statusText);
+    }
+    const res = await r.json();
+    $('ai-osint-loading').style.display = 'none';
+    _showAIOsintResult(res);
+  } catch (e) {
+    clearInterval(ticker);
+    $('ai-osint-loading').style.display = 'none';
+    $('ai-osint-idle').style.display    = 'block';
+    const errEl = $('ai-osint-error');
+    errEl.style.display = 'block';
+    errEl.textContent = e.name === 'TimeoutError'
+      ? '⏰ Перевищено 4 хвилини. AI надто повільна. Спробуй: ollama pull llama3.2:1b'
+      : '❌ ' + e.message;
+    $('ai-osint-start-btn').disabled = false;
+    $('ai-osint-start-btn').textContent = '🔄 Спробувати ще раз';
+  }
+}
+
+function _showAIOsintResult(res) {
+  $('ai-osint-result').style.display = 'block';
+
+  // Myrotvorets блок
+  const myrotBlock = $('ai-osint-myrot-block');
+  if (res.myrotvorets_found && res.myrotvorets_url) {
+    myrotBlock.style.display = 'block';
+    $('ai-osint-myrot-link').href = res.myrotvorets_url;
+    $('ai-osint-myrot-name').textContent = res.myrotvorets_title || res.person_name || '—';
+  } else {
+    myrotBlock.style.display = 'none';
+  }
+
+  // Фото
+  const photos = res.photos || [];
+  const photBlock = $('ai-osint-photos-block');
+  if (photos.length) {
+    photBlock.style.display = 'block';
+    $('ai-osint-photos-list').innerHTML = photos.map(url =>
+      `<a href="${url}" target="_blank" rel="noopener">
+        <img src="${url}" style="width:80px;height:80px;object-fit:cover;border-radius:6px;border:2px solid #1a2540;cursor:pointer"
+          onerror="this.parentElement.style.display='none'"
+          onmouseover="this.style.borderColor='#3b82f6'" onmouseout="this.style.borderColor='#1a2540'">
+      </a>`
+    ).join('');
+  } else {
+    photBlock.style.display = 'none';
+  }
+
+  // AI аналіз — таблиця
+  const aiBlock = $('ai-osint-analysis-block');
+  const aiData  = res.ai_result || {};
+  if (typeof aiData === 'object' && Object.keys(aiData).length > 0) {
+    aiBlock.style.display = 'block';
+    const fieldLabels = {
+      name:'ПІБ', surname:'Прізвище', name_field:"Ім'я", patronymic:'По-батькові',
+      dob:'Дата народж.', rank:'Звання', position:'Посада', unit:'Підрозділ',
+      region:'Регіон', phones:'Телефони', notes:'Нотатки'
+    };
+    let html = '<table style="width:100%;border-collapse:collapse">';
+    for (const [k, v] of Object.entries(aiData)) {
+      if (!v || v === 'null') continue;
+      const label = fieldLabels[k] || k;
+      const display = Array.isArray(v) ? v.join(', ') : String(v);
+      html += `<tr>
+        <td style="padding:5px 10px;font-size:0.72rem;color:#475569;width:35%;border-bottom:1px solid #1a2540">${label}</td>
+        <td style="padding:5px 10px;font-size:0.85rem;color:#dde3f0;border-bottom:1px solid #1a2540;font-weight:600">${esc(display)}</td>
+      </tr>`;
+    }
+    html += '</table>';
+    $('ai-osint-analysis-table').innerHTML = html;
+  } else {
+    aiBlock.style.display = 'none';
+  }
+
+  // Що збережено
+  const savedFields = res.saved_fields || [];
+  const savedEl = $('ai-osint-saved-text');
+  if (savedFields.length) {
+    savedEl.textContent = `Збережено поля: ${savedFields.join(', ')}\n\nCartka оновлена автоматично.`;
+  } else if (res.myrotvorets_found) {
+    savedEl.textContent = 'Профіль знайдено, але нових даних для збереження немає.';
+  } else {
+    savedEl.textContent = 'Профіль не знайдено на Myrotvorets. Нових даних немає.';
+    savedEl.style.color = '#fde047';
+  }
+
+  // Оновлюємо локальний DB
+  const idx = DB.findIndex(x => x.id === _aiOsintPersonId);
+  if (idx >= 0 && res.updated_person) {
+    Object.assign(DB[idx], res.updated_person);
+  }
+}
+
+function closeAIOsintModal() {
+  $('modal-ai-osint').style.display = 'none';
+}
+
+function refreshAndClose() {
+  $('modal-ai-osint').style.display = 'none';
+  if (typeof openDetail === 'function' && _aiOsintPersonId) openDetail(_aiOsintPersonId);
+  if (typeof loadPersons === 'function') loadPersons();
+}
+
 // ─── EXPORT CSV ──────────────────────────────────────
 function exportCSV() {
   const cols = ['name','dob','rank','position','unit','unit_num','region','status','passport','notes'];
@@ -3167,49 +3646,107 @@ function showAIResult(data) {
   }
 }
 
-async function applyAIToCard() {
-  if (!_aiLastResult || !_aiPersonId) return;
-  const d = _aiLastResult.result;
-  if (!d || typeof d !== 'object') { alert('Немає даних для застосування'); return; }
-
-  // Збираємо поля для оновлення
+// ─── Витягти поля зі будь-якого AI результату ────────
+function _extractUpdatesFromAI(data) {
   const updates = {};
+  let d = null;
 
-  // ПІБ: AI може повернути окремо або разом
-  // Якщо surname/name/patronymic — об'єднуємо в "name" (Supabase зберігає як повне ПІБ)
-  const nameParts = [d.surname, d.name, d.patronymic].filter(p => p && p !== 'null' && p.length > 1);
+  // Режим extract — повертає result як об'єкт
+  if (data && data.result && typeof data.result === 'object') {
+    d = data.result;
+  }
+  // Режим analyze/osint_summary — повертає текст
+  // Намагаємось витягти JSON якщо є, або парсимо текст
+  else if (data && (data.result || data.raw)) {
+    const text = typeof data.result === 'string' ? data.result : (data.raw || '');
+    // Шукаємо JSON блок в тексті
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      try { d = JSON.parse(jsonMatch[0]); } catch {}
+    }
+    // Якщо JSON не знайшли — парсимо текст вручну
+    if (!d) {
+      // Шукаємо паттерни типу "Ім'я: Іван" "Телефон: +380..."
+      const lines = text.split('\n');
+      const parsedFromText = {};
+      for (const line of lines) {
+        const m = line.match(/^[*#\-\s]*(прізвище|surname)[:\s]+(.+)/i);
+        if (m) parsedFromText.surname = m[2].trim().replace(/[*#]/g,'');
+        const m2 = line.match(/^[*#\-\s]*(ім.я|name)[:\s]+(.+)/i);
+        if (m2) parsedFromText.name = m2[2].trim().replace(/[*#]/g,'');
+        const m3 = line.match(/^[*#\-\s]*(по-батькові|patronymic)[:\s]+(.+)/i);
+        if (m3) parsedFromText.patronymic = m3[2].trim().replace(/[*#]/g,'');
+        const m4 = line.match(/^[*#\-\s]*(дата народж|дата рожд|dob)[:\s]+(.+)/i);
+        if (m4) parsedFromText.dob = m4[2].trim().replace(/[*#]/g,'');
+        const m5 = line.match(/^[*#\-\s]*(звання|rank)[:\s]+(.+)/i);
+        if (m5) parsedFromText.rank = m5[2].trim().replace(/[*#]/g,'');
+        const m6 = line.match(/^[*#\-\s]*(посада|position)[:\s]+(.+)/i);
+        if (m6) parsedFromText.position = m6[2].trim().replace(/[*#]/g,'');
+        const m7 = line.match(/^[*#\-\s]*(підрозділ|unit)[:\s]+(.+)/i);
+        if (m7) parsedFromText.unit = m7[2].trim().replace(/[*#]/g,'');
+        const m8 = line.match(/(\+?\d[\d\s\-\(\)]{8,15}\d)/g);
+        if (m8) parsedFromText.phones = (parsedFromText.phones || []).concat(m8);
+      }
+      if (Object.keys(parsedFromText).length > 0) d = parsedFromText;
+    }
+  }
+
+  if (!d) return updates;
+
+  const isValid = v => v && typeof v === 'string' && v !== 'null' && v !== 'null.' && v.length > 1
+    && !v.includes('телефон') && !v.includes('phone') && v !== 'N/A' && v !== '-';
+
+  // ПІБ
+  const nameParts = [d.surname, d.name, d.patronymic].filter(p => isValid(p) && !p.includes(' '));
   if (nameParts.length >= 2) {
     updates.name = nameParts.join(' ');
-  } else if (d.name && d.name.includes(' ')) {
-    // AI повернув повне ім'я в полі name
+  } else if (d.name && typeof d.name === 'string' && d.name.split(' ').length >= 2 && isValid(d.name)) {
     updates.name = d.name;
   }
 
-  // Інші поля
-  const isValid = v => v && v !== 'null' && v !== 'null.' && v.length > 1;
   if (isValid(d.dob))      updates.dob      = d.dob;
   if (isValid(d.rank))     updates.rank     = d.rank;
   if (isValid(d.position)) updates.position = d.position;
   if (isValid(d.unit))     updates.unit     = d.unit;
   if (isValid(d.region))   updates.region   = d.region;
-  if (isValid(d.notes))    updates.notes    = d.notes;
   if (isValid(d.passport)) updates.passport = d.passport;
+  if (isValid(d.notes))    updates.notes    = d.notes;
 
-  // Телефони — фільтруємо "телефон1" та інші шаблонні значення
-  if (Array.isArray(d.phones)) {
-    const realPhones = d.phones.filter(p =>
-      p && /[\d\+]/.test(p) && !p.includes('телефон') && !p.includes('phone') && p.length >= 7
-    );
-    if (realPhones.length > 0) updates.phones = realPhones;
+  // Телефони
+  const rawPhones = Array.isArray(d.phones) ? d.phones : [];
+  const realPhones = rawPhones.filter(p =>
+    p && typeof p === 'string' && /[\d\+]/.test(p) &&
+    !p.includes('телефон') && !p.includes('phone') && p.replace(/\D/g,'').length >= 7
+  );
+  if (realPhones.length > 0) updates.phones = realPhones;
+
+  return updates;
+}
+
+async function applyAIToCard() {
+  if (!_aiLastResult || !_aiPersonId) {
+    $('ai-apply-status').style.color = '#f87171';
+    $('ai-apply-status').textContent = '⚠️ Немає результату AI. Спочатку запусти аналіз.';
+    return;
   }
 
-  if (Object.keys(updates).length === 0) { alert('AI не знайшов корисних даних. Перевір текст.'); return; }
+  const updates = _extractUpdatesFromAI(_aiLastResult);
 
-  // Показуємо preview що буде записано
+  if (Object.keys(updates).length === 0) {
+    $('ai-apply-status').style.color = '#fde047';
+    $('ai-apply-status').textContent = '⚠️ AI не знайшов структурованих даних. Спробуй режим "Автозаповнення".';
+    return;
+  }
+
+  // Preview
   const preview = Object.entries(updates).map(([k,v]) =>
     `${k}: ${Array.isArray(v) ? v.join(', ') : v}`
   ).join('\n');
-  if (!confirm(`AI знайшов:\n${preview}\n\nЗастосувати до картки?`)) return;
+  if (!confirm(`AI знайшов:\n\n${preview}\n\nДодати до картки?`)) return;
+
+  $('ai-apply-btn').disabled = true;
+  $('ai-apply-btn').textContent = '⏳ Збереження...';
+  $('ai-apply-status').textContent = '';
 
   try {
     const resp = await fetch(`${SB_URL}/rest/v1/persons?id=eq.${_aiPersonId}`, {
@@ -3223,12 +3760,21 @@ async function applyAIToCard() {
       body: JSON.stringify(updates)
     });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    alert('✅ Картку оновлено!');
-    closeAIModal();
-    if (typeof openDetail === 'function') openDetail(_aiPersonId);
-    if (typeof loadPersons === 'function') loadPersons();
+    $('ai-apply-status').style.color = '#4ade80';
+    $('ai-apply-status').textContent = `✅ Збережено: ${Object.keys(updates).join(', ')}`;
+    $('ai-apply-btn').textContent = '✅ Збережено!';
+    setTimeout(() => {
+      closeAIModal();
+      if (typeof openDetail === 'function') openDetail(_aiPersonId);
+      if (typeof loadPersons === 'function') loadPersons();
+    }, 1200);
   } catch (e) {
-    alert('Помилка збереження: ' + e.message);
+    $('ai-apply-status').style.color = '#f87171';
+    $('ai-apply-status').textContent = '❌ Помилка: ' + e.message;
+  } finally {
+    $('ai-apply-btn').disabled = false;
+    if ($('ai-apply-btn').textContent !== '✅ Збережено!')
+      $('ai-apply-btn').textContent = '➕ Додати до картки';
   }
 }
 </script>
