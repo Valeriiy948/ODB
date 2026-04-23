@@ -406,6 +406,7 @@ footer{border-top:1px solid var(--border);padding:12px 20px;
     <button class="top-btn admin-only" onclick="document.getElementById('ingest-file').click()" title="Завантажити .xlsx або .docx через локальний сервер">📂 Комбайн</button>
     <input type="file" id="ingest-file" accept=".xlsx,.xls,.docx" style="display:none" onchange="openIngestModal(event)">
     <button class="top-btn admin-only" onclick="openOCRModal()" title="OCR — розпізнавання тексту з фото документа">📷 OCR</button>
+    <button class="top-btn admin-only" onclick="openBatchMyrot()" title="Пошук усіх осіб бази на Myrotvorets" style="background:rgba(127,29,29,0.25);border-color:#7f1d1d;color:#fca5a5">☠️ База→Миротворець</button>
     <button class="top-btn" onclick="exportCSV()">⬇ Експорт CSV</button>
     <button class="top-btn danger" onclick="doLogout()">🚪 Вийти</button>
   </div>
@@ -1753,10 +1754,45 @@ function openDetail(id, ev) {
     });
   }
 
+  // ── Миротворець секція ─────────────────────────────────────────
+  const myrotLinks = (p.source_links || []).filter(u => u && u.includes('myrotvorets'));
+  const osintPhotos = p.osint_photos || [];
+  if (myrotLinks.length || osintPhotos.length) {
+    html += `<div class="dp-section" style="color:#f87171;border-color:#7f1d1d">☠️ MYROTVORETS</div>`;
+    myrotLinks.forEach(url => {
+      html += `<div class="dp-row">
+        <a href="${esc(url)}" target="_blank" rel="noopener"
+          style="display:inline-flex;align-items:center;gap:8px;padding:8px 14px;
+                 background:#1a0a0a;border:1px solid #7f1d1d;border-radius:8px;
+                 color:#f87171;text-decoration:none;font-size:0.83rem;font-weight:600;
+                 transition:background 0.2s;width:100%"
+          onmouseover="this.style.background='#2d0f0f'" onmouseout="this.style.background='#1a0a0a'">
+          ☠️ Відкрити профіль на Myrotvorets →
+        </a>
+      </div>`;
+    });
+    if (osintPhotos.length) {
+      html += `<div class="dp-row" style="flex-wrap:wrap;gap:6px">`;
+      osintPhotos.slice(0,6).forEach(url => {
+        html += `<a href="${esc(url)}" target="_blank" rel="noopener">
+          <img src="${esc(url)}" style="width:72px;height:72px;object-fit:cover;border-radius:6px;border:2px solid #7f1d1d"
+            onerror="this.parentElement.style.display='none'"
+            onmouseover="this.style.borderColor='#f87171'" onmouseout="this.style.borderColor='#7f1d1d'">
+        </a>`;
+      });
+      html += `</div>`;
+    }
+  }
+
   // Notes
   if (p.notes) {
     html += `<div class="dp-section">📝 Нотатки</div>`;
-    html += `<div class="dp-notes">${esc(p.notes)}</div>`;
+    // Рендеримо нотатки з активними посиланнями
+    const notesHtml = esc(p.notes).replace(
+      /(https?:\/\/[^\s<]+)/g,
+      `<a href="$1" target="_blank" rel="noopener" style="color:#60a5fa;word-break:break-all">$1</a>`
+    );
+    html += `<div class="dp-notes" style="white-space:pre-wrap">${notesHtml}</div>`;
   }
   if (p.sources) {
     html += `<div class="dp-row" style="margin-top:8px"><span class="dp-lbl">Джерела:</span><span class="dp-val">${esc(p.sources)}</span></div>`;
@@ -3777,6 +3813,143 @@ async function applyAIToCard() {
       $('ai-apply-btn').textContent = '➕ Додати до картки';
   }
 }
+
+// ═══════════════════════════════════════════════════════
+//  ☠️ BATCH MYROTVORETS — пакетний пошук всієї бази
+// ═══════════════════════════════════════════════════════
+let _batchRunning = false;
+let _batchStop    = false;
+
+async function openBatchMyrot() {
+  $('modal-batch-myrot').style.display = 'block';
+  $('batch-status').textContent = '';
+  $('batch-log').innerHTML = '';
+  $('batch-progress-fill').style.width = '0%';
+  $('batch-stats').textContent = '';
+  $('batch-start-btn').disabled = false;
+  $('batch-start-btn').textContent = '🚀 Почати пошук';
+  $('batch-stop-btn').style.display = 'none';
+
+  // Підрахунок: скільки вже є з Миротворця і скільки без
+  const total = DB.length;
+  const withMyrot = DB.filter(p => (p.source_links||[]).some(u => u && u.includes('myrotvorets'))).length;
+  $('batch-count-info').textContent =
+    `Всього в базі: ${total} · Вже є посилання: ${withMyrot} · Потребують перевірки: ${total - withMyrot}`;
+}
+
+async function startBatchMyrot() {
+  if (_batchRunning) return;
+  _batchRunning = true;
+  _batchStop    = false;
+
+  $('batch-start-btn').disabled = true;
+  $('batch-stop-btn').style.display = 'inline-block';
+  $('batch-log').innerHTML = '';
+
+  // Беремо тільки осіб без myrotvorets посилань
+  const toSearch = DB.filter(p => !(p.source_links||[]).some(u => u && u.includes('myrotvorets')));
+  const total = toSearch.length;
+  let found = 0, notFound = 0, errors = 0;
+
+  $('batch-status').style.color = '#60a5fa';
+  $('batch-status').textContent = `Пошук ${total} осіб...`;
+
+  for (let i = 0; i < toSearch.length; i++) {
+    if (_batchStop) break;
+    const p = toSearch[i];
+    const pct = Math.round((i / total) * 100);
+    $('batch-progress-fill').style.width = pct + '%';
+    $('batch-stats').textContent = `${i}/${total} · Знайдено: ${found} · Не знайдено: ${notFound}`;
+
+    const logEl = document.createElement('div');
+    logEl.style.cssText = 'padding:3px 0;font-size:0.78rem;border-bottom:1px solid #0d1220;color:#94a3b8';
+    logEl.textContent = `⏳ ${p.name}...`;
+    $('batch-log').prepend(logEl);
+
+    try {
+      const r = await fetch(`${INGEST_URL}/myrotvorets/${p.id}`, {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + (SESSION?.access_token || '') },
+        signal: AbortSignal.timeout(40000)
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const res = await r.json();
+
+      if (res.found) {
+        found++;
+        logEl.style.color = '#f87171';
+        logEl.innerHTML = `☠️ <strong style="color:#fca5a5">${esc(p.name)}</strong> — <a href="${res.url}" target="_blank" style="color:#f87171">${res.url||''}</a>`;
+        // Оновлюємо локальний DB
+        const idx = DB.findIndex(x => x.id === p.id);
+        if (idx >= 0) {
+          DB[idx].source_links = [res.url];
+          if (res.phones?.length) DB[idx].phones = res.phones;
+          if (res.dob_found) DB[idx].dob = res.dob_found;
+        }
+      } else {
+        notFound++;
+        logEl.style.color = '#2d3f5c';
+        logEl.textContent = `— ${p.name}`;
+      }
+    } catch (e) {
+      errors++;
+      logEl.style.color = '#fde047';
+      logEl.textContent = `⚠️ ${p.name}: ${e.message}`;
+    }
+
+    // Пауза між запитами щоб не спамити DuckDuckGo
+    await new Promise(res => setTimeout(res, 2000));
+  }
+
+  _batchRunning = false;
+  $('batch-progress-fill').style.width = '100%';
+  $('batch-stats').textContent = `Завершено: ${toSearch.length} · Знайдено: ${found} · Не знайдено: ${notFound} · Помилок: ${errors}`;
+  $('batch-status').style.color = '#4ade80';
+  $('batch-status').textContent = _batchStop ? '⏹ Зупинено' : `✅ Готово! Знайдено на Myrotvorets: ${found} з ${toSearch.length}`;
+  $('batch-start-btn').disabled = false;
+  $('batch-start-btn').textContent = '🔄 Запустити ще раз';
+  $('batch-stop-btn').style.display = 'none';
+  if (typeof loadPersons === 'function') loadPersons();
+}
 </script>
+
+<!-- ══ BATCH MYROTVORETS MODAL ════════════════════════ -->
+<div id="modal-batch-myrot" style="display:none;position:fixed;inset:0;z-index:1200;background:rgba(0,0,0,0.92);overflow-y:auto">
+<div style="max-width:780px;margin:40px auto;padding:28px;background:#0d1220;border:1px solid #7f1d1d;border-radius:14px;box-shadow:0 0 60px rgba(239,68,68,0.15)">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+    <span style="font-size:1.05rem;font-weight:700;color:#f87171">☠️ База → Myrotvorets — пакетний пошук</span>
+    <button onclick="$('modal-batch-myrot').style.display='none';_batchStop=true" style="background:none;border:none;color:#94a3b8;font-size:1.4rem;cursor:pointer">✕</button>
+  </div>
+
+  <div id="batch-count-info" style="padding:10px 14px;background:#1a0a0a;border:1px solid #3f0e0e;border-radius:8px;font-size:0.82rem;color:#fca5a5;margin-bottom:14px"></div>
+
+  <div style="font-size:0.8rem;color:#475569;margin-bottom:14px">
+    Система автоматично шукає кожну особу на Myrotvorets через DuckDuckGo.<br>
+    При знаходженні — зберігає посилання, телефони, дату народження в картку.<br>
+    Пауза між запитами: 2 сек (захист від блокування DuckDuckGo).
+  </div>
+
+  <div style="display:flex;gap:10px;margin-bottom:16px">
+    <button id="batch-start-btn" onclick="startBatchMyrot()"
+      style="background:#7f1d1d;border:none;color:#fca5a5;padding:11px 28px;border-radius:8px;font-size:0.9rem;font-weight:700;cursor:pointer">
+      🚀 Почати пошук
+    </button>
+    <button id="batch-stop-btn" onclick="_batchStop=true;this.textContent='⏹ Зупиняємо...';this.disabled=true"
+      style="display:none;background:#1a2540;border:none;color:#94a3b8;padding:11px 20px;border-radius:8px;font-size:0.85rem;font-weight:600;cursor:pointer">
+      ⏹ Зупинити
+    </button>
+  </div>
+
+  <div id="batch-status" style="font-size:0.85rem;font-weight:600;margin-bottom:8px;min-height:20px"></div>
+
+  <div style="background:#060a14;border-radius:6px;height:6px;overflow:hidden;margin-bottom:8px">
+    <div id="batch-progress-fill" style="height:100%;width:0%;background:linear-gradient(90deg,#7f1d1d,#f87171);transition:width 0.4s;border-radius:6px"></div>
+  </div>
+
+  <div id="batch-stats" style="font-size:0.75rem;color:#475569;margin-bottom:12px"></div>
+
+  <div id="batch-log" style="background:#060a14;border:1px solid #1a2540;border-radius:8px;padding:10px;max-height:350px;overflow-y:auto;font-family:monospace"></div>
+</div>
+</div>
 </body>
 </html>
