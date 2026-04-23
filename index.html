@@ -486,6 +486,7 @@ footer{border-top:1px solid var(--border);padding:12px 20px;
       <button class="top-btn" onclick="showConnections(detailId)" title="Знайти зв'язки в базі">🔗 Зв'язки</button>
       <button class="top-btn" id="myrot-btn" onclick="runMyrotvorets(detailId)" title="Швидкий пошук на Myrotvorets (до 20 сек)">☠️ Миротворець</button>
       <button class="top-btn" id="ai-osint-btn" onclick="runAIosint(detailId)" title="AI OSINT — збирає, аналізує, зберігає в картку">🤖 AI OSINT</button>
+      <button class="top-btn" onclick="openOsintKit(detailId)" title="Пошук на OsintKit.net" style="background:rgba(6,95,70,0.2);border-color:#065f46;color:#34d399">🔍 OsintKit</button>
       <button class="top-btn admin-only" onclick="editFromDetail()">✏️ Ред.</button>
       <button class="top-btn danger admin-only" onclick="deleteFromDetail()">🗑</button>
     </div>
@@ -3815,6 +3816,87 @@ async function applyAIToCard() {
 }
 
 // ═══════════════════════════════════════════════════════
+//  🔍 OSINTKIT — автопошук на osintkit.net
+// ═══════════════════════════════════════════════════════
+function openOsintKit(id) {
+  const p = DB.find(x => x.id === id) || {};
+  const name = (p.name || '').trim();
+  const dob  = (p.dob  || '').trim(); // DD.MM.YYYY
+
+  // Парсимо дату
+  let day = '', month = '', year = '';
+  if (dob) {
+    const parts = dob.split(/[.\-\/]/);
+    if (parts.length === 3) { [day, month, year] = parts; }
+  }
+
+  // Заповнюємо UI
+  $('osintkit-name-display').textContent  = name || '—';
+  $('osintkit-dob-display').textContent   = dob  || '—';
+  $('osintkit-name-input').value          = name;
+  $('osintkit-year-input').value          = year;
+  $('osintkit-month-input').value         = month;
+  $('osintkit-day-input').value           = day;
+  $('osintkit-copy-status').textContent   = '';
+  $('modal-osintkit').style.display       = 'block';
+
+  // Будуємо URL з параметрами (якщо OsintKit їх підтримує)
+  const params = new URLSearchParams();
+  if (name)  params.set('query', name);
+  if (year)  params.set('year',  year);
+  if (month) params.set('month', month);
+  if (day)   params.set('day',   day);
+  $('osintkit-open-btn').dataset.url = `https://osintkit.net/search?${params.toString()}`;
+  $('osintkit-open-btn').dataset.fallback = 'https://osintkit.net/search';
+  const hint = $('osintkit-hint-name');
+  if (hint) hint.textContent = name;
+}
+
+function osintKitOpen() {
+  const btn = $('osintkit-open-btn');
+  // Копіюємо дані в буфер (для ручного вставлення)
+  const name  = $('osintkit-name-input').value;
+  const year  = $('osintkit-year-input').value;
+  const month = $('osintkit-month-input').value;
+  const day   = $('osintkit-day-input').value;
+
+  // Спочатку відкриваємо з URL params — якщо не спрацює, юзер вставить вручну
+  const win = window.open(btn.dataset.url || btn.dataset.fallback, '_blank', 'width=1200,height=800');
+
+  // Через 1.5 сек пробуємо заповнити форму через JS (якщо CORS дозволяє)
+  setTimeout(() => {
+    try {
+      if (win && !win.closed) {
+        win.document.querySelectorAll('input[type="text"], input[type="search"]').forEach(inp => {
+          if (inp.placeholder && (inp.placeholder.toLowerCase().includes('ім') || inp.placeholder.toLowerCase().includes('пошук') || inp.placeholder.toLowerCase().includes('текст'))) {
+            inp.value = name;
+            inp.dispatchEvent(new Event('input', { bubbles: true }));
+            inp.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+        });
+      }
+    } catch(e) {
+      // Cross-origin — нормально, форма вже відкрита з URL params
+    }
+  }, 1500);
+
+  $('osintkit-copy-status').style.color = '#4ade80';
+  $('osintkit-copy-status').textContent = '✅ OsintKit відкрито в новій вкладці';
+}
+
+function copyOsintKitData() {
+  const name  = $('osintkit-name-input').value;
+  const day   = $('osintkit-day-input').value;
+  const month = $('osintkit-month-input').value;
+  const year  = $('osintkit-year-input').value;
+  const text  = `${name}\n${year}-${month}-${day}`;
+  navigator.clipboard.writeText(text).then(() => {
+    $('osintkit-copy-status').style.color = '#4ade80';
+    $('osintkit-copy-status').textContent = '📋 Скопійовано! Вставте у форму OsintKit';
+  });
+}
+
+// ═══════════════════════════════════════════════════════
 //  ☠️ BATCH MYROTVORETS — пакетний пошук всієї бази
 // ═══════════════════════════════════════════════════════
 let _batchRunning = false;
@@ -3912,6 +3994,65 @@ async function startBatchMyrot() {
   if (typeof loadPersons === 'function') loadPersons();
 }
 </script>
+
+<!-- ══ OSINTKIT MODAL ════════════════════════════════ -->
+<div id="modal-osintkit" style="display:none;position:fixed;inset:0;z-index:1200;background:rgba(0,0,0,0.88);overflow-y:auto">
+<div style="max-width:620px;margin:60px auto;padding:28px;background:#0d1220;border:1px solid #065f46;border-radius:14px;box-shadow:0 0 60px rgba(52,211,153,0.12)">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+    <span style="font-size:1.05rem;font-weight:700;color:#34d399">🔍 OsintKit — пошук особи</span>
+    <button onclick="$('modal-osintkit').style.display='none'" style="background:none;border:none;color:#94a3b8;font-size:1.4rem;cursor:pointer">✕</button>
+  </div>
+
+  <!-- Дані для пошуку -->
+  <div style="background:#060a14;border:1px solid #064e3b;border-radius:10px;padding:16px;margin-bottom:18px">
+    <div style="font-size:0.7rem;color:#065f46;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Дані для пошуку</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:0.72rem;color:#475569;width:80px">ПІБ:</span>
+        <strong id="osintkit-name-display" style="color:#34d399;font-size:0.95rem"></strong>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:0.72rem;color:#475569;width:80px">Дата нар.:</span>
+        <strong id="osintkit-dob-display" style="color:#34d399;font-size:0.95rem"></strong>
+      </div>
+    </div>
+    <!-- Приховані поля -->
+    <input type="hidden" id="osintkit-name-input">
+    <input type="hidden" id="osintkit-year-input">
+    <input type="hidden" id="osintkit-month-input">
+    <input type="hidden" id="osintkit-day-input">
+  </div>
+
+  <!-- Пояснення -->
+  <div style="font-size:0.8rem;color:#475569;margin-bottom:16px;line-height:1.6">
+    OsintKit відкриється в новій вкладці з параметрами пошуку.<br>
+    Якщо форма не заповнилась автоматично — натисни <strong style="color:#34d399">📋 Скопіювати</strong> і встав дані вручну.
+  </div>
+
+  <!-- Кнопки -->
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+    <button id="osintkit-open-btn" onclick="osintKitOpen()"
+      style="background:#065f46;border:none;color:#34d399;padding:12px 28px;border-radius:8px;font-size:0.9rem;font-weight:700;cursor:pointer;flex:1">
+      🔍 Відкрити OsintKit та шукати
+    </button>
+    <button onclick="copyOsintKitData()"
+      style="background:#1a2540;border:1px solid #1e3a8a;color:#93c5fd;padding:12px 18px;border-radius:8px;font-size:0.85rem;font-weight:600;cursor:pointer">
+      📋 Скопіювати дані
+    </button>
+  </div>
+
+  <div id="osintkit-copy-status" style="font-size:0.82rem;min-height:20px;text-align:center"></div>
+
+  <!-- Підказка по полях форми OsintKit -->
+  <div style="margin-top:16px;padding:12px;background:#060a14;border:1px solid #1a2540;border-radius:8px;font-size:0.75rem;color:#475569">
+    <div style="color:#94a3b8;font-weight:600;margin-bottom:6px">Як заповнити форму OsintKit вручну:</div>
+    <div>1. Поле "Шукати за" → обери <strong style="color:#dde3f0">Повне ім'я</strong></div>
+    <div>2. Введи ПІБ: <strong style="color:#34d399" id="osintkit-hint-name"></strong></div>
+    <div>3. Додай умову "Дата народження" → вкажи рік/місяць/день</div>
+    <div>4. Натисни <strong style="color:#dde3f0">ПОШУК</strong></div>
+  </div>
+</div>
+</div>
 
 <!-- ══ BATCH MYROTVORETS MODAL ════════════════════════ -->
 <div id="modal-batch-myrot" style="display:none;position:fixed;inset:0;z-index:1200;background:rgba(0,0,0,0.92);overflow-y:auto">
