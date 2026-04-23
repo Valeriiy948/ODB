@@ -2059,14 +2059,20 @@ async function savePerson() {
     // Delete removed existing photos
     for (const path of deletedPhotoPaths) {
       try {
-        // Remove from person_photos table
-        await sbFetch(`/rest/v1/person_photos?storage_path=eq.${encodeURIComponent(path)}`, { method: 'DELETE' });
-        // Remove from storage
-        await fetch(`${SB_URL}/storage/v1/object/odb-media/${path}`, {
+        // Remove from person_photos table (не кодуємо шлях — PostgREST не розуміє %2F)
+        await sbFetch(`/rest/v1/person_photos?storage_path=eq.${path}`, { method: 'DELETE' });
+        // Remove from storage (Supabase bulk delete endpoint)
+        await fetch(`${SB_URL}/storage/v1/object/odb-media`, {
           method: 'DELETE',
-          headers: { 'apikey': SB_KEY, 'Authorization': `Bearer ${SESSION.access_token}` }
+          headers: {
+            'apikey': SB_KEY,
+            'Authorization': `Bearer ${SESSION.access_token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ prefixes: [path] })
         });
-      } catch(e) { console.warn('Photo delete failed:', e); }
+        console.log('[Photo] Видалено:', path);
+      } catch(e) { console.warn('[Photo] Помилка видалення:', path, e); }
     }
     deletedPhotoPaths = [];
 
