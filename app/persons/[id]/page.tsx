@@ -190,6 +190,45 @@ export default function PersonDetailPage() {
   const [faceResults, setFaceResults] = useState<any[]>([])
   const [faceError, setFaceError] = useState('')
 
+  // Кадастр
+  const [kadasterLoading, setKadasterLoading] = useState(false)
+  const [kadasterResults, setKadasterResults] = useState<any[]>([])
+  const [kadasterError, setKadasterError] = useState('')
+
+  // Некрологи / ЗАГС
+  const [obitsLoading, setObitsLoading] = useState(false)
+  const [obitsResults, setObitsResults] = useState<any[]>([])
+  const [obitsError, setObitsError] = useState('')
+
+  // VPN Search (ipbd.ru / leb.su)
+  const [vpnLoading, setVpnLoading] = useState(false)
+  const [vpnResults, setVpnResults] = useState<any[]>([])
+  const [vpnError, setVpnError] = useState('')
+
+  // Leaks DB
+  const [leaksLoading, setLeaksLoading] = useState(false)
+  const [leaksResults, setLeaksResults] = useState<any[]>([])
+  const [leaksError, setLeaksError] = useState('')
+
+  // Telegram phone lookup
+  const [tgPhoneLoading, setTgPhoneLoading] = useState(false)
+  const [tgPhoneResults, setTgPhoneResults] = useState<any[]>([])
+  const [tgPhoneError, setTgPhoneError] = useState('')
+
+  // Photo collection (VK/OK/Instagram)
+  const [photoCollLoading, setPhotoCollLoading] = useState(false)
+  const [photoCollMsg, setPhotoCollMsg] = useState('')
+
+  // WhatsApp/Viber presence
+  const [presenceLoading, setPresenceLoading] = useState(false)
+  const [presenceResults, setPresenceResults] = useState<any[]>([])
+  const [presenceError, setPresenceError] = useState('')
+
+  // FindFace / FindClone
+  const [findFaceLoading, setFindFaceLoading] = useState(false)
+  const [findFaceResults, setFindFaceResults] = useState<any[]>([])
+  const [findFaceError, setFindFaceError] = useState('')
+
   // Telegram пошук
   const [tgLoading, setTgLoading] = useState(false)
   const [tgResults, setTgResults] = useState<any[]>([])
@@ -442,6 +481,140 @@ export default function PersonDetailPage() {
     } finally {
       setVehiclesLoading(false)
     }
+  }
+
+  async function runKadasterSearch() {
+    setKadasterLoading(true); setKadasterError(''); setKadasterResults([])
+    try {
+      const res = await fetch(`/api/osint/kadaster/${params.id}`, { method: 'POST' })
+      const data = await res.json()
+      if (data.error && !data.results) { setKadasterError(data.error) }
+      else {
+        setKadasterResults(data.results || [])
+        if ((data.results || []).length > 0) {
+          const refreshed = await fetch(`/api/persons/${params.id}`)
+          setPerson(await refreshed.json())
+        }
+      }
+    } catch (e: any) { setKadasterError(e.message) }
+    finally { setKadasterLoading(false) }
+  }
+
+  async function runObituariesSearch() {
+    setObitsLoading(true); setObitsError(''); setObitsResults([])
+    try {
+      const res = await fetch(`/api/osint/obituaries/${params.id}`, { method: 'POST' })
+      const data = await res.json()
+      if (data.error && !data.results) { setObitsError(data.error) }
+      else {
+        setObitsResults(data.results || [])
+        if (data.status_updated) {
+          const refreshed = await fetch(`/api/persons/${params.id}`)
+          setPerson(await refreshed.json())
+        }
+      }
+    } catch (e: any) { setObitsError(e.message) }
+    finally { setObitsLoading(false) }
+  }
+
+  async function runVpnSearch() {
+    setVpnLoading(true); setVpnError(''); setVpnResults([])
+    try {
+      const res = await fetch(`/api/osint/vpn-search/${params.id}`, { method: 'POST' })
+      const data = await res.json()
+      if (!data.success && !data.results) {
+        setVpnError(data.error || data.message || 'Помилка VPN пошуку')
+      } else {
+        setVpnResults(data.results || [])
+      }
+    } catch (e: any) { setVpnError(e.message) }
+    finally { setVpnLoading(false) }
+  }
+
+  async function runLeaksSearch() {
+    setLeaksLoading(true); setLeaksError(''); setLeaksResults([])
+    try {
+      const query: Record<string, any> = {}
+      if (person.phones?.length)    query.phone    = person.phones[0]
+      if (person.email)             query.email    = person.email
+      if (person.ipn)               query.inn      = person.ipn
+      if (person.snils)             query.snils    = person.snils
+      if (person.passport)          query.passport = person.passport
+      if (person.name_rus || person.name_ukr || person.name)
+        query.name = person.name_rus || person.name_ukr || person.name
+
+      const res = await fetch('/api/leaks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(query),
+      })
+      const data = await res.json()
+      if (data.error) setLeaksError(data.error)
+      else setLeaksResults(data.results || [])
+    } catch (e: any) { setLeaksError(e.message) }
+    finally { setLeaksLoading(false) }
+  }
+
+  async function runTgPhoneLookup() {
+    setTgPhoneLoading(true); setTgPhoneError(''); setTgPhoneResults([])
+    try {
+      const res = await fetch(`/api/osint/telegram-phone/${params.id}`, { method: 'POST' })
+      const data = await res.json()
+      if (data.error && !data.results) { setTgPhoneError(data.error) }
+      else {
+        setTgPhoneResults(data.results || [])
+        if ((data.results || []).length > 0) {
+          const refreshed = await fetch(`/api/persons/${params.id}`)
+          setPerson(await refreshed.json())
+        }
+      }
+    } catch (e: any) { setTgPhoneError(e.message) }
+    finally { setTgPhoneLoading(false) }
+  }
+
+  async function runPhotoCollection() {
+    setPhotoCollLoading(true); setPhotoCollMsg('')
+    try {
+      const res = await fetch(`/api/osint/photos/${params.id}`, { method: 'POST' })
+      const data = await res.json()
+      if (data.error) { setPhotoCollMsg(`❌ ${data.error}`) }
+      else {
+        setPhotoCollMsg(`✅ Зібрано ${data.saved || 0} фото (VK: ${data.sources?.vk || 0}, OK: ${data.sources?.ok || 0}, IG: ${data.sources?.instagram || 0})`)
+        if ((data.saved || 0) > 0) {
+          const refreshed = await fetch(`/api/persons/${params.id}`)
+          setPerson(await refreshed.json())
+        }
+      }
+    } catch (e: any) { setPhotoCollMsg(`❌ ${e.message}`) }
+    finally { setPhotoCollLoading(false) }
+  }
+
+  async function runPresenceCheck() {
+    setPresenceLoading(true); setPresenceError(''); setPresenceResults([])
+    try {
+      const res = await fetch(`/api/osint/phone-presence/${params.id}`, { method: 'POST' })
+      const data = await res.json()
+      if (data.error && !data.results) { setPresenceError(data.error) }
+      else setPresenceResults(data.results || [])
+    } catch (e: any) { setPresenceError(e.message) }
+    finally { setPresenceLoading(false) }
+  }
+
+  async function runFindFaceSearch() {
+    setFindFaceLoading(true); setFindFaceError(''); setFindFaceResults([])
+    try {
+      const res = await fetch(`/api/osint/findface/${params.id}`, { method: 'POST' })
+      const data = await res.json()
+      if (data.error && !data.results) { setFindFaceError(data.error) }
+      else {
+        setFindFaceResults(data.results || [])
+        if ((data.results || []).length > 0) {
+          const refreshed = await fetch(`/api/persons/${params.id}`)
+          setPerson(await refreshed.json())
+        }
+      }
+    } catch (e: any) { setFindFaceError(e.message) }
+    finally { setFindFaceLoading(false) }
   }
 
   async function runTelegramSearch(customQuery?: string) {
@@ -1605,6 +1778,286 @@ export default function PersonDetailPage() {
                       </div>
                     )
                   })()}
+                </div>
+
+                {/* ── FindFace / FindClone ── */}
+                <div className="bg-gray-800 rounded-xl p-5 border border-gray-700">
+                  <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-700">
+                    <h3 className="text-gray-300 font-semibold text-sm">🕵️ FindFace / FindClone</h3>
+                    <button
+                      onClick={runFindFaceSearch}
+                      disabled={findFaceLoading || !person.photo_url}
+                      title={!person.photo_url ? 'Додайте фото' : ''}
+                      className="px-3 py-1.5 bg-violet-800 hover:bg-violet-700 disabled:opacity-50 rounded-lg text-xs font-medium transition flex items-center gap-1.5">
+                      {findFaceLoading ? <><span className="animate-spin">⟳</span> Пошук...</> : '🔍 Знайти профілі VK'}
+                    </button>
+                  </div>
+                  {findFaceError && <p className="text-red-400 text-xs mb-2">{findFaceError}</p>}
+                  {!person.photo_url && <p className="text-gray-600 text-sm italic">Потрібне фото особи</p>}
+                  {findFaceResults.length > 0 && (
+                    <div className="space-y-2">
+                      {findFaceResults.map((r: any, i: number) => (
+                        <div key={i} className="p-3 rounded-lg bg-violet-950/20 border border-violet-800/30 flex items-center gap-3">
+                          {r.photo_url
+                            ? <img src={r.photo_url} alt="" className="w-9 h-9 rounded-full object-cover flex-shrink-0 border border-violet-700/50" />
+                            : <div className="w-9 h-9 rounded-full bg-violet-900/40 flex items-center justify-center flex-shrink-0 text-base">🎭</div>
+                          }
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs px-1.5 py-0.5 rounded bg-violet-900/50 text-violet-300">{(r.source || 'findclone').toUpperCase()}</span>
+                              {r.similarity != null && <span className={`text-xs font-bold ${r.similarity >= 80 ? 'text-green-400' : 'text-yellow-400'}`}>{r.similarity}%</span>}
+                              {r.name && <span className="text-gray-300 text-sm">{r.name}</span>}
+                            </div>
+                            {r.profile_url && (
+                              <a href={r.profile_url} target="_blank" rel="noopener noreferrer"
+                                className="text-violet-400 hover:text-violet-300 text-xs truncate block mt-0.5">{r.profile_url}</a>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* ── Кадастр нерухомості ── */}
+                <div className="bg-gray-800 rounded-xl p-5 border border-gray-700">
+                  <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-700">
+                    <h3 className="text-gray-300 font-semibold text-sm">🏠 Кадастр нерухомості</h3>
+                    <button
+                      onClick={runKadasterSearch}
+                      disabled={kadasterLoading}
+                      className="px-3 py-1.5 bg-teal-800 hover:bg-teal-700 disabled:opacity-50 rounded-lg text-xs font-medium transition flex items-center gap-1.5">
+                      {kadasterLoading ? <><span className="animate-spin">⟳</span> Пошук...</> : '🔍 Шукати нерухомість'}
+                    </button>
+                  </div>
+                  {kadasterError && <p className="text-red-400 text-xs mb-2">{kadasterError}</p>}
+                  {(() => {
+                    const toShow = kadasterResults.length > 0 ? kadasterResults : (person.real_estate || [])
+                    if (toShow.length === 0) return <p className="text-gray-600 text-sm italic">{kadasterLoading ? 'Пошук...' : 'Нерухомість не знайдено'}</p>
+                    return (
+                      <div className="space-y-2">
+                        {toShow.map((r: any, i: number) => (
+                          <div key={i} className="p-3 rounded-lg bg-teal-950/20 border border-teal-800/30 text-sm">
+                            {r.cadastral_number && <p className="text-teal-300 font-mono text-xs">{r.cadastral_number}</p>}
+                            {r.address && <p className="text-gray-200">{r.address}</p>}
+                            <div className="flex gap-3 mt-1 text-xs text-gray-500">
+                              {r.type  && <span>{r.type}</span>}
+                              {r.area  && <span>{r.area}</span>}
+                              {r.source && <span className="ml-auto">{r.source}</span>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })()}
+                </div>
+
+                {/* ── Некрологи / ЗАГС ── */}
+                <div className="bg-gray-800 rounded-xl p-5 border border-gray-700">
+                  <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-700">
+                    <div>
+                      <h3 className="text-gray-300 font-semibold text-sm">🕯️ Некрологи / ЗАГС</h3>
+                      {person.status === 'загинув' && <span className="text-xs text-red-400 mt-0.5 block">⚠️ Підтверджено: загинув</span>}
+                    </div>
+                    <button
+                      onClick={runObituariesSearch}
+                      disabled={obitsLoading}
+                      className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 rounded-lg text-xs font-medium transition flex items-center gap-1.5">
+                      {obitsLoading ? <><span className="animate-spin">⟳</span> Пошук...</> : '🔍 Шукати некрологи'}
+                    </button>
+                  </div>
+                  {obitsError && <p className="text-red-400 text-xs mb-2">{obitsError}</p>}
+                  {(() => {
+                    const toShow = obitsResults.length > 0 ? obitsResults : (person.obituary_data || [])
+                    if (toShow.length === 0) return <p className="text-gray-600 text-sm italic">{obitsLoading ? 'Пошук...' : 'Записів не знайдено'}</p>
+                    return (
+                      <div className="space-y-2">
+                        {toShow.map((r: any, i: number) => (
+                          <div key={i} className="p-3 rounded-lg bg-gray-700/30 border border-gray-600/40 text-sm">
+                            {r.title && <p className="text-gray-200 font-medium">{r.title}</p>}
+                            {r.snippet && <p className="text-gray-400 text-xs mt-1 line-clamp-2">{r.snippet}</p>}
+                            <div className="flex gap-3 mt-1 text-xs text-gray-500 items-center">
+                              {r.source && <span>{r.source}</span>}
+                              {r.url && <a href={r.url} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline ml-auto">↗</a>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })()}
+                </div>
+
+                {/* ── Telegram Phone Lookup ── */}
+                <div className="bg-gray-800 rounded-xl p-5 border border-gray-700">
+                  <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-700">
+                    <h3 className="text-gray-300 font-semibold text-sm">📱 Telegram за номером</h3>
+                    <button
+                      onClick={runTgPhoneLookup}
+                      disabled={tgPhoneLoading || !(person.phones?.length)}
+                      title={!person.phones?.length ? 'Немає номерів телефону' : ''}
+                      className="px-3 py-1.5 bg-sky-800 hover:bg-sky-700 disabled:opacity-50 rounded-lg text-xs font-medium transition flex items-center gap-1.5">
+                      {tgPhoneLoading ? <><span className="animate-spin">⟳</span> Пошук...</> : '🔍 Знайти Telegram'}
+                    </button>
+                  </div>
+                  {tgPhoneError && <p className="text-red-400 text-xs mb-2">{tgPhoneError}</p>}
+                  {!person.phones?.length && <p className="text-gray-600 text-sm italic">Немає номерів для пошуку</p>}
+                  {(() => {
+                    const toShow = tgPhoneResults.length > 0 ? tgPhoneResults : (person.telegram_accounts || [])
+                    if (toShow.length === 0 && person.phones?.length) return <p className="text-gray-600 text-sm italic">{tgPhoneLoading ? 'Пошук...' : 'Telegram акаунтів не знайдено'}</p>
+                    return (
+                      <div className="space-y-2">
+                        {toShow.map((r: any, i: number) => (
+                          <div key={i} className="p-3 rounded-lg bg-sky-950/20 border border-sky-800/30 flex items-center gap-3 text-sm">
+                            {r.photo_url
+                              ? <img src={r.photo_url} alt="" className="w-9 h-9 rounded-full object-cover flex-shrink-0" />
+                              : <div className="w-9 h-9 rounded-full bg-sky-900/40 flex items-center justify-center flex-shrink-0 text-base">📱</div>
+                            }
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sky-300 font-medium">{r.first_name} {r.last_name}</p>
+                              {r.username && <a href={`https://t.me/${r.username}`} target="_blank" rel="noopener noreferrer" className="text-sky-400 text-xs hover:underline">@{r.username}</a>}
+                              <p className="text-gray-500 text-xs mt-0.5">{r.phone} {r.user_id ? `· ID: ${r.user_id}` : ''}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })()}
+                </div>
+
+                {/* ── Збір фото з VK/OK/Instagram ── */}
+                <div className="bg-gray-800 rounded-xl p-5 border border-gray-700">
+                  <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-700">
+                    <h3 className="text-gray-300 font-semibold text-sm">📸 Авто-збір фото</h3>
+                    <button
+                      onClick={runPhotoCollection}
+                      disabled={photoCollLoading || !(person.vk_url || person.ok_url || person.instagram_url)}
+                      title={!(person.vk_url || person.ok_url || person.instagram_url) ? 'Потрібен VK, OK або Instagram профіль' : ''}
+                      className="px-3 py-1.5 bg-pink-800 hover:bg-pink-700 disabled:opacity-50 rounded-lg text-xs font-medium transition flex items-center gap-1.5">
+                      {photoCollLoading ? <><span className="animate-spin">⟳</span> Збір...</> : '📥 Зібрати фото'}
+                    </button>
+                  </div>
+                  <div className="flex gap-2 mb-3">
+                    {person.vk_url && <span className="text-xs px-2 py-0.5 rounded bg-blue-900/40 text-blue-300">VK ✓</span>}
+                    {person.ok_url && <span className="text-xs px-2 py-0.5 rounded bg-orange-900/40 text-orange-300">OK ✓</span>}
+                    {person.instagram_url && <span className="text-xs px-2 py-0.5 rounded bg-pink-900/40 text-pink-300">Instagram ✓</span>}
+                    {!(person.vk_url || person.ok_url || person.instagram_url) && <span className="text-gray-600 text-xs italic">Не знайдено соцмереж</span>}
+                  </div>
+                  {photoCollMsg && <p className="text-sm text-gray-300">{photoCollMsg}</p>}
+                  {person.person_photos?.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {(person.person_photos || []).slice(0, 12).map((p: any, i: number) => (
+                        <a key={i} href={p.profile_url || p.url} target="_blank" rel="noopener noreferrer">
+                          <img src={p.url} alt="" className="w-12 h-12 rounded object-cover border border-gray-600 hover:border-pink-500 transition" />
+                        </a>
+                      ))}
+                      {person.person_photos?.length > 12 && <span className="text-gray-500 text-xs self-center ml-1">+{person.person_photos.length - 12}</span>}
+                    </div>
+                  )}
+                </div>
+
+                {/* ── WhatsApp / Viber presence ── */}
+                <div className="bg-gray-800 rounded-xl p-5 border border-gray-700">
+                  <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-700">
+                    <h3 className="text-gray-300 font-semibold text-sm">💬 WhatsApp / Viber</h3>
+                    <button
+                      onClick={runPresenceCheck}
+                      disabled={presenceLoading || !(person.phones?.length)}
+                      title={!person.phones?.length ? 'Немає номерів телефону' : ''}
+                      className="px-3 py-1.5 bg-green-800 hover:bg-green-700 disabled:opacity-50 rounded-lg text-xs font-medium transition flex items-center gap-1.5">
+                      {presenceLoading ? <><span className="animate-spin">⟳</span> Перевірка...</> : '🔍 Перевірити'}
+                    </button>
+                  </div>
+                  {presenceError && <p className="text-red-400 text-xs mb-2">{presenceError}</p>}
+                  {!person.phones?.length && <p className="text-gray-600 text-sm italic">Немає номерів для перевірки</p>}
+                  {presenceResults.length > 0 && (
+                    <div className="space-y-2">
+                      {presenceResults.map((r: any, i: number) => (
+                        <div key={i} className="p-3 rounded-lg bg-green-950/20 border border-green-800/30 text-sm">
+                          <p className="text-gray-200 font-mono">{r.phone}</p>
+                          <div className="flex gap-3 mt-1.5 flex-wrap">
+                            <span className={`text-xs px-2 py-0.5 rounded ${r.whatsapp ? 'bg-green-900/60 text-green-300' : 'bg-gray-700 text-gray-500'}`}>
+                              {r.whatsapp ? '✓ WhatsApp' : '✗ WhatsApp'}
+                            </span>
+                            <span className={`text-xs px-2 py-0.5 rounded ${r.viber ? 'bg-purple-900/60 text-purple-300' : 'bg-gray-700 text-gray-500'}`}>
+                              {r.viber ? '✓ Viber' : '✗ Viber'}
+                            </span>
+                            {r.truecaller?.name && <span className="text-xs text-yellow-300 px-2 py-0.5 rounded bg-yellow-900/40">TC: {r.truecaller.name}</span>}
+                            {r.carrier && <span className="text-gray-500 text-xs">{r.carrier}</span>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* ── VPN Search (ipbd.ru / leb.su) ── */}
+                <div className="bg-gray-800 rounded-xl p-5 border border-gray-700">
+                  <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-700">
+                    <div>
+                      <h3 className="text-gray-300 font-semibold text-sm">🔒 VPN пошук (ipbd/leb.su)</h3>
+                      <p className="text-gray-600 text-xs mt-0.5">Потрібно мін. 2 ідентифікатори</p>
+                    </div>
+                    <button
+                      onClick={runVpnSearch}
+                      disabled={vpnLoading}
+                      className="px-3 py-1.5 bg-red-900 hover:bg-red-800 disabled:opacity-50 rounded-lg text-xs font-medium transition flex items-center gap-1.5">
+                      {vpnLoading ? <><span className="animate-spin">⟳</span> Пошук...</> : '🔍 VPN пошук'}
+                    </button>
+                  </div>
+                  {vpnError && <p className="text-red-400 text-xs mb-2">{vpnError}</p>}
+                  {vpnResults.length > 0 && (
+                    <div className="space-y-2">
+                      {vpnResults.map((r: any, i: number) => (
+                        <div key={i} className="p-3 rounded-lg bg-red-950/20 border border-red-800/30 text-sm">
+                          <span className="text-xs px-1.5 py-0.5 rounded bg-red-900/50 text-red-300 mr-2">{r.site}</span>
+                          {r.snippet && <p className="text-gray-300 text-xs mt-1 line-clamp-3">{r.snippet}</p>}
+                          {r.error && <p className="text-red-400 text-xs mt-1">{r.error}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {!vpnLoading && vpnResults.length === 0 && !vpnError && (
+                    <p className="text-gray-600 text-sm italic">Натисніть для пошуку в заблокованих базах</p>
+                  )}
+                </div>
+
+                {/* ── Витоки (Leaks DB) ── */}
+                <div className="bg-gray-800 rounded-xl p-5 border border-gray-700">
+                  <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-700">
+                    <h3 className="text-gray-300 font-semibold text-sm">💧 База витоків</h3>
+                    <button
+                      onClick={runLeaksSearch}
+                      disabled={leaksLoading}
+                      className="px-3 py-1.5 bg-amber-800 hover:bg-amber-700 disabled:opacity-50 rounded-lg text-xs font-medium transition flex items-center gap-1.5">
+                      {leaksLoading ? <><span className="animate-spin">⟳</span> Пошук...</> : '🔍 Шукати у витоках'}
+                    </button>
+                  </div>
+                  {leaksError && <p className="text-red-400 text-xs mb-2">{leaksError}</p>}
+                  {leaksResults.length > 0 && (
+                    <div className="space-y-1.5">
+                      {leaksResults.map((r: any, i: number) => (
+                        <div key={i} className="p-2.5 rounded-lg bg-amber-950/20 border border-amber-800/30 text-xs">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className={`px-1.5 py-0.5 rounded text-xs font-medium`}
+                              style={{ background: r.source_color === 'red' ? 'rgb(127,29,29,0.5)' : r.source_color === 'orange' ? 'rgb(124,45,18,0.5)' : 'rgb(55,65,81,0.5)',
+                                color: r.source_color === 'red' ? '#fca5a5' : r.source_color === 'orange' ? '#fdba74' : '#9ca3af' }}>
+                              {r.source_label || r.source}
+                            </span>
+                            {r.leaked_at && <span className="text-gray-600">{new Date(r.leaked_at).toLocaleDateString('uk-UA')}</span>}
+                          </div>
+                          {r.name     && <p className="text-gray-300"><span className="text-gray-500">Ім'я:</span> {r.name}</p>}
+                          {r.phone    && <p className="text-gray-300"><span className="text-gray-500">Тел:</span> {r.phone}</p>}
+                          {r.email    && <p className="text-gray-300"><span className="text-gray-500">Email:</span> {r.email}</p>}
+                          {r.inn      && <p className="text-gray-300"><span className="text-gray-500">ІПН:</span> {r.inn}</p>}
+                          {r.address  && <p className="text-gray-300"><span className="text-gray-500">Адреса:</span> {r.address}</p>}
+                          {r.passport && <p className="text-gray-300"><span className="text-gray-500">Паспорт:</span> {r.passport}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {!leaksLoading && leaksResults.length === 0 && !leaksError && (
+                    <p className="text-gray-600 text-sm italic">Натисніть для пошуку в локальній БД витоків</p>
+                  )}
                 </div>
 
                 {/* ── AI-профіль ── */}
