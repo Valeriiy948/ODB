@@ -1,0 +1,37 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+/* Системний шрифт з підтримкою кирилиці — замінює Geist (який не має кирилиці) */
+html, body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family:
+    -apple-system, BlinkMacSystemFont,
+    'Segoe UI', Arial,
+    'Helvetica Neue', Helvetica,
+    sans-serif;
+}
+
+/* Tailwind перевизначає --font-sans на Geist через @theme inline.
+   Явно перебиваємо шрифт для всіх текстових вузлів — кирилиця буде відображатись */
+:where(p, span, div, h1, h2, h3, h4, h5, h6, a, td, th, li, button, input, textarea, label) {
+  font-family: inherit;
+}
