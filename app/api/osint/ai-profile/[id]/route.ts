@@ -1,5 +1,6 @@
 // app/api/osint/ai-profile/[id]/route.ts
-// Генерує AI-профіль та threat_score для особи через Claude API
+// Блок 3: AI-картка особи через Claude
+// Генерує структурований аналітичний профіль для розслідування воєнних злочинів
 
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -9,103 +10,170 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-// ─── Threat Score ──────────────────────────────────────────────────────────────
-function calcThreatScore(person: any, mentions: any[]): number {
+// ─── Threat Score ──────────────────────────────────────────────
+function calcThreatScore(person: any, incidents: any[], evidence: any[]): number {
   let score = 0
 
-  // Myrotvorets — найвищий пріоритет
-  if (person.myrotvorets_url) score += 40
+  if (person.myrotvorets_url)                score += 35
+  if (person.rank || person.unit)            score += 10
+  if (person.military_id)                    score += 5
+  if (person.snils || person.ipn)            score += 5
+  if (person.passport)                       score += 5
 
-  // Ідентифіковані документи (СНІЛС, ІПН, паспорт)
-  if (person.snils) score += 5
-  if (person.ipn) score += 5
-  if (person.passport) score += 5
-
-  // Telegram витоки
-  const leakCount = (person.telegram_raw || [])
-    .flatMap((e: any) => e.leaks || []).length
+  const leakCount = (person.telegram_raw || []).flatMap((e: any) => e.leaks || []).length
   if (leakCount >= 10) score += 15
   else if (leakCount >= 3) score += 8
   else if (leakCount >= 1) score += 3
 
-  // Web-згадки
-  const mentionCount = mentions.length
-  if (mentionCount >= 20) score += 10
-  else if (mentionCount >= 5) score += 5
+  // Інциденти
+  if (incidents.length >= 5)       score += 20
+  else if (incidents.length >= 2)  score += 12
+  else if (incidents.length >= 1)  score += 6
 
-  // Вагомі web-джерела
-  const hasMyrtoMention = mentions.some(m => (m.url || '').includes('myrotvorets'))
-  if (hasMyrtoMention) score += 10
+  // Докази
+  if (evidence.length >= 10)  score += 8
+  else if (evidence.length >= 3) score += 4
 
-  // Є інциденти/злочини
-  if (person.incidents_count > 0) score += 15
-
-  // Військові дані
-  if (person.rank || person.unit || person.military_id) score += 5
+  // Тяжкість злочинів
+  const hasCritical = incidents.some((i: any) => i.severity === 'critical')
+  const hasHigh     = incidents.some((i: any) => i.severity === 'high')
+  if (hasCritical) score += 15
+  else if (hasHigh) score += 8
 
   return Math.min(100, score)
 }
 
-// ─── Збираємо дані для промта ──────────────────────────────────────────────────
-function buildPersonContext(person: any, mentions: any[]): string {
-  const lines: string[] = []
+// ─── Контекст для AI ──────────────────────────────────────────
+function buildContext(person: any, incidents: any[], evidence: any[], connections: any[]): string {
+  const sections: string[] = []
 
-  if (person.name_rus || person.name_ukr) {
-    lines.push(`ПІБ: ${[person.name_rus, person.name_ukr].filter(Boolean).join(' / ')}`)
+  // 1. Особисті дані
+  const personal: string[] = []
+  const name = person.name_rus || person.name_ukr || person.name || 'Невідомо'
+  personal.push(`ПІБ: ${name}`)
+  if (person.dob)         personal.push(`Дата народження: ${person.dob}`)
+  if (person.gender)      personal.push(`Стать: ${person.gender === 'male' ? 'чоловіча' : 'жіноча'}`)
+  if (person.nationality) personal.push(`Громадянство: ${person.nationality}`)
+  if (person.addr_reg)    personal.push(`Адреса реєстрації: ${person.addr_reg}`)
+  if (person.addr_live)   personal.push(`Адреса проживання: ${person.addr_live}`)
+  if (personal.length > 1) sections.push('=== ОСОБИСТІ ДАНІ ===\n' + personal.join('\n'))
+
+  // 2. Документи
+  const docs: string[] = []
+  if (person.passport)    docs.push(`Паспорт: ${person.passport}`)
+  if (person.snils)       docs.push(`СНІЛС: ${person.snils}`)
+  if (person.ipn)         docs.push(`ІПН/ІНН: ${person.ipn}`)
+  if (person.inn_ru)      docs.push(`ІНН РФ: ${person.inn_ru}`)
+  if (person.military_id) docs.push(`Військовий номер: ${person.military_id}`)
+  if (docs.length > 0)    sections.push('=== ДОКУМЕНТИ ===\n' + docs.join('\n'))
+
+  // 3. Військові дані
+  const mil: string[] = []
+  if (person.rank)       mil.push(`Звання: ${person.rank}`)
+  if (person.unit)       mil.push(`Підрозділ: ${person.unit}`)
+  if (person.unit_num)   mil.push(`Номер в/ч: ${person.unit_num}`)
+  if (person.position)   mil.push(`Посада: ${person.position}`)
+  if (person.region)     mil.push(`Регіон дислокації: ${person.region}`)
+  if (mil.length > 0)    sections.push('=== ВІЙСЬКОВІ ДАНІ ===\n' + mil.join('\n'))
+
+  // 4. Контакти і цифровий слід
+  const digital: string[] = []
+  if (person.phones?.length)       digital.push(`Телефони: ${person.phones.join(', ')}`)
+  if (person.email)                digital.push(`Email: ${person.email}`)
+  if (person.vk_url)               digital.push(`VK: ${person.vk_url}`)
+  if (person.telegram_username)    digital.push(`Telegram: ${person.telegram_username}`)
+  const socialProfiles = (person.social_profiles || [])
+  for (const sp of socialProfiles.slice(0, 5)) {
+    digital.push(`${sp.platform}: ${sp.profile_url}`)
   }
-  if (person.dob) lines.push(`Дата народження: ${person.dob}`)
-  if (person.gender) lines.push(`Стать: ${person.gender === 'male' ? 'чоловіча' : 'жіноча'}`)
-  if (person.nationality) lines.push(`Громадянство: ${person.nationality}`)
+  if (digital.length > 0) sections.push('=== ЦИФРОВИЙ СЛІД ===\n' + digital.join('\n'))
 
-  if (person.rank) lines.push(`Звання: ${person.rank}`)
-  if (person.unit) lines.push(`Підрозділ: ${person.unit}`)
-  if (person.unit_num) lines.push(`Номер в/ч: ${person.unit_num}`)
-  if (person.military_id) lines.push(`Особистий №: ${person.military_id}`)
-
-  if (person.passport) lines.push(`Паспорт: ${person.passport}`)
-  if (person.snils) lines.push(`СНІЛС: ${person.snils}`)
-  if (person.ipn) lines.push(`ІПН: ${person.ipn}`)
-  if (person.phones?.length) lines.push(`Телефони: ${person.phones.join(', ')}`)
-  if (person.email) lines.push(`Email: ${person.email}`)
-
-  if (person.addr_reg) lines.push(`Адреса реєстрації: ${person.addr_reg}`)
-  if (person.addr_live) lines.push(`Адреса проживання: ${person.addr_live}`)
-
-  if (person.myrotvorets_url) {
-    lines.push(`‼️ ВНЕСЕНИЙ ДО БАЗИ МИРОТВОРЕЦЬ: ${person.myrotvorets_url}`)
-  }
-
-  // Telegram витоки — підсумок
+  // 5. Бази даних витоків
   const allLeaks = (person.telegram_raw || []).flatMap((e: any) => e.leaks || [])
   if (allLeaks.length > 0) {
-    lines.push(`\nZнайдено у ${allLeaks.length} витоках Telegram:`)
+    const leakSection: string[] = [`Знайдено у ${allLeaks.length} витоках:`]
     const sources = [...new Set(allLeaks.map((l: any) => l.source_label).filter(Boolean))]
-    lines.push(`  Джерела: ${sources.slice(0, 10).join(', ')}`)
+    leakSection.push(`Джерела: ${sources.slice(0, 8).join(', ')}`)
 
-    // Унікальні поля з витоків
     const tgFields: Record<string, string> = {}
     for (const l of allLeaks) {
-      const f = l.fields || {}
-      for (const [k, v] of Object.entries(f)) {
+      for (const [k, v] of Object.entries(l.fields || {})) {
         if (v && typeof v === 'string' && !tgFields[k]) tgFields[k] = v
       }
     }
-    if (tgFields.relatives) lines.push(`  Родичі: ${String(tgFields.relatives).slice(0, 300)}`)
-    if (tgFields.employer) lines.push(`  Роботодавець: ${tgFields.employer}`)
-    if (tgFields.car_info) lines.push(`  Авто: ${tgFields.car_info}`)
+    if (tgFields.employer)   leakSection.push(`Роботодавець: ${tgFields.employer}`)
+    if (tgFields.car_info)   leakSection.push(`Авто: ${tgFields.car_info}`)
+    if (tgFields.relatives)  leakSection.push(`Родичі: ${String(tgFields.relatives).slice(0, 300)}`)
+    sections.push('=== ВИТОКИ БАЗ ДАНИХ ===\n' + leakSection.join('\n'))
   }
 
-  // Web-згадки — топ 5
-  if (mentions.length > 0) {
-    lines.push(`\nWeb-згадки (${mentions.length}):`)
-    for (const m of mentions.slice(0, 5)) {
-      lines.push(`  - [${m.source_name}] ${m.title}: ${(m.snippet || '').slice(0, 150)}`)
+  // 6. Миротворець
+  if (person.myrotvorets_url) {
+    sections.push(`=== МИРОТВОРЕЦЬ ===\n‼️ ВНЕСЕНИЙ ДО БАЗИ МИРОТВОРЕЦЬ\nURL: ${person.myrotvorets_url}`)
+  }
+
+  // 7. Інциденти / воєнні злочини
+  if (incidents.length > 0) {
+    const incSection: string[] = [`Причетний до ${incidents.length} інцидентів/злочинів:`]
+    for (const inc of incidents.slice(0, 10)) {
+      const role = inc.incident_persons?.[0]?.role || inc.pivot_role || 'невідома роль'
+      incSection.push(`\n[${inc.severity?.toUpperCase() || '?'}] ${inc.title}`)
+      if (inc.date)     incSection.push(`  Дата: ${inc.date}`)
+      if (inc.location) incSection.push(`  Місце: ${inc.location}`)
+      if (inc.inc_type) incSection.push(`  Тип: ${inc.inc_type}`)
+      if (inc.icc_article) incSection.push(`  Стаття МКС: ${inc.icc_article}`)
+      incSection.push(`  Роль: ${role}`)
+      if (inc.description) incSection.push(`  Опис: ${inc.description.slice(0, 200)}`)
     }
+    sections.push('=== ІНЦИДЕНТИ ТА ЗЛОЧИНИ ===\n' + incSection.join('\n'))
   }
 
-  if (person.description) lines.push(`\nОпис: ${person.description.slice(0, 500)}`)
+  // 8. Докази
+  if (evidence.length > 0) {
+    const evTypes = { photo: 0, video: 0, document: 0, audio: 0 }
+    for (const e of evidence) {
+      if (e.ev_type in evTypes) (evTypes as any)[e.ev_type]++
+    }
+    const evSummary = Object.entries(evTypes)
+      .filter(([, v]) => v > 0)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join(', ')
+    sections.push(`=== ДОКАЗИ ===\nЗбережено ${evidence.length} файлів: ${evSummary}`)
+  }
 
-  return lines.join('\n')
+  // 9. Зв'язки
+  if (connections.length > 0) {
+    const connSection: string[] = [`Відомих зв'язків: ${connections.length}`]
+    for (const c of connections.slice(0, 8)) {
+      const other = c.person_a_id === person.id ? c.person_b : c.person_a
+      if (other) {
+        connSection.push(`  ${c.rel_type}: ${other.name_rus || other.name_ukr || other.name}`)
+      }
+    }
+    sections.push("=== ЗВ'ЯЗКИ ===\n" + connSection.join('\n'))
+  }
+
+  if (person.description) sections.push(`=== ОПИС ===\n${person.description.slice(0, 800)}`)
+
+  return sections.join('\n\n')
+}
+
+// ─── Визначаємо роль автоматично ──────────────────────────────
+function detectRole(person: any, incidents: any[]): string {
+  const ranks = ['генерал', 'полковник', 'майор', 'капітан', 'лейтенант', 'підполковник']
+  const rankLower = (person.rank || '').toLowerCase()
+  const isOfficer = ranks.some(r => rankLower.includes(r))
+
+  const roles = incidents.flatMap((i: any) =>
+    (i.incident_persons || []).map((ip: any) => ip.role || '')
+  )
+  const isCommander = roles.some(r => ['командир', 'організатор'].includes(r)) || isOfficer
+  const isExecutor  = roles.some(r => r === 'виконавець')
+
+  if (isCommander) return 'командир'
+  if (isExecutor)  return 'виконавець'
+  if (person.rank) return 'військовий'
+  return 'цивільний/невідомо'
 }
 
 export async function POST(
@@ -122,29 +190,98 @@ export async function POST(
     )
   }
 
-  // Завантажуємо дані особи
-  const { data: person, error: personErr } = await supabaseAdmin
-    .from('persons').select('*').eq('id', id).single()
-  if (personErr || !person) {
+  // Завантажуємо всі дані паралельно
+  const [
+    { data: person },
+    { data: incidents },
+    { data: evidence },
+    { data: connections },
+  ] = await Promise.all([
+    supabaseAdmin.from('persons').select('*').eq('id', id).single(),
+    supabaseAdmin
+      .from('incident_persons')
+      .select('role, incident:incidents(*)')
+      .eq('person_id', id)
+      .limit(15),
+    supabaseAdmin.from('evidence').select('ev_type, description').eq('person_id', id),
+    supabaseAdmin
+      .from('connections')
+      .select(`*, person_a:persons!connections_person_a_fkey(id,name_rus,name_ukr,name), person_b:persons!connections_person_b_fkey(id,name_rus,name_ukr,name)`)
+      .or(`person_a.eq.${id},person_b.eq.${id}`)
+      .limit(10),
+  ])
+
+  if (!person) {
     return NextResponse.json({ error: 'Person not found' }, { status: 404 })
   }
 
-  // Завантажуємо web-згадки
-  const { data: mentions } = await supabaseAdmin
-    .from('person_mentions').select('*').eq('person_id', id)
-    .eq('source_type', 'web').order('created_at', { ascending: false }).limit(30)
-
-  const allMentions = mentions || []
+  // Нормалізуємо інциденти
+  const incidentList = (incidents || []).map((ip: any) => ({
+    ...ip.incident,
+    pivot_role: ip.role,
+  })).filter(Boolean)
 
   // Рахуємо threat score
-  const threatScore = calcThreatScore(person, allMentions)
+  const threatScore = calcThreatScore(person, incidentList, evidence || [])
+  const detectedRole = detectRole(person, incidentList)
 
-  // Будуємо контекст для AI
-  const context = buildPersonContext(person, allMentions)
+  // Будуємо контекст
+  const context = buildContext(person, incidentList, evidence || [], connections || [])
   const personName = person.name_rus || person.name_ukr || person.name || 'Невідомо'
 
+  const prompt = `Ти — старший аналітик відділу воєнних злочинів. Проаналізуй зібрані дані про підозрювану особу та склади структурований аналітичний профіль для слідчих та прокурорів.
+
+ЗІБРАНІ ДАНІ:
+${context}
+
+---
+ЗАВДАННЯ: Поверни ТІЛЬКИ валідний JSON (без markdown, без пояснень поза JSON) у такому форматі:
+
+{
+  "threat_level": "критичний|високий|середній|низький|невідомий",
+  "role": "командир|виконавець|організатор|пособник|свідок|жертва|невідомо",
+  "summary": "2-3 речення загального резюме",
+  "identification": {
+    "full_name": "повне ПІБ",
+    "dob": "дата народження або null",
+    "nationality": "громадянство",
+    "documents": ["список документів"],
+    "addresses": ["адреси"]
+  },
+  "military": {
+    "unit": "підрозділ або null",
+    "rank": "звання або null",
+    "role_description": "опис ролі у збройних силах"
+  },
+  "crimes": [
+    {
+      "title": "назва злочину",
+      "date": "дата або null",
+      "location": "місце або null",
+      "type": "тип злочину",
+      "severity": "critical|high|medium|low",
+      "icc_article": "стаття МКС або null",
+      "role": "роль підозрюваного"
+    }
+  ],
+  "digital_footprint": {
+    "phones": ["телефони"],
+    "emails": ["emails"],
+    "social": ["соцмережі"],
+    "leaks_count": 0,
+    "leak_sources": ["джерела витоків"]
+  },
+  "connections": ["список зв'язків"],
+  "evidence_summary": "підсумок доказів або null",
+  "icc_articles": ["список статей МКС які потенційно застосовні"],
+  "ua_criminal_articles": ["статті КК України"],
+  "key_facts": ["3-7 ключових фактів для слідства"],
+  "recommendations": ["3-5 рекомендацій для слідчих"],
+  "information_gaps": ["що ще потрібно встановити"],
+  "analyst_note": "нотатка аналітика (обов'язкова оцінка достовірності даних)"
+}`
+
   try {
-    // Генеруємо AI-профіль через Claude API
     const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -153,44 +290,89 @@ export async function POST(
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5',
-        max_tokens: 2048,
-        messages: [{
-          role: 'user',
-          content: `Ти аналітик OSINT воєнних злочинів. Ось зібрані дані про особу:\n\n${context}\n\n---\nСклади структурований аналітичний профіль УКРАЇНСЬКОЮ МОВОЮ у форматі Markdown. Включи:
-1. **Ідентифікація** — ПІБ, ДН, документи, адреси
-2. **Військова роль** — підрозділ, звання, ймовірні функції
-3. **Цифровий слід** — телефони, email, соцмережі, витоки
-4. **Ризики та індикатори** — Миротворець, кримінальна активність, небезпека
-5. **Зв'язки** — родичі, колеги, підрозділ
-6. **Висновки аналітика** — ключові факти, рекомендації
-
-Будь об'єктивним. Якщо даних недостатньо — зазнач це.`,
-        }],
+        model: 'claude-opus-4-5',
+        max_tokens: 4096,
+        messages: [{ role: 'user', content: prompt }],
       }),
+      signal: AbortSignal.timeout(60000),
     })
 
     if (!claudeRes.ok) {
       const errBody = await claudeRes.text()
-      console.error('Claude API error:', claudeRes.status, errBody)
-      // Якщо AI недоступний — зберігаємо threat score і повертаємо без профілю
-      await supabaseAdmin.from('persons').update({ threat_score: threatScore })
-        .eq('id', id)
+      await supabaseAdmin.from('persons').update({ threat_score: threatScore }).eq('id', id)
       return NextResponse.json({
         success: true,
         threat_score: threatScore,
+        detected_role: detectedRole,
         ai_profile: null,
-        error: `Claude API: ${claudeRes.status} — ${errBody.slice(0, 200)}`,
+        error: `Claude API: ${claudeRes.status}`,
       })
     }
 
     const claudeData = await claudeRes.json()
-    const aiProfile = claudeData.content?.[0]?.text || ''
+    let rawText = claudeData.content?.[0]?.text || ''
+
+    // Стрипаємо markdown-обгортку якщо Claude вернув ```json ... ```
+    rawText = rawText.trim()
+    if (rawText.startsWith('```')) {
+      rawText = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim()
+    }
+
+    // Парсимо JSON
+    let structured: any = null
+    try {
+      // Витягуємо JSON з тексту (якщо є зайвий текст навколо)
+      const jsonMatch = rawText.match(/\{[\s\S]*\}/)
+      if (jsonMatch) {
+        structured = JSON.parse(jsonMatch[0])
+      }
+    } catch {
+      // Якщо JSON обрізаний (max_tokens) — намагаємося відремонтувати
+      try {
+        const jsonMatch = rawText.match(/\{[\s\S]*/)
+        if (jsonMatch) {
+          let truncated = jsonMatch[0]
+          // Закриваємо незакінчені рядки та фігурні дужки
+          if (!truncated.trimEnd().endsWith('"')) {
+            const lastQuoteIdx = truncated.lastIndexOf('"')
+            const lastCommaIdx = truncated.lastIndexOf(',')
+            const cutAt = Math.max(lastQuoteIdx, lastCommaIdx)
+            if (cutAt > 0) truncated = truncated.slice(0, cutAt)
+          }
+          // Рахуємо незакриті фігурні дужки та масиви
+          let depth = 0
+          for (const ch of truncated) {
+            if (ch === '{' || ch === '[') depth++
+            else if (ch === '}' || ch === ']') depth--
+          }
+          // Закриваємо
+          truncated = truncated.trimEnd().replace(/,\s*$/, '')
+          for (let i = 0; i < depth; i++) {
+            truncated += truncated.includes('[') && !truncated.includes(']') ? ']' : '}'
+          }
+          structured = JSON.parse(truncated)
+        }
+      } catch {
+        // Не вдалося відремонтувати — зберігаємо raw текст
+      }
+    }
+
+    // Формуємо ai_profile — або структурований JSON, або raw текст
+    const aiProfileToSave = structured
+      ? JSON.stringify(structured)
+      : rawText
+
+    // Визначаємо threat_level з AI або за threat_score
+    const aiThreatLevel = structured?.threat_level || (
+      threatScore >= 75 ? 'критичний' :
+      threatScore >= 50 ? 'високий' :
+      threatScore >= 25 ? 'середній' : 'низький'
+    )
 
     // Зберігаємо у БД
     await supabaseAdmin.from('persons')
       .update({
-        ai_profile: aiProfile,
+        ai_profile: aiProfileToSave,
         threat_score: threatScore,
         last_full_osint: new Date().toISOString(),
       })
@@ -199,12 +381,14 @@ export async function POST(
     return NextResponse.json({
       success: true,
       threat_score: threatScore,
-      ai_profile: aiProfile,
-      tokens_used: claudeData.usage?.input_tokens + claudeData.usage?.output_tokens,
+      threat_level: aiThreatLevel,
+      detected_role: detectedRole,
+      ai_profile: aiProfileToSave,
+      structured,
+      tokens_used: (claudeData.usage?.input_tokens || 0) + (claudeData.usage?.output_tokens || 0),
     })
+
   } catch (err: any) {
-    console.error('AI profile error:', err)
-    // Навіть якщо AI не вийшов — зберігаємо threat score
     await supabaseAdmin.from('persons').update({ threat_score: threatScore }).eq('id', id)
     return NextResponse.json({ error: err.message, threat_score: threatScore }, { status: 500 })
   }

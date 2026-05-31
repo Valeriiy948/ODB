@@ -31,7 +31,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if (neighborIds.length > 0) {
     const { data } = await supabase
       .from('persons')
-      .select('id, name_ukr, name_rus, name, rank, unit, photo_url, verified')
+      .select('id, name_ukr, name_rus, name, rank, unit, photo_url, verified, threat_score, myrotvorets_url')
       .in('id', neighborIds)
     neighbors = data || []
   }

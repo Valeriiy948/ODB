@@ -111,9 +111,18 @@ export async function POST(
     return NextResponse.json({ error: 'Person not found' }, { status: 404 })
   }
 
+  // Extract phones: from person.phones array + from telegram_raw leaks fields
+  const tgPhones: string[] = []
+  if (Array.isArray(person.telegram_raw)) {
+    for (const entry of person.telegram_raw) {
+      for (const leak of (entry.leaks || [])) {
+        if (leak.fields?.phone) tgPhones.push(String(leak.fields.phone))
+      }
+    }
+  }
   const rawPhones: string[] = [
     ...(person.phones || []),
-    ...(person.telegram_raw ? [person.telegram_raw] : []),
+    ...tgPhones,
   ].filter(Boolean)
 
   if (rawPhones.length === 0) {

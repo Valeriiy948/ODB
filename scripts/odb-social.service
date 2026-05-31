@@ -1,0 +1,17 @@
+[Unit]
+Description=ODB Social Search Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/odb
+ExecStart=/usr/bin/python3 /opt/odb/social_search.py
+Restart=always
+RestartSec=5
+Environment=SOCIAL_PORT=8005
+# Environment=GETCONTACT_TOKEN=your_token_here
+# Environment=FACEBOOK_ACCESS_TOKEN=your_token_here
+
+[Install]
+WantedBy=multi-user.target
