@@ -19,7 +19,8 @@ const MIGRATIONS = [
 
 export async function POST(req: NextRequest) {
   const { secret } = await req.json().catch(() => ({}))
-  if (secret !== 'odb-migrate-2026') {
+  const migrationSecret = process.env.MIGRATION_SECRET || 'odb-migrate-2026'
+  if (secret !== migrationSecret) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
