@@ -124,9 +124,13 @@ function extractFromLeaks(data: any) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { person_id, name: queryName, auto_patch = true } = await req.json()
-    if (!person_id && !queryName) {
-      return NextResponse.json({ error: 'person_id або name обовʼязкові' }, { status: 400 })
+    const body = await req.json()
+    const { person_id, name: queryName, phone, email, dob, inn, passport, auto_patch = true } = body
+
+    // Потрібен хоча б person_id, name, або інший ідентифікатор
+    const hasAnyField = person_id || queryName || phone || email || inn || passport
+    if (!hasAnyField) {
+      return NextResponse.json({ error: 'Потрібен хоча б один параметр: name, phone, email, inn або passport' }, { status: 400 })
     }
 
     // 1. Отримуємо особу з БД
@@ -141,7 +145,9 @@ export async function POST(req: NextRequest) {
     }
 
     const searchName = queryName || person?.name_rus || person?.name || ''
-    if (!searchName) return NextResponse.json({ error: 'Немає імені для пошуку' }, { status: 400 })
+    if (!searchName && !phone && !email) {
+      return NextResponse.json({ error: 'Потрібно ПІБ, телефон або email для пошуку' }, { status: 400 })
+    }
 
     // 2. Паралельний пошук
     const [leakosint, osintkit, sanctions] = await Promise.all([
