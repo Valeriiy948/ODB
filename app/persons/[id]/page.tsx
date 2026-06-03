@@ -646,7 +646,7 @@ export default function PersonDetailPage() {
     if (!osintKitRan) runOsintKit()
     if (!leakOsintRan) runLeakOsint()
     const tgQ = [person.name_rus, person.name_ukr, person.name].find(n => n && n.trim().length >= 3) || ''
-    if (tgQ.length >= 3 && !tgSearchedQuery) runTelegramSearch(tgQ)
+    if (tgQ.length >= 3) runTelegramSearch(tgQ)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, person])
 
@@ -4108,7 +4108,7 @@ export default function PersonDetailPage() {
               {false && osintData && (
                 <div>
                   <div className="flex gap-1 p-3 bg-gray-900 border-b border-gray-700 overflow-x-auto flex-wrap">
-                    {osintData.vectors.map(v => (
+                    {osintData?.vectors?.map(v => (
                       <button key={v.vector} onClick={() => setActiveVector(v.vector)}
                         className={`px-3 py-1.5 rounded text-xs font-medium whitespace-nowrap transition ${
                           activeVector === v.vector ? 'bg-purple-700 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
@@ -4121,7 +4121,7 @@ export default function PersonDetailPage() {
                     // Фільтруємо нерелевантні результати
                     const REL_THRESHOLD = 35
                     const personSurname = (person.name_rus || person.name || '').split(' ')[0]?.toLowerCase() || ''
-                    const relevantResults = activeVectorData.results.filter(r => {
+                    const relevantResults = (activeVectorData?.results ?? []).filter(r => {
                       const rel = r.relevanceScore ?? 100
                       if (rel < REL_THRESHOLD) return false
                       // Для результатів з rel 35-60 — додатково перевіряємо чи прізвище є в title/snippet

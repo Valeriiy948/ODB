@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Sidebar from '../components/Sidebar'
 
@@ -110,7 +110,11 @@ function ReportSection({ title, icon, children }: { title: string; icon: string;
 }
 
 // ─── MAIN PAGE ────────────────────────────────────────────────────────────────
-export default function AgentPage() {
+export default function AgentPageWrapper() {
+  return <Suspense fallback={<div className="min-h-screen bg-gray-950 text-white flex items-center justify-center">Завантаження...</div>}><AgentPage /></Suspense>
+}
+
+function AgentPage() {
   const searchParams = useSearchParams()
   const [query, setQuery]     = useState(() => searchParams.get('q') || '')
   const [depth, setDepth]     = useState(2)
