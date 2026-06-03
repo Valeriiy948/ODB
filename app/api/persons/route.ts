@@ -14,29 +14,39 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const limit = Math.min(Number(searchParams.get('limit') || '50'), 200)
   const offset = Number(searchParams.get('offset') || '0')
-  const q = searchParams.get('q')?.trim()
+  const q     = searchParams.get('q')?.trim()
+  const phone = searchParams.get('phone')?.trim().replace(/[\s\-\(\)]/g, '')
+  const ipn   = searchParams.get('ipn')?.trim()
   const status = searchParams.get('status')
   const threat = searchParams.get('threat')
 
   const filter = searchParams.get('filter')
 
+  // Use 'estimated' count to avoid full-table scan (count:'exact' is too slow on 400k+ rows)
   let query = supabase
     .from('persons')
     .select(
       'id, name_ukr, name_rus, name_eng, name, dob, rank, unit, unit_num, photo_url, threat_level, threat_score, status, verified, myrotvorets_url, last_full_osint',
-      { count: 'exact' }
+      { count: 'estimated' }
     )
 
-  // Пошук
-  if (q) {
-    query = query.or([
-      `name_ukr.ilike.%${q}%`,
-      `name_rus.ilike.%${q}%`,
-      `name_eng.ilike.%${q}%`,
-      `name.ilike.%${q}%`,
-      `unit.ilike.%${q}%`,
-      `unit_num.ilike.%${q}%`,
-    ].join(','))
+  // Пошук по телефону — phones is text[], use array contains (@>) or cs operator
+  if (phone) {
+    const phoneVariants = [phone]
+    // also try without +38 / 38 prefix
+    if (/^(\+?38)/.test(phone)) phoneVariants.push(phone.replace(/^\+?38/, ''))
+    // build array contains filter: phones.cs.{"79787396585"}
+    const csFilters = phoneVariants.map(p => `phones.cs.{"${p}"}`).join(',')
+    query = query.or(csFilters)
+  }
+  // Пошук по ІПН
+  else if (ipn) {
+    query = query.or(`ipn.eq.${ipn},ipn.ilike.%${ipn}%`)
+  }
+  // Пошук по ПІБ — use trigram index on name (unified field) for speed
+  // OR across multiple columns bypasses indexes; name field is the canonical search field
+  else if (q) {
+    query = query.ilike('name', `%${q}%`)
   }
 
   if (status) query = query.eq('status', status)
@@ -90,6 +100,10 @@ export async function POST(request: NextRequest) {
       if (body[key] !== undefined) insertData[key] = body[key]
     }
 
+    // Ensure name (primary display/search field) is always set
+    if (!insertData.name) {
+      insertData.name = insertData.name_ukr || insertData.name_rus || insertData.name_eng || ''
+    }
     // Якщо є тільки name_rus — копіюємо в name_ukr теж
     if (!insertData.name_ukr && insertData.name_rus) {
       insertData.name_ukr = insertData.name_rus

@@ -1,0 +1,17 @@
+[Unit]
+Description=ODB Registries Service (port 8006)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/odb
+ExecStart=/usr/bin/python3 /opt/odb/registries.py
+Restart=always
+RestartSec=5
+Environment=REGISTRIES_PORT=8006
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

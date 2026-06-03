@@ -58,17 +58,11 @@ export async function GET(request: NextRequest) {
   let localTotal = 0
 
   if (!internetOnly) {
+    // Use trigram index on `name` (unified field) — OR across 6 columns bypasses indexes and times out
     const { data, count } = await supabase
       .from('persons')
-      .select('id, name_ukr, name_rus, name_eng, dob, rank, unit, photo_url, threat_level, status, verified', { count: 'exact' })
-      .or([
-        `name_ukr.ilike.%${q}%`,
-        `name_rus.ilike.%${q}%`,
-        `name_eng.ilike.%${q}%`,
-        `name.ilike.%${q}%`,
-        `unit.ilike.%${q}%`,
-        `unit_num.ilike.%${q}%`,
-      ].join(','))
+      .select('id, name, name_ukr, name_rus, name_eng, dob, rank, unit, photo_url, threat_level, status, verified', { count: 'estimated' })
+      .ilike('name', `%${q}%`)
       .limit(30)
 
     localResults = data || []

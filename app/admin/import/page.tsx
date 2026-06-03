@@ -1,0 +1,707 @@
+'use client'
+
+import { useState, useRef, useCallback } from 'react'
+import * as XLSX from 'xlsx'
+import Sidebar from '../../components/Sidebar'
+
+// ─── CSV Parser ───────────────────────────────────────────────────────────────
+function parseCSVLine(line: string): string[] {
+  const result: string[] = []
+  let current = ''
+  let inQuotes = false
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') { current += '"'; i++ }
+      else inQuotes = !inQuotes
+    } else if ((ch === ',' || ch === ';' || ch === '\t') && !inQuotes) {
+      result.push(current.trim())
+      current = ''
+    } else {
+      current += ch
+    }
+  }
+  result.push(current.trim())
+  return result
+}
+
+function parseCSV(text: string): { headers: string[]; rows: string[][] } {
+  const lines = text.split(/\r?\n/).filter(l => l.trim())
+  if (lines.length === 0) return { headers: [], rows: [] }
+  const headers = parseCSVLine(lines[0]).map(h => h.replace(/^"|"$/g, ''))
+  const rows = lines.slice(1)
+    .map(l => parseCSVLine(l).map(v => v.replace(/^"|"$/g, '')))
+    .filter(r => r.some(v => v.trim()))
+  return { headers, rows }
+}
+
+// ─── Auto column mapping ───────────────────────────────────────────────────────
+const DB_FIELDS: { value: string; label: string }[] = [
+  { value: '',             label: '— пропустити —' },
+  { value: 'name_rus',    label: 'ФІО (рос)' },
+  { value: 'name_ukr',    label: 'ПІБ (укр)' },
+  { value: 'name_eng',    label: 'Name (eng)' },
+  { value: 'dob',         label: 'Дата народження' },
+  { value: 'gender',      label: 'Стать' },
+  { value: 'birth_place', label: 'Місце народження' },
+  { value: 'nationality', label: 'Громадянство' },
+  { value: 'region',      label: 'Регіон' },
+  { value: 'rank',        label: 'Звання' },
+  { value: 'position',    label: 'Посада' },
+  { value: 'unit',        label: 'Підрозділ' },
+  { value: 'unit_num',    label: 'Номер в/ч' },
+  { value: 'military_id', label: 'Військовий ID' },
+  { value: 'passport',    label: 'Паспорт' },
+  { value: 'ipn',         label: 'ІПН / ИНН' },
+  { value: 'snils',       label: 'СНІЛС' },
+  { value: 'phones',      label: 'Телефони' },
+  { value: 'email',       label: 'Email' },
+  { value: 'addr_live',   label: 'Адреса прожив.' },
+  { value: 'addr_reg',    label: 'Адреса реєст.' },
+  { value: 'status',      label: 'Статус' },
+  { value: 'threat_level',label: 'Рівень загрози' },
+  { value: 'notes',       label: 'Примітки' },
+  { value: 'sources',     label: 'Джерела' },
+  { value: 'vk_url',      label: 'VK URL' },
+  { value: 'ok_url',      label: 'OK URL' },
+]
+
+const FIELD_ALIASES: Record<string, string[]> = {
+  name_rus:    ['фио', 'ф.и.о', 'имя', 'полное имя', 'фамилия имя отчество', 'name_rus', 'фамилия', 'прізвище імя по батькові', 'стрелковый взвод', 'садн'],
+  name_ukr:    ['піб', 'п.і.б', 'прізвище', 'повне імя', 'name_ukr'],
+  name_eng:    ['name', 'full name', 'fullname', 'name_eng'],
+  dob:         ['дата рождения', 'д.р.', 'дн', 'дата народження', 'рождение', 'dob', 'birth', 'birthdate', 'дата рожд', 'рік народження'],
+  gender:      ['пол', 'стать', 'gender', 'sex'],
+  birth_place: ['место рождения', 'місце народження', 'birth_place', 'место рожд', 'область/край/республіка', 'населений пункт', 'область'],
+  nationality: ['гражданство', 'громадянство', 'nationality', 'страна', 'країна'],
+  region:      ['регион', 'region', 'район'],
+  rank:        ['звание', 'звання', 'rank', 'воинское звание', 'військове звання'],
+  position:    ['должность', 'посада', 'position', 'должн'],
+  unit:        ['часть', 'в/ч', 'подразделение', 'підрозділ', 'unit', 'воинская часть', 'військова частина'],
+  unit_num:    ['номер части', 'номер в/ч', 'unit_num', '№ в/ч', 'номер войсковой'],
+  military_id: ['военный билет', 'в/б', 'military_id', 'вб', 'военнобилет'],
+  passport:    ['паспорт', 'passport', 'документ', 'серия номер'],
+  ipn:         ['іпн', 'инн', 'ipn', 'inn', 'идентификационный', 'ідентифікаційний'],
+  snils:       ['снилс', 'snils', 'пфр'],
+  phones:      ['телефон', 'тел', 'phone', 'phones', 'мобильный', 'мобільний', 'номер', 'моб'],
+  email:       ['email', 'почта', 'пошта', 'e-mail', 'мейл'],
+  addr_live:   ['адрес', 'адреса', 'адрес проживания', 'addr_live', 'прописка', 'місце проживання'],
+  addr_reg:    ['адрес регистрации', 'реєстрація', 'addr_reg', 'регистрация'],
+  status:      ['статус', 'status'],
+  threat_level:['угроза', 'загроза', 'threat', 'threat_level', 'рівень'],
+  notes:       ['примечания', 'нотатки', 'notes', 'описание', 'опис', 'коментар', 'нюанси', 'загибель (район)', 'загибель (населений пункт)'],
+  sources:     ['источник', 'джерело', 'sources', 'source', 'посилання на першоджерело', 'посилання тг'],
+  vk_url:      ['vk', 'вконтакте', 'vk_url'],
+  ok_url:      ['одноклассники', 'ok.ru', 'ok_url'],
+}
+
+function autoMap(header: string): string {
+  const h = header.toLowerCase().trim()
+  for (const [field, aliases] of Object.entries(FIELD_ALIASES)) {
+    if (aliases.some(a => h.includes(a) || a.includes(h))) return field
+  }
+  if (DB_FIELDS.find(f => f.value === h)) return h
+  return ''
+}
+
+// ─── Enrichment progress ──────────────────────────────────────────────────────
+type EnrichStatus = 'pending' | 'running' | 'done' | 'error'
+interface EnrichResult {
+  id: string
+  name: string
+  status: EnrichStatus
+  found?: { phones: number; emails: number; addresses: number; sanctions: number }
+  error?: string
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+export default function ImportPage() {
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [step, setStep]       = useState<1 | 2 | 3>(1)
+  const [headers, setHeaders] = useState<string[]>([])
+  const [rows, setRows]       = useState<string[][]>([])
+  const [mapping, setMapping] = useState<string[]>([])
+  const [mode, setMode]       = useState<'upsert' | 'insert'>('upsert')
+  const [autoEnrich, setAutoEnrich] = useState(true)
+  const [importing, setImporting] = useState(false)
+  const [result, setResult]   = useState<any>(null)
+  const [error, setError]     = useState('')
+  const [dragOver, setDragOver] = useState(false)
+
+  // Enrichment state
+  const [enriching, setEnriching] = useState(false)
+  const [enrichResults, setEnrichResults] = useState<EnrichResult[]>([])
+  const [enrichDone, setEnrichDone] = useState(0)
+  const [enrichStats, setEnrichStats] = useState({ phones: 0, emails: 0, addresses: 0, sanctions: 0 })
+  const enrichCancelRef = useRef(false)
+
+  const processRows = useCallback((h: string[], r: string[][]) => {
+    if (h.length === 0) { setError('Не вдалося розпізнати файл'); return }
+    setHeaders(h)
+    setRows(r)
+    setMapping(h.map(autoMap))
+    setError('')
+    setStep(2)
+  }, [])
+
+  function handleFile(file: File) {
+    if (!file) return
+    const ext = file.name.split('.').pop()?.toLowerCase() || ''
+
+    // XLSX / XLS — parse via SheetJS
+    if (['xlsx', 'xls'].includes(ext)) {
+      const reader = new FileReader()
+      reader.onload = e => {
+        try {
+          const data = new Uint8Array(e.target?.result as ArrayBuffer)
+          const wb   = XLSX.read(data, { type: 'array', cellDates: true })
+          const ws   = wb.Sheets[wb.SheetNames[0]]
+          const raw  = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, raw: false, dateNF: 'YYYY-MM-DD' })
+          if (!raw || raw.length < 2) { setError('Порожній або невалідний XLSX файл'); return }
+          const h = (raw[0] as any[]).map(c => String(c || '').trim())
+          const r = (raw.slice(1) as any[][])
+            .map(row => h.map((_, i) => String(row[i] || '').trim()))
+            .filter(row => row.some(v => v))
+          processRows(h, r)
+        } catch (err: any) {
+          setError(`Помилка читання XLSX: ${err.message}`)
+        }
+      }
+      reader.readAsArrayBuffer(file)
+      return
+    }
+
+    // CSV / TSV / TXT
+    if (['csv', 'txt', 'tsv'].includes(ext)) {
+      const reader = new FileReader()
+      reader.onload = e => {
+        const text = e.target?.result as string
+        const { headers: h, rows: r } = parseCSV(text)
+        processRows(h, r)
+      }
+      reader.readAsText(file, 'UTF-8')
+      return
+    }
+
+    setError('Підтримуються: XLSX, XLS, CSV, TSV, TXT')
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault()
+    setDragOver(false)
+    const file = e.dataTransfer.files[0]
+    if (file) handleFile(file)
+  }
+
+  function buildPersons(): Record<string, any>[] {
+    return rows.map(row => {
+      const person: Record<string, any> = {}
+      row.forEach((val, i) => {
+        const field = mapping[i]
+        if (field && val.trim()) {
+          if (field === 'phones' && person.phones) {
+            person.phones = `${person.phones},${val.trim()}`
+          } else {
+            person[field] = val.trim()
+          }
+        }
+      })
+      return person
+    }).filter(p => Object.keys(p).length > 0)
+  }
+
+  async function doImport() {
+    setImporting(true)
+    setError('')
+    setResult(null)
+    try {
+      const persons = buildPersons()
+      const res = await fetch('/api/persons/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ persons, mode }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error || 'Помилка імпорту'); return }
+      setResult(data)
+      setStep(3)
+
+      // Якщо авто-збагачення увімкнено — запускаємо
+      if (autoEnrich && data.persons?.length > 0) {
+        startEnrichment(data.persons)
+      }
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  async function startEnrichment(persons: { id: string; name: string }[]) {
+    setEnriching(true)
+    enrichCancelRef.current = false
+    setEnrichDone(0)
+    setEnrichStats({ phones: 0, emails: 0, addresses: 0, sanctions: 0 })
+
+    // Ініціалізуємо список
+    const initial: EnrichResult[] = persons.map(p => ({ id: p.id, name: p.name, status: 'pending' }))
+    setEnrichResults(initial)
+
+    let phones = 0, emails = 0, addresses = 0, sanctions = 0
+
+    for (let i = 0; i < persons.length; i++) {
+      if (enrichCancelRef.current) break
+      const p = persons[i]
+
+      // Позначаємо як "в процесі"
+      setEnrichResults(prev => prev.map((r, idx) => idx === i ? { ...r, status: 'running' } : r))
+
+      try {
+        const res = await fetch('/api/persons/enrich', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ person_id: p.id, auto_patch: true }),
+        })
+        const data = await res.json()
+
+        if (data.success) {
+          phones    += data.found?.phones    || 0
+          emails    += data.found?.emails    || 0
+          addresses += data.found?.addresses || 0
+          sanctions += data.found?.sanctions || 0
+
+          setEnrichResults(prev => prev.map((r, idx) => idx === i
+            ? { ...r, status: 'done', found: data.found }
+            : r
+          ))
+        } else {
+          setEnrichResults(prev => prev.map((r, idx) => idx === i
+            ? { ...r, status: 'error', error: data.error || 'Помилка' }
+            : r
+          ))
+        }
+      } catch {
+        setEnrichResults(prev => prev.map((r, idx) => idx === i
+          ? { ...r, status: 'error', error: 'Мережева помилка' }
+          : r
+        ))
+      }
+
+      setEnrichDone(i + 1)
+      setEnrichStats({ phones, emails, addresses, sanctions })
+
+      // Пауза між запитами щоб не перевантажити сервіси
+      if (i < persons.length - 1) await new Promise(r => setTimeout(r, 300))
+    }
+
+    setEnriching(false)
+  }
+
+  function reset() {
+    setStep(1); setHeaders([]); setRows([]); setMapping([])
+    setResult(null); setError('')
+    setEnrichResults([]); setEnrichDone(0); setEnriching(false)
+  }
+
+  const previewRows  = rows.slice(0, 8)
+  const mappedCount  = mapping.filter(Boolean).length
+  const persons      = step >= 2 ? buildPersons() : []
+  const enrichTotal  = enrichResults.length
+  const enrichPct    = enrichTotal > 0 ? Math.round((enrichDone / enrichTotal) * 100) : 0
+
+  return (
+    <div className="min-h-screen bg-gray-900 text-white flex">
+      <Sidebar />
+      <div className="flex-1 flex flex-col min-w-0">
+
+        {/* Header */}
+        <header className="bg-gray-800 border-b border-gray-700 px-6 py-4 flex items-center gap-4 shrink-0">
+          <h1 className="text-lg font-bold">📥 Масовий імпорт осіб</h1>
+          <div className="flex items-center gap-2 ml-auto text-xs text-gray-500">
+            {[['1','Завантаження'], ['2','Маппінг'], ['3','Результат']].map(([n, label]) => (
+              <>
+                <span key={`step-${n}`} className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs ${
+                  step >= parseInt(n) ? (n === '3' && step === 3 ? 'bg-green-600 text-white' : 'bg-blue-600 text-white') : 'bg-gray-700'
+                }`}>{n}</span>
+                <span key={`label-${n}`}>{label}</span>
+                {n !== '3' && <span key={`sep-${n}`} className="text-gray-700">›</span>}
+              </>
+            ))}
+          </div>
+        </header>
+
+        <div className="flex-1 overflow-y-auto p-6">
+          <div className="max-w-6xl mx-auto space-y-5">
+
+            {error && (
+              <div className="bg-red-950 border border-red-700 rounded-xl p-4 text-red-300 text-sm flex items-start gap-2">
+                <span>❌</span><span>{error}</span>
+              </div>
+            )}
+
+            {/* ── STEP 1: Upload ── */}
+            {step === 1 && (
+              <div className="space-y-4">
+                <div
+                  className={`border-2 border-dashed rounded-2xl p-12 text-center transition-all cursor-pointer ${
+                    dragOver ? 'border-blue-400 bg-blue-950/20' : 'border-gray-700 hover:border-gray-500'
+                  }`}
+                  onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+                  onDragLeave={() => setDragOver(false)}
+                  onDrop={handleDrop}
+                  onClick={() => fileRef.current?.click()}
+                >
+                  <div className="text-5xl mb-4">📂</div>
+                  <p className="text-white font-semibold text-lg mb-1">Перетягніть файл сюди</p>
+                  <p className="text-gray-500 text-sm">або клікніть щоб вибрати файл</p>
+                  <p className="text-gray-600 text-xs mt-2">Підтримуються: <span className="text-green-400 font-medium">XLSX, XLS</span>, CSV, TSV, TXT • Кодування: UTF-8</p>
+                  <input ref={fileRef} type="file" accept=".csv,.tsv,.txt,.xlsx,.xls" className="hidden"
+                    onChange={e => e.target.files?.[0] && handleFile(e.target.files[0])} />
+                </div>
+
+                {/* Format hints */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
+                    <p className="text-gray-400 text-sm font-semibold mb-2">📊 Excel (XLSX/XLS)</p>
+                    <p className="text-gray-500 text-xs mb-1">Перший рядок — заголовки колонок.</p>
+                    <p className="text-xs text-gray-600">Підтримує кирилицю, дати, числа.</p>
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {['ФИО', 'Дата рождения', 'Звание', 'Подразделение', 'Регион'].map(h => (
+                        <span key={h} className="text-xs bg-gray-700 text-green-400 px-2 py-0.5 rounded">{h}</span>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
+                    <p className="text-gray-400 text-sm font-semibold mb-2">📄 CSV / TSV / TXT</p>
+                    <p className="text-gray-500 text-xs mb-1">Роздільник: кома, крапка з комою або таб.</p>
+                    <pre className="text-xs text-green-400 bg-gray-900 rounded p-2 overflow-x-auto">{
+`ФИО;Дата рождения;Звание
+Иванов Иван;01.01.1990;Майор`
+                    }</pre>
+                  </div>
+                </div>
+
+                {/* Auto-enrich option */}
+                <div className="bg-blue-950/30 border border-blue-700/50 rounded-xl p-4">
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input type="checkbox" checked={autoEnrich} onChange={e => setAutoEnrich(e.target.checked)}
+                      className="mt-1 accent-blue-500 w-4 h-4" />
+                    <div>
+                      <p className="text-blue-300 font-semibold text-sm">🔍 Авто-збагачення після імпорту</p>
+                      <p className="text-gray-400 text-xs mt-1">
+                        Після імпорту кожна особа автоматично перевіряється по витоках (LeakOsint, OsintKit),
+                        санкційних списках (OFAC, EU, РНБО, ООН) та Telegram. Знайдені телефони, адреси,
+                        ІПН та VK-профілі додаються у картку.
+                      </p>
+                      <p className="text-gray-600 text-xs mt-1">⏱ ~1–3 сек на особу</p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+            )}
+
+            {/* ── STEP 2: Mapping + Preview ── */}
+            {step === 2 && (
+              <div className="space-y-5">
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { label: 'Рядків у файлі', value: rows.length, color: 'text-blue-400' },
+                    { label: 'Колонок розпізнано', value: `${mappedCount} / ${headers.length}`, color: 'text-green-400' },
+                    { label: 'Записів до імпорту', value: persons.length, color: 'text-yellow-400' },
+                  ].map(s => (
+                    <div key={s.label} className="bg-gray-800 rounded-xl p-4 border border-gray-700 text-center">
+                      <div className={`text-2xl font-bold ${s.color}`}>{s.value}</div>
+                      <div className="text-gray-500 text-xs mt-1">{s.label}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Column mapping */}
+                <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+                  <div className="px-4 py-3 border-b border-gray-700 flex items-center justify-between">
+                    <h3 className="font-semibold text-sm">🔗 Маппінг колонок</h3>
+                    <span className="text-xs text-gray-500">CSV/Excel колонка → поле у базі</span>
+                  </div>
+                  <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {headers.map((header, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs text-gray-400 truncate mb-0.5" title={header}>
+                            <span className="text-gray-600 mr-1">{i + 1}.</span>
+                            {header}
+                          </div>
+                          <div className="text-xs text-gray-600 truncate">
+                            напр: {rows[0]?.[i] || '—'}
+                          </div>
+                        </div>
+                        <span className="text-gray-600 text-xs shrink-0">→</span>
+                        <select
+                          value={mapping[i] || ''}
+                          onChange={e => {
+                            const m = [...mapping]; m[i] = e.target.value; setMapping(m)
+                          }}
+                          className={`text-xs px-2 py-1.5 rounded-lg border bg-gray-700 focus:outline-none shrink-0 w-36 ${
+                            mapping[i] ? 'border-blue-600 text-white' : 'border-gray-600 text-gray-500'
+                          }`}
+                        >
+                          {DB_FIELDS.map(f => (
+                            <option key={f.value} value={f.value}>{f.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Preview table */}
+                <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+                  <div className="px-4 py-3 border-b border-gray-700">
+                    <h3 className="font-semibold text-sm">👁️ Попередній перегляд (перші {previewRows.length} рядків)</h3>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-gray-700">
+                          {headers.map((h, i) => (
+                            <th key={i} className="px-3 py-2 text-left text-gray-400 font-medium whitespace-nowrap">
+                              {h}
+                              {mapping[i] && <div className="text-blue-400 font-normal">→ {mapping[i]}</div>}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {previewRows.map((row, ri) => (
+                          <tr key={ri} className="border-b border-gray-800 hover:bg-gray-750">
+                            {row.map((cell, ci) => (
+                              <td key={ci} className="px-3 py-2 text-gray-300 whitespace-nowrap max-w-xs truncate" title={cell}>
+                                {cell || <span className="text-gray-700">—</span>}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {rows.length > 8 && (
+                    <div className="px-4 py-2 text-xs text-gray-600 border-t border-gray-800">
+                      ...та ще {rows.length - 8} рядків
+                    </div>
+                  )}
+                </div>
+
+                {/* Import options */}
+                <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 space-y-4">
+                  <div className="flex items-center gap-4 flex-wrap">
+                    <label className="text-sm text-gray-400 font-medium">Режим:</label>
+                    <div className="flex gap-3">
+                      {[
+                        { v: 'upsert', label: 'Оновлювати дублікати', desc: 'Якщо ім\'я+ДН вже є — оновити' },
+                        { v: 'insert', label: 'Тільки нові', desc: 'Пропустити якщо вже існує' },
+                      ].map(o => (
+                        <label key={o.v} className="flex items-start gap-2 cursor-pointer">
+                          <input type="radio" name="mode" value={o.v} checked={mode === o.v}
+                            onChange={() => setMode(o.v as any)} className="mt-0.5 accent-blue-500" />
+                          <div>
+                            <div className="text-sm text-white">{o.label}</div>
+                            <div className="text-xs text-gray-500">{o.desc}</div>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Авто-збагачення toggle */}
+                  <label className="flex items-center gap-3 cursor-pointer border-t border-gray-700 pt-3">
+                    <input type="checkbox" checked={autoEnrich} onChange={e => setAutoEnrich(e.target.checked)}
+                      className="accent-blue-500 w-4 h-4" />
+                    <div>
+                      <span className="text-sm text-blue-300 font-medium">🔍 Авто-збагачення</span>
+                      <span className="text-xs text-gray-500 ml-2">— перевірити кожну особу по витоках та санкціях</span>
+                    </div>
+                  </label>
+
+                  <div className="flex gap-3 justify-end">
+                    <button onClick={reset}
+                      className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm transition">
+                      ← Назад
+                    </button>
+                    <button
+                      onClick={doImport}
+                      disabled={importing || persons.length === 0}
+                      className="px-6 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg text-sm font-semibold transition flex items-center gap-2"
+                    >
+                      {importing ? (
+                        <><span className="animate-spin">⟳</span>Імпортується...</>
+                      ) : (
+                        <>📥 Імпортувати {persons.length.toLocaleString()} записів</>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── STEP 3: Result + Enrichment ── */}
+            {step === 3 && result && (
+              <div className="space-y-4">
+                {/* Import summary */}
+                <div className={`rounded-2xl p-6 border ${
+                  result.errors?.length > 0 ? 'bg-yellow-950/30 border-yellow-700' : 'bg-green-950/30 border-green-700'
+                }`}>
+                  <div className="flex items-center gap-3">
+                    <span className="text-4xl">{result.errors?.length > 0 ? '⚠️' : '✅'}</span>
+                    <div>
+                      <h2 className="text-lg font-bold text-white">
+                        {result.errors?.length > 0 ? 'Імпорт завершено з помилками' : 'Імпорт успішний!'}
+                      </h2>
+                      <p className="text-gray-400 text-sm">Оброблено {result.total} записів</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 text-center">
+                    <div className="text-3xl font-bold text-green-400">{result.imported}</div>
+                    <div className="text-gray-500 text-xs mt-1">Імпортовано</div>
+                  </div>
+                  <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 text-center">
+                    <div className="text-3xl font-bold text-yellow-400">{result.skipped}</div>
+                    <div className="text-gray-500 text-xs mt-1">Пропущено</div>
+                  </div>
+                  <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 text-center">
+                    <div className="text-3xl font-bold text-gray-400">{result.errors?.length || 0}</div>
+                    <div className="text-gray-500 text-xs mt-1">Помилок</div>
+                  </div>
+                </div>
+
+                {result.errors?.length > 0 && (
+                  <div className="bg-gray-800 rounded-xl border border-yellow-700/50 p-4">
+                    <h3 className="text-yellow-400 text-sm font-semibold mb-2">⚠️ Помилки</h3>
+                    {result.errors.map((e: string, i: number) => (
+                      <p key={i} className="text-xs text-gray-400 font-mono">{e}</p>
+                    ))}
+                  </div>
+                )}
+
+                {/* ── Enrichment Panel ── */}
+                {enrichTotal > 0 && (
+                  <div className="bg-gray-800 rounded-2xl border border-blue-700/50 overflow-hidden">
+                    <div className="px-5 py-4 border-b border-gray-700 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg">{enriching ? '🔍' : enrichDone === enrichTotal ? '✅' : '🔍'}</span>
+                        <div>
+                          <h3 className="font-semibold text-sm text-white">
+                            {enriching
+                              ? `Збагачення: ${enrichDone} / ${enrichTotal}`
+                              : enrichDone === enrichTotal
+                              ? `Збагачення завершено: ${enrichDone} осіб перевірено`
+                              : 'Збагачення по базах'}
+                          </h3>
+                          <p className="text-xs text-gray-500">Витоки · Санкції (OFAC/EU/РНБО/ООН)</p>
+                        </div>
+                      </div>
+                      {enriching && (
+                        <button onClick={() => { enrichCancelRef.current = true }}
+                          className="text-xs text-red-400 hover:text-red-300 px-3 py-1 border border-red-700/50 rounded-lg">
+                          Зупинити
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Progress bar */}
+                    <div className="px-5 py-3 border-b border-gray-700">
+                      <div className="flex justify-between text-xs text-gray-500 mb-1.5">
+                        <span>{enrichDone} з {enrichTotal}</span>
+                        <span>{enrichPct}%</span>
+                      </div>
+                      <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-blue-500 rounded-full transition-all duration-300"
+                          style={{ width: `${enrichPct}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Stats */}
+                    <div className="grid grid-cols-4 divide-x divide-gray-700 border-b border-gray-700">
+                      {[
+                        { icon: '📱', label: 'Телефони', value: enrichStats.phones, color: 'text-blue-400' },
+                        { icon: '📧', label: 'Emails', value: enrichStats.emails, color: 'text-purple-400' },
+                        { icon: '🏠', label: 'Адреси', value: enrichStats.addresses, color: 'text-green-400' },
+                        { icon: '⚠️', label: 'Санкції', value: enrichStats.sanctions, color: 'text-red-400' },
+                      ].map(s => (
+                        <div key={s.label} className="p-3 text-center">
+                          <div className={`text-lg font-bold ${s.color}`}>{s.value}</div>
+                          <div className="text-xs text-gray-500">{s.icon} {s.label}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Person list */}
+                    <div className="max-h-64 overflow-y-auto">
+                      {enrichResults.slice(0, 200).map((r, i) => (
+                        <div key={r.id} className={`flex items-center gap-3 px-4 py-2 border-b border-gray-800/50 text-xs ${
+                          r.status === 'running' ? 'bg-blue-950/20' : ''
+                        }`}>
+                          <span className="w-5 text-center shrink-0">
+                            {r.status === 'pending' ? <span className="text-gray-600">○</span>
+                            : r.status === 'running' ? <span className="animate-spin inline-block">⟳</span>
+                            : r.status === 'done'    ? <span className="text-green-400">✓</span>
+                            : <span className="text-red-400">✗</span>}
+                          </span>
+                          <span className="flex-1 text-gray-300 truncate">{r.name || `ID: ${r.id}`}</span>
+                          {r.status === 'done' && r.found && (
+                            <div className="flex gap-2 shrink-0">
+                              {(r.found.phones || 0) > 0    && <span className="text-blue-400">📱{r.found.phones}</span>}
+                              {(r.found.emails || 0) > 0    && <span className="text-purple-400">✉{r.found.emails}</span>}
+                              {(r.found.addresses || 0) > 0 && <span className="text-green-400">🏠{r.found.addresses}</span>}
+                              {(r.found.sanctions || 0) > 0 && <span className="text-red-400">⚠️{r.found.sanctions}</span>}
+                              {Object.values(r.found).every(v => v === 0) && <span className="text-gray-600">нічого</span>}
+                            </div>
+                          )}
+                          {r.status === 'error' && <span className="text-red-400 shrink-0">{r.error}</span>}
+                        </div>
+                      ))}
+                      {enrichResults.length > 200 && (
+                        <p className="text-center text-xs text-gray-600 py-2">...та ще {enrichResults.length - 200} осіб</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Manual enrich button (якщо не запускали авто) */}
+                {!autoEnrich && result.persons?.length > 0 && enrichTotal === 0 && (
+                  <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-white font-medium">🔍 Перевірити по базах</p>
+                      <p className="text-xs text-gray-500 mt-0.5">Витоки, санкції, Telegram для {result.imported} осіб</p>
+                    </div>
+                    <button
+                      onClick={() => startEnrichment(result.persons)}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition"
+                    >
+                      Запустити збагачення
+                    </button>
+                  </div>
+                )}
+
+                <div className="flex gap-3">
+                  <button onClick={reset}
+                    className="px-5 py-2.5 bg-gray-700 hover:bg-gray-600 text-white rounded-xl text-sm font-medium transition">
+                    📥 Імпортувати ще
+                  </button>
+                  <a href="/persons"
+                    className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-medium transition inline-flex items-center gap-2">
+                    👥 Переглянути реєстр →
+                  </a>
+                </div>
+              </div>
+            )}
+
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}

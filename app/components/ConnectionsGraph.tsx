@@ -82,6 +82,25 @@ export default function ConnectionsGraph({ personId, personName }: Props) {
 
   useEffect(() => { loadEdges() }, [loadEdges])
 
+  // Колір вузла за threat score
+  function threatNodeColor(score?: number, myrotvorets?: boolean): string {
+    if (myrotvorets) return '#7f0000'
+    if (!score) return '#1e40af'
+    if (score >= 75) return '#7f1d1d'
+    if (score >= 50) return '#c41e3a'
+    if (score >= 25) return '#b45309'
+    return '#1e40af'
+  }
+
+  function threatBorderColor(score?: number, myrotvorets?: boolean): string {
+    if (myrotvorets) return '#ef4444'
+    if (!score) return '#3b82f6'
+    if (score >= 75) return '#ef4444'
+    if (score >= 50) return '#f97316'
+    if (score >= 25) return '#eab308'
+    return '#3b82f6'
+  }
+
   // Ініціалізація Cytoscape
   useEffect(() => {
     if (!containerRef.current || loading) return
@@ -93,7 +112,14 @@ export default function ConnectionsGraph({ personId, personName }: Props) {
 
       // Центральний вузол
       const nodes: any[] = [{
-        data: { id: personId, label: personName, isCenter: true },
+        data: {
+          id: personId,
+          label: personName,
+          isCenter: true,
+          threatColor: '#7c3aed',
+          borderColor: '#a855f7',
+          size: 56,
+        },
       }]
 
       for (const edge of edges) {
@@ -101,7 +127,23 @@ export default function ConnectionsGraph({ personId, personName }: Props) {
         if (!neighbor) continue
         const nid = neighbor.id
         if (!nodes.find(n => n.data.id === nid)) {
-          nodes.push({ data: { id: nid, label: pName(neighbor), isCenter: false } })
+          const score = (neighbor as any).threat_score
+          const myr = !!(neighbor as any).myrotvorets_url
+          const connCount = edges.filter(e => e.source === nid || e.target === nid).length
+          nodes.push({
+            data: {
+              id: nid,
+              label: pName(neighbor),
+              isCenter: false,
+              rank: neighbor.rank || '',
+              threatScore: score || 0,
+              myrotvorets: myr,
+              threatColor: threatNodeColor(score, myr),
+              borderColor: threatBorderColor(score, myr),
+              size: Math.max(36, Math.min(52, 36 + (score || 0) / 5)),
+              connCount,
+            },
+          })
         }
       }
 
@@ -113,6 +155,7 @@ export default function ConnectionsGraph({ personId, personName }: Props) {
           label: e.rel_type,
           color: relColor(e.rel_type),
           confidence: e.confidence,
+          width: Math.max(1, Math.round(e.confidence * 3)),
         },
       }))
 
@@ -125,18 +168,22 @@ export default function ConnectionsGraph({ personId, personName }: Props) {
           {
             selector: 'node',
             style: {
-              'background-color': '#1e40af',
+              'background-color': 'data(threatColor)',
               'label': 'data(label)',
               'color': '#fff',
-              'font-size': '11px',
+              'font-size': '10px',
               'text-valign': 'bottom',
-              'text-margin-y': 6,
+              'text-margin-y': 5,
               'text-wrap': 'wrap',
-              'text-max-width': '120px',
-              'width': 40,
-              'height': 40,
+              'text-max-width': '110px',
+              'text-background-color': '#0f172a',
+              'text-background-opacity': 0.8,
+              'text-background-padding': '2px',
+              'text-background-shape': 'roundrectangle',
+              'width': 'data(size)',
+              'height': 'data(size)',
               'border-width': 2,
-              'border-color': '#3b82f6',
+              'border-color': 'data(borderColor)',
             },
           },
           {
@@ -144,52 +191,74 @@ export default function ConnectionsGraph({ personId, personName }: Props) {
             style: {
               'background-color': '#7c3aed',
               'border-color': '#a855f7',
-              'width': 56,
-              'height': 56,
-              'font-size': '13px',
+              'border-width': 3,
+              'width': 60,
+              'height': 60,
+              'font-size': '12px',
               'font-weight': 'bold',
+            },
+          },
+          {
+            selector: 'node[?myrotvorets]',
+            style: {
+              'border-style': 'double',
+              'border-width': 4,
             },
           },
           {
             selector: 'node:selected',
             style: {
               'border-color': '#fbbf24',
-              'border-width': '3px',
+              'border-width': 4,
+              'overlay-color': '#fbbf24',
+              'overlay-opacity': 0.1,
             },
           },
           {
             selector: 'edge',
             style: {
-              'width': 2,
+              'width': 'data(width)',
               'line-color': 'data(color)',
               'target-arrow-color': 'data(color)',
               'target-arrow-shape': 'triangle',
               'curve-style': 'bezier',
               'label': 'data(label)',
               'color': '#9ca3af',
-              'font-size': '10px',
-              'text-background-color': '#111827',
-              'text-background-opacity': 1,
+              'font-size': '9px',
+              'text-background-color': '#0f172a',
+              'text-background-opacity': 0.85,
               'text-background-padding': '2px',
             },
           },
           {
             selector: 'edge:selected',
-            style: { 'line-color': '#fbbf24', 'target-arrow-color': '#fbbf24', 'width': 3 },
+            style: {
+              'line-color': '#fbbf24',
+              'target-arrow-color': '#fbbf24',
+              'width': 3,
+            },
           },
         ],
         layout: {
           name: edges.length === 0 ? 'grid' : 'cose',
-          padding: 40,
-          nodeRepulsion: () => 8000,
-          idealEdgeLength: () => 150,
-          animate: false,
+          padding: 50,
+          nodeRepulsion: () => 12000,
+          idealEdgeLength: () => 160,
+          gravity: 0.8,
+          animate: edges.length < 20,
+          animationDuration: 500,
         },
       })
 
-      cy.on('tap', 'node', (evt: any) => {
+      // Подвійний клік — відкрити картку
+      cy.on('dblclick', 'node', (evt: any) => {
         const nodeId = evt.target.data('id')
         if (nodeId !== personId) router.push(`/persons/${nodeId}`)
+      })
+
+      // Одинарний клік по вузлу — показати деталі
+      cy.on('tap', 'node', (evt: any) => {
+        setSelectedEdge(null)
       })
 
       cy.on('tap', 'edge', (evt: any) => {
@@ -403,11 +472,45 @@ export default function ConnectionsGraph({ personId, personName }: Props) {
           <p className="text-gray-600 text-sm mt-1">Натисніть "+ Додати зв'язок" для початку</p>
         </div>
       ) : (
-        <div
-          ref={containerRef}
-          className="w-full h-[500px] bg-gray-900 rounded-xl border border-gray-700"
-          style={{ cursor: 'grab' }}
-        />
+        <div className="relative">
+          {/* Кнопки управління */}
+          <div className="absolute top-3 right-3 z-10 flex flex-col gap-1.5">
+            <button
+              onClick={() => cyRef.current?.fit(undefined, 40)}
+              className="w-8 h-8 bg-gray-800/90 hover:bg-gray-700 border border-gray-600 rounded-lg text-gray-300 text-sm transition flex items-center justify-center"
+              title="Вписати всі">⊞</button>
+            <button
+              onClick={() => cyRef.current?.zoom(cyRef.current.zoom() * 1.2)}
+              className="w-8 h-8 bg-gray-800/90 hover:bg-gray-700 border border-gray-600 rounded-lg text-gray-300 text-sm transition flex items-center justify-center"
+              title="Збільшити">+</button>
+            <button
+              onClick={() => cyRef.current?.zoom(cyRef.current.zoom() * 0.8)}
+              className="w-8 h-8 bg-gray-800/90 hover:bg-gray-700 border border-gray-600 rounded-lg text-gray-300 text-sm transition flex items-center justify-center"
+              title="Зменшити">−</button>
+            <button
+              onClick={() => {
+                const png = cyRef.current?.png({ scale: 2, bg: '#0f172a' })
+                if (png) { const a = document.createElement('a'); a.href = png; a.download = 'graph.png'; a.click() }
+              }}
+              className="w-8 h-8 bg-gray-800/90 hover:bg-gray-700 border border-gray-600 rounded-lg text-gray-300 text-xs transition flex items-center justify-center"
+              title="Зберегти PNG">📷</button>
+          </div>
+
+          {/* Легенда */}
+          <div className="absolute bottom-3 left-3 z-10 bg-gray-900/90 border border-gray-700 rounded-lg p-2.5 text-xs space-y-1">
+            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-[#7c3aed] inline-block"/><span className="text-gray-400">Центральна особа</span></div>
+            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-[#7f1d1d] inline-block"/><span className="text-gray-400">Критична загроза</span></div>
+            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-[#c41e3a] inline-block"/><span className="text-gray-400">Висока загроза</span></div>
+            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-[#1e40af] inline-block"/><span className="text-gray-400">Низька/невідома</span></div>
+            <div className="flex items-center gap-2 pt-0.5 border-t border-gray-700"><span className="text-gray-500 text-xs">Подвійний клік → картка</span></div>
+          </div>
+
+          <div
+            ref={containerRef}
+            className="w-full h-[560px] bg-gray-900 rounded-xl border border-gray-700"
+            style={{ cursor: 'grab' }}
+          />
+        </div>
       )}
 
       {/* Панель вибраного зв'язку */}

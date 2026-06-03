@@ -14,13 +14,17 @@ export async function GET(req: NextRequest) {
   }
 
   const vpsHost      = process.env.VPS_HOST || '161.35.86.145'
-  const telegramPort = process.env.TELEGRAM_SEARCH_PORT || '8001'
+  const telethonPort = process.env.TELETHON_PORT || '8008'
+  const legacyPort   = process.env.TELEGRAM_SEARCH_PORT || '8001'
+
+  // Пробуємо Telethon (MTProto) першим, fallback на legacy
+  const port = telethonPort
+  const url  = `http://${vpsHost}:${port}/search/quick?q=${encodeURIComponent(q)}&dob=${encodeURIComponent(dob)}`
 
   try {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 110000)
 
-    const url = `http://${vpsHost}:${telegramPort}/search/quick?q=${encodeURIComponent(q)}&dob=${encodeURIComponent(dob)}`
     const res = await fetch(url, { signal: controller.signal })
     clearTimeout(timeout)
 
