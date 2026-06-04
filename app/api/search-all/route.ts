@@ -74,22 +74,21 @@ function detectType(q: string): string {
   return 'name'
 }
 
-// Internal API key for bypassing auth middleware in server-to-server calls
-const INTERNAL_KEY = process.env.INTERNAL_API_KEY || ''
-
-// Helper: fetch with timeout + internal auth header, never throws
-async function safeFetch(url: string, opts: RequestInit = {}, timeoutMs = 7000): Promise<any> {
-  try {
-    const headers: Record<string, string> = {
-      ...(opts.headers as Record<string, string> || {}),
-    }
-    // Додаємо internal key тільки для локальних (APP_URL) викликів
-    if (INTERNAL_KEY && url.startsWith(LOCAL)) {
-      headers['x-internal-key'] = INTERNAL_KEY
-    }
-    const res = await fetch(url, { ...opts, headers, signal: AbortSignal.timeout(timeoutMs) })
-    return await res.json()
-  } catch { return null }
+// Helper factory — передає cookie користувача для авторизації внутрішніх викликів
+function makeSafeFetch(cookieHeader: string) {
+  return async function safeFetch(url: string, opts: RequestInit = {}, timeoutMs = 7000): Promise<any> {
+    try {
+      const headers: Record<string, string> = {
+        ...(opts.headers as Record<string, string> || {}),
+      }
+      // Передаємо cookie лише для внутрішніх (LOCAL) викликів
+      if (cookieHeader && url.startsWith(LOCAL)) {
+        headers['cookie'] = cookieHeader
+      }
+      const res = await fetch(url, { ...opts, headers, signal: AbortSignal.timeout(timeoutMs) })
+      return await res.json()
+    } catch { return null }
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -102,6 +101,10 @@ export async function POST(req: NextRequest) {
   const q       = query.trim()
   const type    = detectType(q)
   const startTs = Date.now()
+
+  // Cookie forwarding — передаємо сесію для авторизації внутрішніх API викликів
+  const cookieHeader = req.headers.get('cookie') || ''
+  const safeFetch = makeSafeFetch(cookieHeader)
 
   // Extract request metadata for logging
   const ip_address =
