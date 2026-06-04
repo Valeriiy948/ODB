@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
           'sec-fetch-mode': 'cors',
         },
         body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(12000),
+        signal: AbortSignal.timeout(6000),
       })
 
       const txt = await res.text()

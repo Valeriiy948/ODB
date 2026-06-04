@@ -41,7 +41,7 @@ async function searchDeHashed(query: string, type: string): Promise<any> {
         regex:   false,
         de_dupe: true,
       }),
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(6000),
     })
 
     if (!res.ok) {
@@ -86,7 +86,7 @@ async function searchLeakCheckPublic(query: string, type: string): Promise<any> 
         'Accept':     'application/json',
         'User-Agent': 'Mozilla/5.0 (compatible; OSINT-Tool/1.0)',
       },
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(6000),
     })
     if (!res.ok) return { source: 'leakcheck_public', error: `HTTP ${res.status}`, entries: [] }
     const data = await res.json()
@@ -134,7 +134,7 @@ async function searchLeakCheck(query: string, type: string): Promise<any> {
     const url = `https://leakcheck.io/api/v2/query/${encodeURIComponent(query)}?type=${lcType}`
     const res = await fetch(url, {
       headers: { 'X-API-Key': apiKey, 'Accept': 'application/json' },
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(6000),
     })
     if (!res.ok) {
       const errBody = await res.json().catch(() => ({}))
@@ -179,7 +179,7 @@ async function searchHIBP(query: string, type: string): Promise<any> {
           'User-Agent':   'ODB-Platform/1.0',
           'Accept':       'application/json',
         },
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(6000),
       }
     )
     if (res.status === 404) return { source: 'hibp', total: 0, entries: [] } // not found = clean
@@ -219,7 +219,7 @@ async function searchSnusBase(query: string, type: string): Promise<any> {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Auth': apiKey },
       body: JSON.stringify({ terms: [query], types: [snType], wildcard: false }),
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(6000),
     })
     if (!res.ok) return { source: 'snusbase', error: `HTTP ${res.status}`, entries: [] }
     const data = await res.json()
@@ -288,7 +288,7 @@ async function searchOsintKit(query: string, type: string, fields?: Record<strin
         'Accept': 'application/json',
       },
       cache: 'no-store',
-      signal: AbortSignal.timeout(20000),
+      signal: AbortSignal.timeout(6000),
     })
 
     if (res.status === 401) return { source: 'osintkit', error: 'invalid_key', entries: [] }
@@ -344,7 +344,7 @@ async function searchShodan(query: string, type: string): Promise<any> {
   try {
     const res = await fetch(
       `https://api.shodan.io/shodan/host/${ip}?key=${apiKey}`,
-      { signal: AbortSignal.timeout(15000) }
+      { signal: AbortSignal.timeout(6000) }
     )
     if (res.status === 404) return { source: 'shodan', total: 0, entries: [] }
     if (!res.ok) return { source: 'shodan', error: `HTTP ${res.status}`, entries: [] }
@@ -408,7 +408,7 @@ async function searchCensys(query: string, type: string): Promise<any> {
         'Authorization': `Bearer ${apiToken}`,
         'Accept':        'application/json',
       },
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(6000),
     })
     if (res.status === 404) return { source: 'censys', total: 0, entries: [] }
     if (res.status === 422) return { source: 'censys', error: 'invalid_ip', entries: [] }
@@ -466,7 +466,7 @@ async function searchPeopleFindBot(query: string, type: string): Promise<any> {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query, type: botType }),
-      signal: AbortSignal.timeout(30000), // бот може відповідати довго
+      signal: AbortSignal.timeout(6000), // бот може відповідати довго
     })
 
     if (!res.ok) {
@@ -514,7 +514,7 @@ async function searchLocalLeaks(query: string, type: string): Promise<any> {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(6000),
     })
     if (!res.ok) return { source: 'local_leaks', error: 'VPS error', entries: [] }
     const data = await res.json()
@@ -551,7 +551,7 @@ async function searchLeakOsint(query: string, type: string): Promise<any> {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token: apiKey, request: query, limit: 100, lang: 'ru' }),
-      signal: AbortSignal.timeout(25000),
+      signal: AbortSignal.timeout(6000),
     })
     if (res.status === 401 || res.status === 403) return { source: 'leakosint', error: 'invalid_key', entries: [] }
     if (res.status === 402) return { source: 'leakosint', error: 'no_balance', entries: [] }
@@ -661,7 +661,7 @@ async function searchEyeOfGod(query: string, type: string): Promise<any> {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query, type: typeMap[type] || 'phone' }),
-      signal: AbortSignal.timeout(35000),
+      signal: AbortSignal.timeout(6000),
     })
     if (!res.ok) return { source: 'eyeofgod', error: res.status === 503 ? 'vps_offline' : `HTTP ${res.status}`, entries: [] }
     const data = await res.json()
@@ -702,7 +702,7 @@ async function searchOpenDataBot(query: string, type: string): Promise<any> {
       const endpoint  = isCompany
         ? `https://opendatabot.ua/api/v3/company/${query}`
         : `https://opendatabot.ua/api/v3/physical/${query}`
-      const res = await fetch(endpoint, { headers, signal: AbortSignal.timeout(12000) })
+      const res = await fetch(endpoint, { headers, signal: AbortSignal.timeout(6000) })
       if (res.ok) {
         const d = await res.json()
         const c = d.data || d
@@ -723,7 +723,7 @@ async function searchOpenDataBot(query: string, type: string): Promise<any> {
     if (type === 'name' || (!entries.length && query.length >= 3)) {
       const res = await fetch(
         `https://opendatabot.ua/api/v3/fullname?name=${encodeURIComponent(query)}&limit=10`,
-        { headers, signal: AbortSignal.timeout(12000) }
+        { headers, signal: AbortSignal.timeout(6000) }
       )
       if (res.ok) {
         const d = await res.json()
@@ -744,7 +744,7 @@ async function searchOpenDataBot(query: string, type: string): Promise<any> {
     if (entries.length > 0 || type === 'name') {
       const courtRes = await fetch(
         `https://opendatabot.ua/api/v3/court?name=${encodeURIComponent(query)}&limit=5`,
-        { headers, signal: AbortSignal.timeout(12000) }
+        { headers, signal: AbortSignal.timeout(6000) }
       ).catch(() => null)
       if (courtRes?.ok) {
         const d = await courtRes.json()
@@ -780,7 +780,7 @@ async function searchYouControl(query: string, type: string): Promise<any> {
 
     const res = await fetch(url, {
       headers: { 'x-auth-token': apiKey, 'Accept': 'application/json' },
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(6000),
     })
     if (res.status === 401) return { source: 'youcontrol', error: 'invalid_key', entries: [] }
     if (!res.ok) return { source: 'youcontrol', error: `HTTP ${res.status}`, entries: [] }
@@ -849,7 +849,7 @@ async function searchOpenSanctions(query: string): Promise<any> {
             q3: { schema: 'LegalEntity', properties: { name: [query] } },
           },
         }),
-        signal: AbortSignal.timeout(10000),
+        signal: AbortSignal.timeout(6000),
       })
       if (res.ok) {
         const data    = await res.json()
@@ -882,7 +882,7 @@ async function searchOpenSanctions(query: string): Promise<any> {
             q3: { schema: 'LegalEntity', properties: { name: [query] } },
           },
         }),
-        signal: AbortSignal.timeout(12000),
+        signal: AbortSignal.timeout(6000),
       })
       if (!res.ok) return { source: 'opensanctions', error: `HTTP ${res.status}`, entries: [] }
       const data    = await res.json()

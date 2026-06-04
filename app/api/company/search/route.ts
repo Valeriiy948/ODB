@@ -23,7 +23,7 @@ async function searchEdrFree(query: string, type: string): Promise<any[]> {
         'Accept': 'application/json',
         'Referer': 'https://usr.minjust.gov.ua/',
       },
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(6000),
     })
     if (res.ok) {
       const text = await res.text()
@@ -97,7 +97,7 @@ async function searchFopFree(query: string): Promise<any[]> {
 
     const res = await fetch(url.toString(), {
       headers: { 'User-Agent': 'Mozilla/5.0' },
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(6000),
     })
     if (!res.ok) return []
     const data = await res.json()
@@ -128,7 +128,7 @@ async function searchYouControl(query: string, type: string): Promise<any> {
         'Authorization': `Token ${key}`,
         'Accept': 'application/json',
       },
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(6000),
     })
     if (!res.ok) return { error: `YouControl HTTP ${res.status}`, companies: [] }
     const data = await res.json()
@@ -189,7 +189,7 @@ async function searchOpendatabot(query: string): Promise<any> {
 
     const res = await fetch(url, {
       headers: { 'apikey': key, 'Accept': 'application/json' },
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(6000),
     })
     if (!res.ok) return { error: `Opendatabot HTTP ${res.status}`, companies: [] }
     const data = await res.json()

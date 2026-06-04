@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
           'Referer': 'https://public.nazk.gov.ua/',
           'Accept-Language': 'uk-UA,uk;q=0.9,en;q=0.8',
         },
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(6000),
       }
     )
     if (!res.ok) return NextResponse.json({ error: `НАЗК ${res.status}` }, { status: 502 })
@@ -111,7 +111,7 @@ export async function POST(req: NextRequest) {
     if (latest?.id) {
       try {
         const fullRes = await fetch(`${NAZK_BASE}/documents/${latest.id}`, {
-          signal: AbortSignal.timeout(10000),
+          signal: AbortSignal.timeout(6000),
         })
         if (fullRes.ok) {
           const fullData = await fullRes.json()

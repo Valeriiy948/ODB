@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
         'Accept': 'application/json',
         'Accept-Language': 'uk,en;q=0.9',
       },
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(6000),
     })
 
     if (!res.ok) return NextResponse.json({ error: `Myrotvorets HTTP ${res.status}`, results: [] })

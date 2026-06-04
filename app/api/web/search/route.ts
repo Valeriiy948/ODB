@@ -51,7 +51,7 @@ async function searchTavily(query: string): Promise<any> {
       include_raw_content: false,
       max_results: 10,
     }),
-    signal: AbortSignal.timeout(15000),
+    signal: AbortSignal.timeout(6000),
   })
   if (!res.ok) return null
   const data = await res.json()
@@ -76,7 +76,7 @@ async function searchSerper(query: string): Promise<any> {
       'X-API-KEY': key,
     },
     body: JSON.stringify({ q: query, num: 10, gl: 'ua', hl: 'uk' }),
-    signal: AbortSignal.timeout(12000),
+    signal: AbortSignal.timeout(6000),
   })
   if (!res.ok) return null
   const data = await res.json()
