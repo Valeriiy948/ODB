@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import Sidebar from '../components/Sidebar'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type Chain    = 'auto' | 'btc' | 'eth' | 'bsc' | 'tron' | 'polygon'
+type Chain    = 'auto' | 'btc' | 'eth' | 'bsc' | 'tron' | 'ton' | 'polygon'
 type Tab      = 'wallet' | 'trace' | 'cluster' | 'osint' | 'report'
 
 interface Beneficiary {
@@ -20,6 +20,7 @@ const CHAIN_META: Record<string, { label: string; color: string; ring: string; s
   eth:     { label: 'Ethereum',  color: 'text-blue-400',   ring: 'ring-blue-500/40',   symbol: 'Ξ',    bg: 'bg-blue-500/10 border-blue-500/30' },
   bsc:     { label: 'BNB Chain', color: 'text-yellow-400', ring: 'ring-yellow-500/40', symbol: 'BNB',  bg: 'bg-yellow-500/10 border-yellow-500/30' },
   tron:    { label: 'TRON',      color: 'text-red-400',    ring: 'ring-red-500/40',    symbol: 'TRX',  bg: 'bg-red-500/10 border-red-500/30' },
+  ton:     { label: 'TON',       color: 'text-cyan-400',   ring: 'ring-cyan-500/40',   symbol: '💎',   bg: 'bg-cyan-500/10 border-cyan-500/30' },
   polygon: { label: 'Polygon',   color: 'text-purple-400', ring: 'ring-purple-500/40', symbol: 'MATIC',bg: 'bg-purple-500/10 border-purple-500/30' },
 }
 
@@ -70,6 +71,8 @@ function detectChainUI(addr: string): Chain {
   if (/^(1|3|bc1)[a-zA-Z0-9]{25,62}$/.test(addr)) return 'btc'
   if (/^T[a-zA-Z0-9]{33}$/.test(addr))             return 'tron'
   if (/^0x[a-fA-F0-9]{40}$/.test(addr))            return 'eth'
+  if (/^(EQ|UQ)[A-Za-z0-9_\-]{46}$/.test(addr))    return 'ton'
+  if (/^0:[a-fA-F0-9]{64}$/.test(addr))             return 'ton'
   return 'auto'
 }
 
@@ -382,6 +385,87 @@ function WalletView({ data, onInvestigate }: { data: any; onInvestigate: (addr: 
               </span>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* ── Chainalysis Sanctions Block ── */}
+      {data.sanctions && (
+        <div className={`rounded-xl border p-4 ${data.sanctions.sanctioned
+          ? 'bg-red-950/40 border-red-500/60'
+          : 'bg-green-950/20 border-green-800/30'
+        }`}>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-lg">{data.sanctions.sanctioned ? '🚫' : '✅'}</span>
+            <span className={`font-bold text-sm ${data.sanctions.sanctioned ? 'text-red-300' : 'text-green-400'}`}>
+              {data.sanctions.sanctioned ? 'САНКЦІЙНИЙ ГАМАНЕЦЬ' : 'Санкції: не виявлено'}
+            </span>
+            <span className="text-xs text-gray-500 ml-auto">Chainalysis Public (OFAC · EU · UN)</span>
+          </div>
+          {data.sanctions.identifications?.map((id: any, i: number) => (
+            <div key={i} className="flex items-start gap-2 text-xs text-red-300 bg-red-900/30 border border-red-700/40 rounded-lg px-3 py-2 mt-1.5">
+              <span className="font-bold shrink-0">{id.name}</span>
+              <span className="text-red-400/70">{id.description}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── TON / Telegram linkage ── */}
+      {(data.chain === 'ton' || data.detected_chain === 'ton') && (w.telegram_username || w.ton_dns_name || w.interfaces?.length > 0) && (
+        <div className="bg-cyan-950/20 border border-cyan-700/30 rounded-xl p-4">
+          <SectionHeader icon="💎" title="TON · Telegram зв'язок" />
+          <div className="grid grid-cols-2 gap-3 mt-2">
+            {w.telegram_username && (
+              <div className="bg-gray-800/60 rounded-lg p-3">
+                <div className="text-xs text-gray-500 mb-0.5">Telegram username</div>
+                <a href={`https://t.me/${w.telegram_username.replace('@', '')}`}
+                  target="_blank" rel="noopener noreferrer"
+                  className="text-cyan-400 hover:underline font-mono text-sm">
+                  @{w.telegram_username.replace('@', '')}
+                </a>
+              </div>
+            )}
+            {w.ton_dns_name && (
+              <div className="bg-gray-800/60 rounded-lg p-3">
+                <div className="text-xs text-gray-500 mb-0.5">TON DNS</div>
+                <span className="text-cyan-300 font-mono text-sm">{w.ton_dns_name}</span>
+              </div>
+            )}
+            {w.status && (
+              <div className="bg-gray-800/60 rounded-lg p-3">
+                <div className="text-xs text-gray-500 mb-0.5">Статус</div>
+                <span className={`font-semibold text-sm ${w.status === 'active' ? 'text-green-400' : w.status === 'frozen' ? 'text-red-400' : 'text-gray-400'}`}>
+                  {w.status}
+                </span>
+              </div>
+            )}
+            {w.interfaces?.length > 0 && (
+              <div className="bg-gray-800/60 rounded-lg p-3">
+                <div className="text-xs text-gray-500 mb-0.5">Тип гаманця</div>
+                <span className="text-cyan-300 text-sm">{w.interfaces[0]}</span>
+              </div>
+            )}
+          </div>
+          {/* TON events */}
+          {w.recent_events?.length > 0 && (
+            <div className="mt-3">
+              <div className="text-xs text-gray-500 mb-1.5">Останні події</div>
+              <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl overflow-hidden">
+                <div className="divide-y divide-gray-700/30 max-h-48 overflow-y-auto">
+                  {w.recent_events.slice(0, 10).map((ev: any, i: number) => (
+                    <div key={i} className="px-4 py-2 flex items-center gap-3 text-xs hover:bg-gray-700/20">
+                      <span className="text-gray-500 shrink-0">{ev.date}</span>
+                      <span className="text-gray-300">{ev.type}</span>
+                      {ev.amount_ton != null && (
+                        <span className="text-cyan-400 font-mono ml-auto">{ev.amount_ton} TON</span>
+                      )}
+                      {ev.comment && <span className="text-gray-500 truncate max-w-[150px]">{ev.comment}</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -963,6 +1047,7 @@ export default function CryptoIntelPage() {
               <option value="eth">Ξ Ethereum</option>
               <option value="bsc">BNB Chain</option>
               <option value="tron">TRX TRON</option>
+              <option value="ton">💎 TON</option>
               <option value="polygon">MATIC Polygon</option>
             </select>
           </div>
@@ -1006,6 +1091,7 @@ export default function CryptoIntelPage() {
               { label: 'BTC Silk Road', addr: '1FeexV6bAHb8ybZjqQMjJrcCrHGW9sb6uF' },
               { label: 'ETH приклад',   addr: '0x3f5CE5FBFe3E9af3971dD833D26bA9b5C936f0bE' },
               { label: 'TRON USDT',     addr: 'TUFkHoYKnQgRuPZYqvQn2QU6r7NiHKWxDF' },
+              { label: 'TON приклад',   addr: 'EQB3ncyBUTjZUA5EnFKR5_EnOMI9V1tTDSDea-lAnSi1pJk5' },
             ].map(({ label, addr }) => (
               <button key={label}
                 onClick={() => { setAddress(addr); resetAll() }}
@@ -1022,11 +1108,12 @@ export default function CryptoIntelPage() {
           <span className="shrink-0 mt-0.5">📌</span>
           <span>
             <span className="font-semibold text-blue-300">API ключі:</span>
-            {' '}BTC ✅ (без ключа) · TRON ✅ (без ключа) ·{' '}
+            {' '}BTC ✅ · TRON ✅ · TON ✅ (всі без ключа) ·{' '}
             ETH/BSC/Polygon — безкоштовний{' '}
             <a href="https://etherscan.io/apis" target="_blank" rel="noopener noreferrer"
               className="underline hover:text-white">Etherscan API key</a>
             {' '}→ <code className="bg-gray-800 px-1.5 py-0.5 rounded font-mono">ETHERSCAN_API_KEY</code> у .env.local
+            {' '}· 🚨 AML sanctions: Chainalysis public (OFAC/EU/UN) ✅ (без ключа)
           </span>
         </div>
 
