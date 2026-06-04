@@ -144,6 +144,7 @@ const SOURCE_TYPES: Record<string, string[]> = {
   getcontact:    ['phone'],
   vehicles:      ['plate_ru', 'plate_ua', 'vin'],
   yandex:        ['name', 'phone', 'email', 'username', 'plate_ru', 'ogrn', 'rinn'],
+  tg_bots:       ['name', 'phone'],
 }
 
 const TYPE_LABELS: Record<string, { label: string; color: string; icon: string }> = {
@@ -168,8 +169,12 @@ const TYPE_LABELS: Record<string, { label: string; color: string; icon: string }
 
 function detectType(q: string): string {
   const clean = q.replace(/[\s\-\(\)\+]/g, '')
-  // Phone with explicit + prefix = always phone (prevents misdetect as SNILS)
+  // Phone with explicit + prefix = always phone
   if (q.trimStart().startsWith('+') && /^\d{10,15}$/.test(clean)) return 'phone'
+  // UA phone without + (380XXXXXXXXX = 12 digits starting with 380)
+  if (/^380\d{9}$/.test(clean)) return 'phone'
+  // RU phone without + (7XXXXXXXXXX = 11 digits starting with 7)
+  if (/^7\d{10}$/.test(clean))  return 'phone'
   if (/^\d{8}$/.test(clean))  return 'edrpou'
   if (/^\d{10}$/.test(clean)) return 'inn'
   if (/^\d{11}$/.test(clean)) return 'snils'

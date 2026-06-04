@@ -30,18 +30,23 @@ function toRussian(text: string): string {
 function detectType(q: string): string {
   const clean = q.replace(/[\s\-\(\)\+]/g, '')
 
-  // ── Телефон із явним + (пріоритет над СНІЛС/РІНН) ────────────────────────
+  // ── Телефон із явним + ────────────────────────────────────────────────────
   if (q.trimStart().startsWith('+') && /^\d{10,15}$/.test(clean)) return 'phone'
 
-  // ── Документи та реєстри ─────────────────────────────────────────────────
-  if (/^\d{8}$/.test(clean))  return 'edrpou'       // ЄДРПОУ (укр. компанія)
-  if (/^\d{10}$/.test(clean)) return 'inn'           // ІПН (укр.) / ІПН компанії (рос.)
-  if (/^\d{11}$/.test(clean)) return 'snils'         // СНІЛС (рос.)
-  if (/^\d{12}$/.test(clean)) return 'rinn'          // ІПН фіз. особи (рос. 12 цифр)
-  if (/^\d{13}$/.test(clean)) return 'ogrn'          // ОГРН (рос. юр. особа)
-  if (/^\d{15}$/.test(clean)) return 'ogrnip'        // ОГРНІП (рос. ФОП)
+  // ── Українські/міжнародні телефони БЕЗ + (пріоритет перед документами) ───
+  // 380XXXXXXXXX = UA, 7XXXXXXXXXX = RU (11 цифр починається з 7)
+  if (/^380\d{9}$/.test(clean)) return 'phone'        // UA без +
+  if (/^7\d{10}$/.test(clean))  return 'phone'        // RU без +
 
-  // ── Телефони ─────────────────────────────────────────────────────────────
+  // ── Документи та реєстри ─────────────────────────────────────────────────
+  if (/^\d{8}$/.test(clean))  return 'edrpou'
+  if (/^\d{10}$/.test(clean)) return 'inn'
+  if (/^\d{11}$/.test(clean)) return 'snils'
+  if (/^\d{12}$/.test(clean)) return 'rinn'
+  if (/^\d{13}$/.test(clean)) return 'ogrn'
+  if (/^\d{15}$/.test(clean)) return 'ogrnip'
+
+  // ── Інші телефони ────────────────────────────────────────────────────────
   if (/^\+?\d{10,15}$/.test(clean)) return 'phone'
 
   // ── Мережа ───────────────────────────────────────────────────────────────
@@ -70,7 +75,7 @@ function detectType(q: string): string {
 }
 
 // Helper: fetch with timeout, never throws
-async function safeFetch(url: string, opts: RequestInit = {}, timeoutMs = 25000): Promise<any> {
+async function safeFetch(url: string, opts: RequestInit = {}, timeoutMs = 7000): Promise<any> {
   try {
     const res = await fetch(url, { ...opts, signal: AbortSignal.timeout(timeoutMs) })
     return await res.json()
@@ -117,7 +122,7 @@ export async function POST(req: NextRequest) {
       if (type === 'phone')    params.set('phone', q)
       else if (type === 'inn') params.set('ipn', q)
       else                     params.set('q', q)
-      const d = await safeFetch(`${LOCAL}/api/persons?${params}`, {}, 15000)
+      const d = await safeFetch(`${LOCAL}/api/persons?${params}`, {}, 7000)
       // Normalize response shape for countHits
       if (d && d.data !== undefined) {
         send('odb', 'done', { persons: d.data, total: d.total || d.data?.length || 0 })
@@ -136,44 +141,30 @@ export async function POST(req: NextRequest) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ phone: q }),
-          }, 15000)
+          }, 7000)
         } else {
           d = await safeFetch(`${VPS}/search/tg-user`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name: q, limit: 5 }),
-          }, 10000)
+          }, 7000)
         }
         send('telegram', d ? 'done' : 'error', d)
       })())
     }
 
-    // ── 2b. Telegram OSINT боти (PeopleFindBase, BigLeaks, NumBuster) ─────────
-    if (type === 'name') {
-      tasks.push((async () => {
-        send('tg_bots', 'loading')
-        // Транслітеруємо українське ім'я в російське для кращих результатів ботів
-        const qRu = toRussian(q)
-        const d = await safeFetch(`${VPS}/search`, {
-          headers: { 'Content-Type': 'application/json' },
-        } as any, 30000).then(() => null).catch(() => null)
-        // Пошук через VPS Telegram бота (PeopleFindBase + BigLeaksBot)
-        const botResult = await safeFetch(
-          `${VPS}/search?q=${encodeURIComponent(qRu)}&bots=PeopleFindBaseBot,BigLeaksBot,NumBusterBot`,
-          {}, 30000
-        )
-        send('tg_bots', botResult ? 'done' : 'error', botResult)
-      })())
-    }
-    if (type === 'phone') {
-      tasks.push((async () => {
-        send('tg_bots', 'loading')
-        const d = await safeFetch(
-          `${VPS}/search?q=${encodeURIComponent(q)}&bots=NumBusterBot,PhoneLeaksBot,GetContactBot`,
-          {}, 30000
-        )
-        send('tg_bots', d ? 'done' : 'error', d)
-      })())
+    // ── 2b. Telegram OSINT боти — ОКРЕМИЙ ENDPOINT ───────────────────────────
+    // Telegram бот пошук займає 30-60с — НЕ може бути в search-all (Vercel 10s limit)
+    // Фронтенд викликає /api/telegram/search напряму через VPS proxy
+    // Тут лише повідомляємо фронтенду куди звертатись
+    if (['name', 'phone'].includes(type)) {
+      send('tg_bots', 'done', {
+        async: true,
+        vps_url: VPS,
+        query: toRussian(q),
+        query_original: q,
+        message: 'Пошук через Telegram боти виконується окремо (30-60с)',
+      })
     }
 
     // ── 3. Sherlock ───────────────────────────────────────────────────────────
@@ -185,7 +176,7 @@ export async function POST(req: NextRequest) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username: uname, timeout: 12, mode: 'quick' }),
-        }, 40000)
+        }, 7000)
         send('sherlock', d ? 'done' : 'error', d)
       })())
     }
@@ -199,7 +190,7 @@ export async function POST(req: NextRequest) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username: uname, timeout: 20 }),
-        }, 50000)
+        }, 7000)
         send('chimera', d ? 'done' : 'error', d)
       })())
     }
@@ -212,7 +203,7 @@ export async function POST(req: NextRequest) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ query: q }),
-        }, 20000)
+        }, 7000)
         send('leaks', d ? 'done' : 'error', d)
       })())
     }
@@ -222,7 +213,7 @@ export async function POST(req: NextRequest) {
       tasks.push((async () => {
         send('breach_catalog', 'loading')
         const qterm = type === 'domain' ? q.split('.')[0] : q.split(' ')[0]
-        const d = await safeFetch(`${LOCAL}/api/breach/catalog?q=${encodeURIComponent(qterm)}&limit=10`, {}, 10000)
+        const d = await safeFetch(`${LOCAL}/api/breach/catalog?q=${encodeURIComponent(qterm)}&limit=10`, {}, 7000)
         send('breach_catalog', d ? 'done' : 'error', d)
       })())
     }
@@ -235,7 +226,7 @@ export async function POST(req: NextRequest) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ query: q }),
-        }, 15000)
+        }, 7000)
         send('nazk', d ? 'done' : 'error', d)
       })())
     }
@@ -248,7 +239,7 @@ export async function POST(req: NextRequest) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ query: q }),
-        }, 12000)
+        }, 7000)
         send('mvs', d ? 'done' : 'error', d)
       })())
     }
@@ -261,7 +252,7 @@ export async function POST(req: NextRequest) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ query: q }),
-        }, 12000)
+        }, 7000)
         send('myrotvorets', d ? 'done' : 'error', d)
       })())
     }
@@ -274,7 +265,7 @@ export async function POST(req: NextRequest) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ query: q }),
-        }, 12000)
+        }, 7000)
         send('erb', d ? 'done' : 'error', d)
       })())
     }
@@ -287,7 +278,7 @@ export async function POST(req: NextRequest) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ query: q }),
-        }, 20000)
+        }, 7000)
         send('company', d ? 'done' : 'error', d)
       })())
     }
@@ -300,7 +291,7 @@ export async function POST(req: NextRequest) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ query: q, type }),
-        }, 20000)
+        }, 7000)
         send('network', d ? 'done' : 'error', d)
       })())
     }
@@ -313,7 +304,7 @@ export async function POST(req: NextRequest) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ target: q, scan_type: 'quick' }),
-        }, 30000)
+        }, 7000)
         send('spiderfoot', d ? 'done' : 'error', d)
       })())
     }
@@ -325,7 +316,7 @@ export async function POST(req: NextRequest) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: q, type }),
-      }, 20000)
+      }, 7000)
       send('web', d ? 'done' : 'error', d)
     })())
 
@@ -337,7 +328,7 @@ export async function POST(req: NextRequest) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ query: q, type }),
-        }, 20000)
+        }, 7000)
         send('sanctions', d ? 'done' : 'error', d)
       })())
     }
@@ -353,14 +344,14 @@ export async function POST(req: NextRequest) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ query: q, type }),
-        }, 20000)
+        }, 7000)
         // Fallback через /api/vk/search (якщо VPS 8008 недоступний)
         if (!d) {
           d = await safeFetch(`${LOCAL}/api/vk/search`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ query: q, type }),
-          }, 20000)
+          }, 7000)
         }
         send('vk', d ? 'done' : 'error', d)
       })())
@@ -374,7 +365,7 @@ export async function POST(req: NextRequest) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ query: q }),
-        }, 15000)
+        }, 7000)
         send('getcontact', d ? 'done' : 'error', d)
       })())
     }
@@ -387,7 +378,7 @@ export async function POST(req: NextRequest) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ query: q, type }),
-        }, 20000)
+        }, 7000)
         send('vehicles', d ? 'done' : 'error', d)
       })())
     }
@@ -401,7 +392,7 @@ export async function POST(req: NextRequest) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ query: yQuery, type, engine: 'yandex' }),
-        }, 15000)
+        }, 7000)
         send('yandex', d ? 'done' : 'error', d)
       })())
     }
