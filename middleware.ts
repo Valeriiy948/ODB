@@ -45,6 +45,12 @@ export async function middleware(request: NextRequest) {
     }
   )
 
+  // ── Внутрішній server-to-server ключ (search-all → api/*) ───────────────────
+  const internalKey = request.headers.get('x-internal-key')
+  if (process.env.INTERNAL_API_KEY && internalKey === process.env.INTERNAL_API_KEY) {
+    return NextResponse.next({ request: { headers: request.headers } })
+  }
+
   // Перевіряємо сесію
   const { data: { user } } = await supabase.auth.getUser()
 
