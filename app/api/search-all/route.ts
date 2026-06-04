@@ -5,8 +5,26 @@
 
 import { NextRequest } from 'next/server'
 
-const VPS   = `http://${process.env.VPS_HOST || '161.35.86.145'}:${process.env.TELEGRAM_SEARCH_PORT || '8001'}`
-const LOCAL = 'http://localhost:3000'
+const VPS = `http://${process.env.VPS_HOST || '161.35.86.145'}:${process.env.TELEGRAM_SEARCH_PORT || '8001'}`
+
+// На Vercel немає localhost — використовуємо VERCEL_URL (авто-інжектується) або APP_URL
+function getBaseUrl(): string {
+  if (process.env.APP_URL) return process.env.APP_URL
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`
+  return 'http://localhost:3000'
+}
+const LOCAL = getBaseUrl()
+
+// ── Транслітерація UA/RU → RU для ботів ──────────────────────────────────────
+// Більшість OSINT-ботів краще шукають по-російськи
+function toRussian(text: string): string {
+  const UA_TO_RU: Record<string, string> = {
+    'і': 'и', 'І': 'И', 'ї': 'и', 'Ї': 'И',
+    'є': 'е', 'Є': 'Е', 'ґ': 'г', 'Ґ': 'Г',
+    'и': 'и', 'й': 'й',
+  }
+  return text.split('').map(c => UA_TO_RU[c] ?? c).join('')
+}
 
 // Detect input type — підтримка Ukrainian + Russian форматів
 function detectType(q: string): string {
@@ -108,7 +126,7 @@ export async function POST(req: NextRequest) {
       }
     })())
 
-    // ── 2. Telegram ───────────────────────────────────────────────────────────
+    // ── 2. Telegram MTProto пошук ─────────────────────────────────────────────
     if (['phone', 'username', 'name'].includes(type)) {
       tasks.push((async () => {
         send('telegram', 'loading')
@@ -120,7 +138,6 @@ export async function POST(req: NextRequest) {
             body: JSON.stringify({ phone: q }),
           }, 15000)
         } else {
-          // Use fast MTProto search (no bot waiting)
           d = await safeFetch(`${VPS}/search/tg-user`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -128,6 +145,34 @@ export async function POST(req: NextRequest) {
           }, 10000)
         }
         send('telegram', d ? 'done' : 'error', d)
+      })())
+    }
+
+    // ── 2b. Telegram OSINT боти (PeopleFindBase, BigLeaks, NumBuster) ─────────
+    if (type === 'name') {
+      tasks.push((async () => {
+        send('tg_bots', 'loading')
+        // Транслітеруємо українське ім'я в російське для кращих результатів ботів
+        const qRu = toRussian(q)
+        const d = await safeFetch(`${VPS}/search`, {
+          headers: { 'Content-Type': 'application/json' },
+        } as any, 30000).then(() => null).catch(() => null)
+        // Пошук через VPS Telegram бота (PeopleFindBase + BigLeaksBot)
+        const botResult = await safeFetch(
+          `${VPS}/search?q=${encodeURIComponent(qRu)}&bots=PeopleFindBaseBot,BigLeaksBot,NumBusterBot`,
+          {}, 30000
+        )
+        send('tg_bots', botResult ? 'done' : 'error', botResult)
+      })())
+    }
+    if (type === 'phone') {
+      tasks.push((async () => {
+        send('tg_bots', 'loading')
+        const d = await safeFetch(
+          `${VPS}/search?q=${encodeURIComponent(q)}&bots=NumBusterBot,PhoneLeaksBot,GetContactBot`,
+          {}, 30000
+        )
+        send('tg_bots', d ? 'done' : 'error', d)
       })())
     }
 
