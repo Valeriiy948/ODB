@@ -50,12 +50,49 @@ async function getBTCTxs(address: string): Promise<any[]> {
   } catch { return [] }
 }
 
+async function getTONTxs(address: string): Promise<any[]> {
+  try {
+    const res = await fetch(
+      `https://tonapi.io/v2/accounts/${encodeURIComponent(address)}/events?limit=30&subject_only=false`,
+      { headers: { 'Accept': 'application/json' }, signal: AbortSignal.timeout(12000) }
+    )
+    const data = await res.json()
+    return data.events || []
+  } catch { return [] }
+}
+
 async function analyzeNode(address: string, chain: string): Promise<Partial<TraceNode>> {
   const addr = address.toLowerCase()
   let txs: any[] = []
 
   if (chain === 'btc') {
     txs = await getBTCTxs(address)
+  } else if (chain === 'ton') {
+    // Handle TON separately — different structure
+    const events = await getTONTxs(address)
+    const sentTo = new Set<string>()
+    let sent = 0, received = 0
+    events.forEach((ev: any) => {
+      const t = ev.actions?.[0]?.TonTransfer
+      if (!t) return
+      const senderAddr = t.sender?.address || t.sender?.raw_form || ''
+      const recipAddr  = t.recipient?.address || t.recipient?.raw_form || ''
+      if (senderAddr === address || senderAddr.toLowerCase() === addr) {
+        sent++
+        if (recipAddr) sentTo.add(recipAddr)
+      } else {
+        received++
+      }
+    })
+    return {
+      address,
+      chain,
+      received,
+      sent,
+      txs: events.length,
+      children: [...sentTo].slice(0, 5),
+      flags: sent > received * 2 ? ['mostly_sending'] : [],
+    }
   } else {
     txs = await getEVMTxs(address, chain)
   }

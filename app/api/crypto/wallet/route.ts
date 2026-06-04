@@ -14,6 +14,8 @@ function detectChain(address: string): string {
   if (/^(1|3|bc1)[a-zA-Z0-9]{25,62}$/.test(addr)) return 'btc'
   if (/^T[a-zA-Z0-9]{33}$/.test(addr))             return 'tron'
   if (/^0x[a-fA-F0-9]{40}$/.test(addr))            return 'eth' // also BSC, Polygon
+  if (/^(EQ|UQ)[A-Za-z0-9_\-]{46}$/.test(addr))    return 'ton' // TON user-friendly
+  if (/^0:[a-fA-F0-9]{64}$/.test(addr))             return 'ton' // TON raw format
   if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(addr))  return 'sol'
   return 'unknown'
 }
@@ -262,6 +264,139 @@ async function analyzeTRON(address: string): Promise<any> {
   }
 }
 
+// ─── TON blockchain (Telegram-linked wallets) ─────────────────────────────────
+async function analyzeTON(address: string): Promise<any> {
+  try {
+    const [accRes, txRes] = await Promise.all([
+      fetch(`https://tonapi.io/v2/accounts/${encodeURIComponent(address)}`, {
+        headers: { 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(12000),
+      }).then(r => r.json()).catch(() => null),
+      fetch(`https://tonapi.io/v2/accounts/${encodeURIComponent(address)}/events?limit=50&subject_only=false`, {
+        headers: { 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(12000),
+      }).then(r => r.json()).catch(() => null),
+    ])
+
+    if (!accRes || accRes.error) return { chain: 'ton', address, error: accRes?.error || 'not_found' }
+
+    const balanceTON = (accRes.balance || 0) / 1e9
+    const events = txRes?.events || []
+
+    // Find linked Telegram username via TON DNS
+    let telegramUsername: string | null = null
+    if (accRes.name) telegramUsername = accRes.name  // some wallets have .ton names
+
+    // Analyze events
+    const counterparties = new Set<string>()
+    let totalReceivedTON = 0
+    let totalSentTON = 0
+
+    events.forEach((ev: any) => {
+      const action = ev.actions?.[0]
+      if (!action) return
+      if (action.type === 'TonTransfer') {
+        const t = action.TonTransfer
+        if (t?.recipient?.address === address || t?.recipient?.raw_form === address) {
+          totalReceivedTON += (t.amount || 0) / 1e9
+          if (t.sender?.address) counterparties.add(t.sender.address)
+        } else if (t?.sender?.address === address || t?.sender?.raw_form === address) {
+          totalSentTON += (t.amount || 0) / 1e9
+          if (t.recipient?.address) counterparties.add(t.recipient.address)
+        }
+      }
+    })
+
+    // TON DNS lookup — check if address has a .ton domain (= Telegram username link)
+    const dnsRes = await fetch(
+      `https://tonapi.io/v2/dns/${encodeURIComponent(address)}`,
+      { headers: { 'Accept': 'application/json' }, signal: AbortSignal.timeout(5000) }
+    ).then(r => r.json()).catch(() => null)
+    if (dnsRes?.names?.length) telegramUsername = dnsRes.names[0]
+
+    const riskFlags: string[] = []
+    if (balanceTON > 10000)         riskFlags.push('large_ton_balance')
+    if (events.length > 100)        riskFlags.push('high_tx_count')
+    if (totalSentTON > 50000)       riskFlags.push('large_volume_ton')
+    if (accRes.status === 'frozen')  riskFlags.push('frozen_account')
+
+    return {
+      chain:            'ton',
+      address,
+      explorer_url:     `https://tonscan.org/address/${address}`,
+      symbol:           'TON',
+      balance_native:   parseFloat(balanceTON.toFixed(4)),
+      status:           accRes.status,          // active | frozen | uninit
+      is_wallet:        accRes.is_wallet,
+      interfaces:       accRes.interfaces || [], // e.g. ["wallet_v4r2"]
+      telegram_username: telegramUsername,       // 🔑 KEY: Telegram linkage
+      ton_dns_name:     accRes.name || null,
+      total_received_ton: parseFloat(totalReceivedTON.toFixed(4)),
+      total_sent_ton:   parseFloat(totalSentTON.toFixed(4)),
+      tx_count:         accRes.transactions_count || events.length,
+      unique_counterparties: counterparties.size,
+      top_counterparties: [...counterparties].slice(0, 10),
+      recent_events: events.slice(0, 15).map((ev: any) => {
+        const a = ev.actions?.[0]
+        const t = a?.TonTransfer
+        return {
+          event_id:  ev.event_id,
+          date:      new Date((ev.timestamp || 0) * 1000).toISOString().slice(0, 10),
+          type:      a?.type || 'unknown',
+          amount_ton: t ? parseFloat(((t.amount || 0) / 1e9).toFixed(4)) : null,
+          from:      t?.sender?.address || null,
+          to:        t?.recipient?.address || null,
+          comment:   t?.comment || null,
+        }
+      }),
+      risk_flags: riskFlags,
+      _source: 'tonapi.io',
+    }
+  } catch (err: any) {
+    return { chain: 'ton', address, error: err.message }
+  }
+}
+
+// ─── Chainalysis Public Sanctions API (free, no key) ─────────────────────────
+// Covers: OFAC SDN, EU, UN, HM Treasury + top crypto-specific watchlists
+async function checkChainalysisSanctions(address: string): Promise<any> {
+  try {
+    const res = await fetch(
+      `https://public.chainalysis.com/api/v1/address/${address}`,
+      {
+        headers: {
+          'Accept':     'application/json',
+          'User-Agent': 'ODB-Crypto-Intel/1.0',
+        },
+        signal: AbortSignal.timeout(8000),
+      }
+    )
+    if (!res.ok) return { sanctioned: false, error: `HTTP ${res.status}` }
+    const data = await res.json()
+
+    // data.identifications = array of sanction matches
+    const ids: any[] = data.identifications || []
+    const sanctioned  = ids.length > 0
+
+    return {
+      sanctioned,
+      identifications: ids.map((id: any) => ({
+        category:       id.category,       // "sanctions"
+        name:           id.name,           // e.g. "OFAC SDN"
+        description:    id.description,
+        url:            id.url,
+      })),
+      // Quick flags
+      ofac_sanctioned: ids.some(id => id.name?.toLowerCase().includes('ofac')),
+      eu_sanctioned:   ids.some(id => id.name?.toLowerCase().includes('eu')),
+      un_sanctioned:   ids.some(id => id.name?.toLowerCase().includes('un')),
+      _source: 'chainalysis_public',
+    }
+  } catch (err: any) {
+    return { sanctioned: false, error: err.message }
+  }
+}
+
 // ─── Known scam DB check ──────────────────────────────────────────────────────
 async function checkScamDB(address: string): Promise<any> {
   try {
@@ -301,6 +436,8 @@ export async function POST(req: NextRequest) {
       walletData = await analyzeBTC(addr)
     } else if (chain === 'tron') {
       walletData = await analyzeTRON(addr)
+    } else if (chain === 'ton') {
+      walletData = await analyzeTON(addr)
     } else if (['eth', 'bsc', 'polygon'].includes(chain)) {
       // Try Etherscan V2 first (needs API key), fallback to Blockchair (free)
       const evmData = await analyzeEVM(addr, chain)
@@ -314,8 +451,11 @@ export async function POST(req: NextRequest) {
       walletData = (await analyzeBlockchair(addr, 'eth')) || await analyzeEVM(addr, 'eth')
     }
 
-    // Check scam databases
-    const scamCheck = await checkScamDB(addr)
+    // Run sanctions + scam checks in parallel
+    const [scamCheck, sanctionsCheck] = await Promise.all([
+      checkScamDB(addr),
+      checkChainalysisSanctions(addr),
+    ])
 
     // Calculate risk score (0-100)
     let riskScore = 0
@@ -326,8 +466,14 @@ export async function POST(req: NextRequest) {
     if (flags.includes('high_tx_count'))         riskScore += 15
     if (flags.includes('heavy_stablecoin_usage'))riskScore += 20
     if (flags.includes('mostly_sending'))        riskScore += 10
+    if (flags.includes('large_ton_balance'))     riskScore += 20
+    if (flags.includes('large_volume_ton'))      riskScore += 15
+    if (flags.includes('frozen_account'))        riskScore += 30
     if (scamCheck.is_known_scam)                 riskScore += 50
     if ((scamCheck.chainabuse_reports?.total || 0) > 0) riskScore += 40
+    // Sanctions = automatic critical
+    if (sanctionsCheck.sanctioned)               riskScore += 80
+    if (sanctionsCheck.ofac_sanctioned)          riskScore += 20  // extra weight for OFAC
 
     return NextResponse.json({
       success:     true,
@@ -336,8 +482,11 @@ export async function POST(req: NextRequest) {
       detected_chain: detectChain(addr),
       wallet:      walletData,
       scam_check:  scamCheck,
+      sanctions:   sanctionsCheck,
       risk_score:  Math.min(riskScore, 100),
       risk_level:  riskScore >= 70 ? 'critical' : riskScore >= 40 ? 'high' : riskScore >= 20 ? 'medium' : 'low',
+      // Telegram linkage (TON-specific)
+      telegram_link: chain === 'ton' ? (walletData?.telegram_username || null) : null,
       analyzed_at: new Date().toISOString(),
     })
   } catch (err: any) {
