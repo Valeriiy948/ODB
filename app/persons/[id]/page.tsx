@@ -524,6 +524,11 @@ export default function PersonDetailPage() {
   const [tgError, setTgError] = useState('')
   const [tgQuery, setTgQuery] = useState('')
   const [tgEnrichLoading, setTgEnrichLoading] = useState<Set<string>>(new Set())
+  // Async full-bots search via orchestrator
+  const [tgFullLoading, setTgFullLoading] = useState(false)
+  const [tgFullJobId, setTgFullJobId] = useState<string | null>(null)
+  const [tgFullError, setTgFullError] = useState('')
+  const [tgFullResults, setTgFullResults] = useState<any[]>([])
 
   // OsintKit — база даних РФ (731 БД: Альфабанк, ГосУслуги, etc.)
   const [osintKitLoading, setOsintKitLoading] = useState(false)
@@ -1263,6 +1268,59 @@ export default function PersonDetailPage() {
       setTgError('Telegram сервіс недоступний')
     } finally {
       setTgLoading(false)
+    }
+  }
+
+  // Full multi-bot search via orchestrator async job (~40s, no Vercel timeout)
+  async function runTelegramFull(customQuery?: string) {
+    if (!person) return
+    const q = customQuery || person.name_rus || person.name_ukr || person.name || ''
+    if (!q || q.length < 3) return
+    const dob = person.dob || ''
+    const query = dob ? `${q} ${dob}` : q
+    setTgFullLoading(true); setTgFullError(''); setTgFullResults([]); setTgFullJobId(null)
+    try {
+      // Start async job on orchestrator
+      const startRes = await fetch('/api/vps/jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, type: 'name', sources: ['telegram', 'telethon'] }),
+      })
+      const startData = await startRes.json()
+      if (!startData.job_id) {
+        setTgFullError(startData.error || 'Не вдалось запустити пошук')
+        setTgFullLoading(false)
+        return
+      }
+      setTgFullJobId(startData.job_id)
+      // Poll until done
+      const poll = async () => {
+        const r = await fetch(`/api/vps/jobs?id=${startData.job_id}`)
+        const d = await r.json()
+        if (d.status === 'done') {
+          // Flatten results from all sources into array
+          const flat: any[] = []
+          for (const [src, payload] of Object.entries(d.results || {})) {
+            const p = payload as any
+            const items = p?.results || p?.leaks || []
+            if (Array.isArray(items)) {
+              flat.push(...items.map((x: any) => ({ ...x, _src: src })))
+            }
+          }
+          setTgFullResults(deduplicateTgResults(flat))
+          setTgFullLoading(false)
+        } else if (d.status === 'error') {
+          setTgFullError(d.error || 'Помилка пошуку')
+          setTgFullLoading(false)
+        } else {
+          // still running — poll again in 4s
+          setTimeout(poll, 4000)
+        }
+      }
+      setTimeout(poll, 5000) // first check after 5s (bots need time)
+    } catch (e: any) {
+      setTgFullError(e.message || 'Помилка')
+      setTgFullLoading(false)
     }
   }
 
@@ -4526,9 +4584,18 @@ export default function PersonDetailPage() {
                     />
                     <button
                       onClick={() => runTelegramSearch()}
-                      disabled={tgLoading}
+                      disabled={tgLoading || tgFullLoading}
                       className="px-3 py-1.5 bg-blue-700 hover:bg-blue-600 disabled:opacity-50 rounded-lg text-xs font-medium transition flex items-center gap-1 whitespace-nowrap">
-                      {tgLoading ? <><span className="animate-spin inline-block">⟳</span> Пошук...</> : '🔍 Шукати'}
+                      {tgLoading ? <><span className="animate-spin inline-block">⟳</span> Пошук...</> : '🔍 Швидко'}
+                    </button>
+                    <button
+                      onClick={() => runTelegramFull()}
+                      disabled={tgFullLoading || tgLoading}
+                      title="Пошук через всі 10 ботів (~40с)"
+                      className="px-3 py-1.5 bg-purple-800 hover:bg-purple-700 disabled:opacity-50 rounded-lg text-xs font-medium transition flex items-center gap-1 whitespace-nowrap">
+                      {tgFullLoading
+                        ? <><span className="animate-spin inline-block">⟳</span> Всі боти...</>
+                        : '🤖 Всі боти'}
                     </button>
                   </div>
                 </div>
@@ -4829,6 +4896,45 @@ export default function PersonDetailPage() {
                     })}
                     {/* Кнопка "Зберегти все" знизу списку результатів */}
                     <SaveAllButton results={tgResults} allRaw={tgRawAll} onSave={saveTelegramDataToPerson} />
+                  </div>
+                )}
+
+                {/* ── Full-bots results (async job) ── */}
+                {(tgFullLoading || tgFullError || tgFullResults.length > 0) && (
+                  <div className="border-t border-blue-900/50 px-5 py-4">
+                    <p className="text-purple-400 text-xs font-medium mb-3 flex items-center gap-2">
+                      🤖 Результати (всі боти)
+                      {tgFullLoading && <span className="text-purple-600 text-xs">— пошук триває{tgFullJobId ? ` (job: ${tgFullJobId})` : ''}...</span>}
+                      {tgFullResults.length > 0 && <span className="bg-purple-800 text-purple-200 px-1.5 py-0.5 rounded-full text-xs">{tgFullResults.length}</span>}
+                    </p>
+                    {tgFullError && <p className="text-red-400 text-xs mb-2">⚠️ {tgFullError}</p>}
+                    {tgFullLoading && tgFullResults.length === 0 && (
+                      <p className="text-purple-600 text-sm text-center py-4">
+                        <span className="animate-spin inline-block mr-2">⟳</span>
+                        Опитуємо 10 Telegram ботів... (~40с)
+                      </p>
+                    )}
+                    {tgFullResults.length > 0 && (
+                      <div className="space-y-2">
+                        {tgFullResults.map((r: any, i: number) => (
+                          <div key={i} className="p-3 rounded-lg bg-purple-950/20 border border-purple-800/30 text-sm">
+                            <div className="flex items-start justify-between gap-2">
+                              <span className="text-purple-300 font-medium text-xs">{r.source_label || r.source || r._src}</span>
+                              {r.url && <a href={r.url} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline text-xs flex-shrink-0">↗</a>}
+                            </div>
+                            {r.name && <p className="text-gray-200 mt-1">{r.name}</p>}
+                            {r.snippet && <p className="text-gray-400 text-xs mt-1 line-clamp-3">{r.snippet}</p>}
+                            {r.fields && Object.keys(r.fields).length > 0 && (
+                              <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                                {Object.entries(r.fields).slice(0, 6).map(([k, v]) => v ? (
+                                  <span key={k} className="text-xs text-gray-400"><span className="text-gray-600">{k}:</span> {String(v).slice(0, 40)}</span>
+                                ) : null)}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

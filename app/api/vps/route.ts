@@ -1,59 +1,42 @@
 // app/api/vps/route.ts
-// Proxy to VPS orchestrator (:8011) — no Vercel 10s timeout since we stream/proxy.
-// Auth: forwarded via x-internal-key to the orchestrator.
+// Proxy to VPS orchestrator (:8011).
+// Sync:  POST /api/vps?path=/search       — blocks up to 55s, returns results
+// Async: POST /api/vps?path=/jobs/start   — returns {job_id} immediately (<1s)
+//        GET  /api/vps?path=/jobs/{id}    — poll for status
+//        GET  /api/vps?path=/health       — health check
 
 import { NextRequest, NextResponse } from 'next/server'
+
+export const maxDuration = 60
 
 const VPS_URL = `http://${process.env.VPS_HOST || '161.35.86.145'}:8011`
 const INTERNAL_KEY = process.env.INTERNAL_API_KEY || ''
 
-async function proxyToVPS(request: NextRequest, path: string) {
+async function proxyToVPS(method: string, path: string, body?: string) {
   const url = `${VPS_URL}${path}`
-  const isGet = request.method === 'GET'
-
-  let body: string | undefined
-  if (!isGet) {
-    try { body = await request.text() } catch { body = undefined }
-  }
-
   const resp = await fetch(url, {
-    method: request.method,
-    headers: {
-      'Content-Type': 'application/json',
-      'x-internal-key': INTERNAL_KEY,
-    },
-    body,
-    // No timeout — VPS handles it; Vercel Hobby won't kill us for proxied responses
+    method,
+    headers: { 'Content-Type': 'application/json', 'x-internal-key': INTERNAL_KEY },
+    body: method !== 'GET' ? body : undefined,
   })
-
   const data = await resp.json()
   return NextResponse.json(data, { status: resp.status })
 }
 
-// POST /api/vps — aggregated search (main endpoint)
 export async function POST(request: NextRequest) {
-  const { searchParams } = new URL(request.url)
-  const path = searchParams.get('path') || '/search'
-
+  const path = new URL(request.url).searchParams.get('path') || '/search'
   try {
-    return await proxyToVPS(request, path)
+    const body = await request.text()
+    return await proxyToVPS('POST', path, body)
   } catch (e: any) {
     return NextResponse.json({ error: e.message || 'vps_error' }, { status: 502 })
   }
 }
 
-// GET /api/vps?path=/health  — health / proxy GET endpoints
 export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url)
-  const path = searchParams.get('path') || '/health'
-
+  const path = new URL(request.url).searchParams.get('path') || '/health'
   try {
-    const url = `${VPS_URL}${path}`
-    const resp = await fetch(url, {
-      headers: { 'x-internal-key': INTERNAL_KEY },
-    })
-    const data = await resp.json()
-    return NextResponse.json(data, { status: resp.status })
+    return await proxyToVPS('GET', path)
   } catch (e: any) {
     return NextResponse.json({ error: e.message || 'vps_error' }, { status: 502 })
   }
