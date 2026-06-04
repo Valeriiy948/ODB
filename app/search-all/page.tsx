@@ -37,7 +37,7 @@ const CATEGORIES = [
     color: 'text-yellow-400',
     borderHit: 'border-yellow-800/50',
     bgHit: 'bg-yellow-950/10',
-    sources: ['sherlock', 'chimera'],
+    sources: ['sherlock', 'chimera', 'social'],
     types: ['username', 'name', 'email'],
   },
   {
@@ -57,7 +57,7 @@ const CATEGORIES = [
     color: 'text-sky-400',
     borderHit: 'border-sky-800/50',
     bgHit: 'bg-sky-950/10',
-    sources: ['telegram', 'getcontact'],
+    sources: ['telegram', 'getcontact', 'phone_presence'],
     types: ['phone', 'username', 'name', 'tg_username'],
   },
   {
@@ -306,6 +306,11 @@ function countHits(key: string, data: any): number {
     case 'getcontact':     return data.total || data.entries?.length || 0
     case 'vehicles':       return data.total || data.results?.length || 0
     case 'yandex':         return data.results?.length || 0
+    case 'social':         return data.found?.filter((f: any) => f.found).length || data.total || 0
+    case 'phone_presence': {
+      const m = data.messengers || {}
+      return Object.values(m).filter((v: any) => v?.found).length
+    }
     default:               return 0
   }
 }
@@ -336,11 +341,21 @@ function categoryLoading(
 // ─── Result renderers (category-based, no tool names) ────────────────────────
 function SocialResults({ sources }: { sources: Record<string, any> }) {
   const allFound: { site: string; url: string; ids?: Record<string, string> }[] = []
+  // sherlock + chimera username search
   for (const key of ['sherlock', 'chimera']) {
     const d = sources[key]
     if (d?.status === 'done' && d.data?.found) {
       for (const f of d.data.found) {
         if (!allFound.find(x => x.url === f.url)) allFound.push(f)
+      }
+    }
+  }
+  // VPS social/username search results
+  const socialD = sources.social
+  if (socialD?.status === 'done' && Array.isArray(socialD.data?.found)) {
+    for (const f of socialD.data.found) {
+      if (f.found && f.url && !allFound.find(x => x.url === f.url)) {
+        allFound.push({ site: f.platform || f.site || 'Social', url: f.url })
       }
     }
   }
@@ -398,6 +413,74 @@ function PersonsResults({ data }: { data: any }) {
       ))}
       {data.total > 10 && (
         <p className="text-xs text-gray-600 px-3">...та ще {data.total - 10} записів</p>
+      )}
+    </div>
+  )
+}
+
+// ─── Phone Presence (Telegram/WhatsApp/Viber/Signal) ─────────────────────────
+function PhonePresenceResults({ data }: { data: any }) {
+  if (!data) return null
+  const m = data.messengers || {}
+  const c = data.caller_id || {}
+
+  const APPS = [
+    { key: 'telegram', label: 'Telegram', icon: '✈️', color: 'sky' },
+    { key: 'whatsapp', label: 'WhatsApp', icon: '💬', color: 'green' },
+    { key: 'viber',    label: 'Viber',    icon: '📲', color: 'purple' },
+    { key: 'signal',   label: 'Signal',   icon: '🔒', color: 'blue' },
+  ]
+
+  return (
+    <div className="space-y-3 text-sm">
+      {/* Messenger presence grid */}
+      <div className="grid grid-cols-2 gap-2">
+        {APPS.map(({ key, label, icon, color }) => {
+          const info = m[key]
+          if (info === null || info === undefined) return (
+            <div key={key} className="flex items-center gap-2 rounded-lg px-3 py-2 bg-gray-800/50 border border-gray-700/40 text-gray-600">
+              <span>{icon}</span>
+              <span className="text-xs">{label}</span>
+              <span className="ml-auto text-xs">—</span>
+            </div>
+          )
+          const found = info?.found
+          return (
+            <div key={key} className={`flex items-center gap-2 rounded-lg px-3 py-2 border ${
+              found
+                ? `bg-${color}-900/20 border-${color}-700/40`
+                : 'bg-gray-800/30 border-gray-700/30'
+            }`}>
+              <span>{icon}</span>
+              <div className="flex-1 min-w-0">
+                <span className={`text-xs font-medium ${found ? 'text-white' : 'text-gray-500'}`}>{label}</span>
+                {found && info.name && <p className="text-xs text-gray-400 truncate">{info.name}</p>}
+                {found && info.username && (
+                  <a href={`https://t.me/${info.username}`} target="_blank" rel="noopener noreferrer"
+                    className="text-xs text-sky-400 hover:underline">@{info.username}</a>
+                )}
+              </div>
+              <span className={`text-xs ml-auto ${found ? 'text-green-400' : 'text-gray-600'}`}>
+                {found ? '✓' : '✗'}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Caller ID */}
+      {(c.numbuster?.name || c.truecaller?.name) && (
+        <div className="rounded-lg bg-yellow-900/10 border border-yellow-700/30 p-3">
+          <p className="text-xs text-yellow-600 font-semibold mb-1">📞 Caller ID</p>
+          {c.numbuster?.name && (
+            <p className="text-sm text-gray-300">NumBuster: <span className="text-white">{c.numbuster.name}</span></p>
+          )}
+          {c.truecaller?.name && (
+            <p className="text-sm text-gray-300">Truecaller: <span className="text-white">{c.truecaller.name}</span>
+              {c.truecaller.carrier && <span className="text-gray-500 text-xs ml-1">({c.truecaller.carrier})</span>}
+            </p>
+          )}
+        </div>
       )}
     </div>
   )
@@ -1173,7 +1256,20 @@ function CategoryCard({
           {cat.key === 'persons'     && <PersonsResults data={sources.odb?.data} />}
           {cat.key === 'messengers'  && (
             <>
-              <MessengerResults data={sources.telegram?.data} />
+              {/* Phone presence — WhatsApp/Viber/Telegram/Signal */}
+              {sources.phone_presence?.data && (
+                <div className="mb-4">
+                  <p className="text-xs text-gray-500 font-semibold mb-2">📱 Наявність у месенджерах</p>
+                  <PhonePresenceResults data={sources.phone_presence.data} />
+                </div>
+              )}
+              {/* Telegram name/username search */}
+              {sources.telegram?.data && (
+                <div className={sources.phone_presence?.data ? 'mt-3 pt-3 border-t border-gray-800' : ''}>
+                  {sources.phone_presence?.data && <p className="text-xs text-gray-500 mb-2">✈️ Telegram пошук</p>}
+                  <MessengerResults data={sources.telegram.data} />
+                </div>
+              )}
               {sources.getcontact?.data && <div className="mt-3 pt-3 border-t border-gray-800">
                 <p className="text-xs text-gray-500 mb-2">📒 Getcontact</p>
                 <GetcontactResults data={sources.getcontact?.data} />
