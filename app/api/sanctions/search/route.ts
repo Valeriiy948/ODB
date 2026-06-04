@@ -158,7 +158,7 @@ export async function POST(req: NextRequest) {
         'User-Agent':    'ODB-Platform/1.0 (war-crimes-investigation)',
         'Authorization': `ApiKey ${key}`,
       },
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(6000),
     })
 
     if (!res.ok) {
