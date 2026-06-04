@@ -74,10 +74,20 @@ function detectType(q: string): string {
   return 'name'
 }
 
-// Helper: fetch with timeout, never throws
+// Internal API key for bypassing auth middleware in server-to-server calls
+const INTERNAL_KEY = process.env.INTERNAL_API_KEY || ''
+
+// Helper: fetch with timeout + internal auth header, never throws
 async function safeFetch(url: string, opts: RequestInit = {}, timeoutMs = 7000): Promise<any> {
   try {
-    const res = await fetch(url, { ...opts, signal: AbortSignal.timeout(timeoutMs) })
+    const headers: Record<string, string> = {
+      ...(opts.headers as Record<string, string> || {}),
+    }
+    // Додаємо internal key тільки для локальних (APP_URL) викликів
+    if (INTERNAL_KEY && url.startsWith(LOCAL)) {
+      headers['x-internal-key'] = INTERNAL_KEY
+    }
+    const res = await fetch(url, { ...opts, headers, signal: AbortSignal.timeout(timeoutMs) })
     return await res.json()
   } catch { return null }
 }
