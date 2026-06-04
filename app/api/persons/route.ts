@@ -109,6 +109,16 @@ export async function POST(request: NextRequest) {
       insertData.name_ukr = insertData.name_rus
     }
 
+    // phones must be text[] — normalize string → array
+    if (insertData.phones && !Array.isArray(insertData.phones)) {
+      insertData.phones = [insertData.phones]
+    }
+    // dob: normalize DD.MM.YYYY → YYYY-MM-DD for Supabase date column
+    if (insertData.dob) {
+      const m = String(insertData.dob).match(/^(\d{2})\.(\d{2})\.(\d{4})$/)
+      if (m) insertData.dob = `${m[3]}-${m[2]}-${m[1]}`
+    }
+
     insertData.status = insertData.status || 'фігурант'
     insertData.threat_level = insertData.threat_level || 'unknown'
 

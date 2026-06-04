@@ -230,8 +230,11 @@ export async function POST(req: NextRequest) {
       }
     })
 
+    // Фільтруємо нерелевантні збіги (score < 0.5 — інша людина)
+    const filtered = entries.filter((e: any) => (e.score || 0) >= 0.5)
+
     // Сортуємо: спочатку росіяни/білоруси, потім за score
-    entries.sort((a: any, b: any) => {
+    filtered.sort((a: any, b: any) => {
       if (a.is_priority !== b.is_priority) return a.is_priority ? -1 : 1
       return (b.score || 0) - (a.score || 0)
     })
@@ -239,8 +242,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       query:   q,
-      total:   data.total || entries.length,
-      entries,
+      total:   filtered.length,
+      entries: filtered,
       sources_checked: ['ofac', 'eu_sanctions', 'un_security_council', 'ua_nsdc', 'uk_hmt', 'interpol'],
     })
 

@@ -938,15 +938,22 @@ function SaveToCardPanel({
     setSaving(true)
     setError('')
     try {
+      // Pick best name variant for name_ukr vs name_rus
+      const nameUkr = form.all_names?.find((n: string) => /[іїєґ]/i.test(n)) || form.name
+      const nameRus = form.all_names?.find((n: string) => !/[іїєґ]/i.test(n) && /[а-яёА-ЯЁ]/i.test(n)) || form.name
+      // All phones as array
+      const allPhones = form.all_phones?.length > 0 ? form.all_phones : (form.phones ? [form.phones] : undefined)
+
       const payload: Record<string, any> = {
-        name_rus:  form.name || undefined,
-        name_ukr:  form.name || undefined,
-        phones:    form.phones || undefined,
+        name_ukr:  nameUkr || undefined,
+        name_rus:  nameRus || undefined,
+        phones:    allPhones || undefined,
         email:     form.email || undefined,
         dob:       form.dob || undefined,
         addr_live: form.addr_live || undefined,
         ipn:       form.ipn || undefined,
         snils:     form.snils || undefined,
+        passport:  form.passport || undefined,
         photo_url: form.photo_url || undefined,
         vk_url:    form.vk_url || undefined,
         status:    'фігурант',
