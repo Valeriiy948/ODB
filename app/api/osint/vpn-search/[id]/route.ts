@@ -31,10 +31,10 @@ function checkActivationCondition(person: any): { allowed: boolean; reason: stri
   if (person.passport)  identifiers.push('passport')
   if (person.phones?.length > 0) identifiers.push('phone')
 
-  if (identifiers.length < 2) {
+  if (identifiers.length < 1) {
     return {
       allowed: false,
-      reason: `Недостатньо ідентифікаторів (є: ${identifiers.join(', ')}). Потрібно мінімум 2 з: ДН, ІПН, СНІЛС, паспорт, телефон`,
+      reason: `Недостатньо ідентифікаторів. Потрібно хоча б один з: ДН, ІПН, СНІЛС, паспорт, телефон`,
     }
   }
   return { allowed: true, reason: `OK (${identifiers.join(', ')})` }

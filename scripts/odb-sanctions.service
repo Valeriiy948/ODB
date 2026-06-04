@@ -1,0 +1,19 @@
+[Unit]
+Description=ODB Sanctions Service (OpenSanctions bulk data)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/odb
+ExecStart=/usr/bin/python3 /opt/odb/sanctions_service.py
+Restart=always
+RestartSec=10
+Environment=SANCTIONS_PORT=8010
+Environment=SANCTIONS_DATA_DIR=/data/sanctions
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=odb-sanctions
+
+[Install]
+WantedBy=multi-user.target

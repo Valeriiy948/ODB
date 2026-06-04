@@ -1,10 +1,9 @@
 // app/api/vps/route.ts
 // Proxy to VPS orchestrator (:8011).
-// Supports two patterns:
-//   Sync:  POST /api/vps?path=/search          — blocks up to 55s, returns results
-//   Async: POST /api/vps?path=/jobs/start      — returns {job_id} immediately (<1s)
-//          GET  /api/vps?path=/jobs/{id}        — poll for status; browser polls every 3s
-//          GET  /api/vps?path=/health           — health check
+// Sync:  POST /api/vps?path=/search       — blocks up to 55s, returns results
+// Async: POST /api/vps?path=/jobs/start   — returns {job_id} immediately (<1s)
+//        GET  /api/vps?path=/jobs/{id}    — poll for status
+//        GET  /api/vps?path=/health       — health check
 
 import { NextRequest, NextResponse } from 'next/server'
 

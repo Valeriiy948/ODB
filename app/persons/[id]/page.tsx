@@ -5,6 +5,8 @@ import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '../../lib/supabase/client'
 import Sidebar from '../../components/Sidebar'
 import ConnectionsGraph from '../../components/ConnectionsGraph'
+import EvidenceUploader from '../../components/EvidenceUploader'
+import AiProfileCard from '../../components/AiProfileCard'
 
 interface OsintVectorResult {
   vector: string; label: string; query: string; count: number
@@ -18,9 +20,11 @@ const TABS = [
   { id: 'overview', icon: '📋', label: 'Огляд' },
   { id: 'connections', icon: '🔗', label: 'Зв\'язки' },
   { id: 'incidents', icon: '⚖️', label: 'Злочини' },
+  { id: 'registries', icon: '🏛️', label: 'Реєстри' },
   { id: 'media', icon: '🎬', label: 'Медіа' },
   { id: 'documents', icon: '📁', label: 'Документи' },
   { id: 'unit', icon: '🏢', label: 'В/Ч та техніка' },
+  { id: 'crypto', icon: '₿', label: 'Крипто' },
   { id: 'osint', icon: '🔍', label: 'OSINT' },
   { id: 'notes', icon: '📝', label: 'Нотатки' },
 ]
@@ -151,14 +155,285 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
   )
 }
 
+// ─── Crypto Wallets Tab ───────────────────────────────────────────────────────
+function CryptoWalletsTab({ personId, personName }: { personId: string; personName: string }) {
+  const [wallets, setWallets]           = useState<any[]>([])
+  const [loading, setLoading]           = useState(true)
+  const [linkMode, setLinkMode]         = useState(false)
+  const [newAddr, setNewAddr]           = useState('')
+  const [newChain, setNewChain]         = useState('eth')
+  const [newNotes, setNewNotes]         = useState('')
+  const [saving, setSaving]             = useState(false)
+  const [analyzeLoading, setAnalyzeLoading] = useState<string | null>(null)
+  const [walletDetails, setWalletDetails]   = useState<Record<string, any>>({})
+
+  const CHAINS = ['eth','btc','tron','bsc','polygon']
+  const CHAIN_ICONS: Record<string, string> = {
+    eth: '⟠', btc: '₿', tron: '🔴', bsc: '🟡', polygon: '🟣'
+  }
+  const RISK_COLORS: Record<string, string> = {
+    low: 'text-green-400', medium: 'text-yellow-400',
+    high: 'text-orange-400', critical: 'text-red-400'
+  }
+
+  // Load wallets from person record
+  useEffect(() => {
+    fetch(`/api/persons/${personId}`)
+      .then(r => r.json())
+      .then(d => {
+        setWallets(d.crypto_wallets || [])
+        setLoading(false)
+      })
+      .catch(() => setLoading(false))
+  }, [personId])
+
+  async function handleLink() {
+    if (!newAddr.trim()) return
+    setSaving(true)
+    try {
+      const res = await fetch('/api/crypto/link-person', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          wallet_address: newAddr.trim(),
+          chain: newChain,
+          person_id: personId,
+          notes: newNotes,
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setWallets(prev => [...prev, {
+          address: newAddr.trim().toLowerCase(),
+          chain: newChain,
+          notes: newNotes,
+          linked_at: new Date().toISOString(),
+        }])
+        setNewAddr(''); setNewNotes(''); setLinkMode(false)
+      }
+    } finally { setSaving(false) }
+  }
+
+  async function handleUnlink(address: string) {
+    if (!confirm(`Відв'язати гаманець ${address.slice(0,12)}...?`)) return
+    await fetch('/api/crypto/link-person', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wallet_address: address, person_id: personId }),
+    })
+    setWallets(prev => prev.filter(w => w.address !== address))
+  }
+
+  async function handleAnalyze(wallet: any) {
+    setAnalyzeLoading(wallet.address)
+    try {
+      const res = await fetch('/api/crypto/wallet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address: wallet.address, chain: wallet.chain }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setWalletDetails(prev => ({ ...prev, [wallet.address]: data.wallet }))
+        // Also update the linked wallet with fresh data
+        await fetch('/api/crypto/link-person', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            wallet_address: wallet.address,
+            chain: wallet.chain,
+            person_id: personId,
+            wallet_data: data.wallet,
+          }),
+        })
+      }
+    } finally { setAnalyzeLoading(null) }
+  }
+
+  if (loading) return (
+    <div className="flex items-center justify-center py-20">
+      <div className="animate-spin text-4xl">₿</div>
+    </div>
+  )
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-white font-semibold text-lg">₿ Крипто-гаманці</h3>
+          <p className="text-gray-500 text-sm">{wallets.length} гаманець(ів) прив'язано до {personName}</p>
+        </div>
+        <button
+          onClick={() => setLinkMode(!linkMode)}
+          className="px-4 py-2 bg-orange-700 hover:bg-orange-600 text-white rounded-lg text-sm transition font-medium"
+        >
+          {linkMode ? '✕ Скасувати' : '+ Прив’язати гаманець'}
+        </button>
+      </div>
+
+      {/* Add wallet form */}
+      {linkMode && (
+        <div className="bg-gray-800/60 border border-orange-800/40 rounded-xl p-4 space-y-3">
+          <p className="text-orange-400 text-sm font-medium">Прив'язати новий гаманець</p>
+          <div className="flex gap-2">
+            <select
+              value={newChain}
+              onChange={e => setNewChain(e.target.value)}
+              className="bg-gray-900 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm w-32 shrink-0"
+            >
+              {CHAINS.map(c => (
+                <option key={c} value={c}>{CHAIN_ICONS[c]} {c.toUpperCase()}</option>
+              ))}
+            </select>
+            <input
+              value={newAddr}
+              onChange={e => setNewAddr(e.target.value)}
+              placeholder="Адреса гаманця (0x... / 1... / T...)"
+              className="flex-1 bg-gray-900 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm font-mono"
+            />
+          </div>
+          <input
+            value={newNotes}
+            onChange={e => setNewNotes(e.target.value)}
+            placeholder="Нотатки (необов'язково)"
+            className="w-full bg-gray-900 border border-gray-700 text-gray-300 rounded-lg px-3 py-2 text-sm"
+          />
+          <div className="flex gap-2">
+            <button
+              onClick={handleLink}
+              disabled={saving || !newAddr.trim()}
+              className="px-4 py-2 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white rounded-lg text-sm transition"
+            >
+              {saving ? '⏳ Зберігаю...' : '✓ Прив’язати'}
+            </button>
+            <a
+              href={`/crypto-intel?addr=${encodeURIComponent(newAddr)}&chain=${newChain}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg text-sm transition"
+            >
+              🔍 Аналіз
+            </a>
+          </div>
+        </div>
+      )}
+
+      {/* Wallet list */}
+      {wallets.length === 0 ? (
+        <div className="text-center py-16">
+          <p className="text-5xl mb-3">₿</p>
+          <p className="text-gray-400">Гаманців не прив'язано</p>
+          <p className="text-gray-600 text-sm mt-1">
+            Натисніть "+ Прив'язати гаманець" або знайдіть гаманець через{' '}
+            <a href="/crypto-intel" className="text-orange-400 hover:underline">Крипто-розвідку</a>
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {wallets.map((w: any) => {
+            const detail = walletDetails[w.address]
+            const riskColor = RISK_COLORS[w.risk_level || detail?.risk_level || 'low']
+            return (
+              <div key={w.address} className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-xl shrink-0">{CHAIN_ICONS[w.chain] || '🔗'}</span>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-400 text-xs uppercase font-semibold">{w.chain}</span>
+                        {(w.risk_level || detail?.risk_level) && (
+                          <span className={`text-xs font-medium ${riskColor}`}>
+                            ● {(w.risk_level || detail?.risk_level).toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-white font-mono text-sm truncate">{w.address}</p>
+                      {w.notes && <p className="text-gray-500 text-xs mt-0.5">{w.notes}</p>}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => handleAnalyze(w)}
+                      disabled={analyzeLoading === w.address}
+                      className="px-3 py-1.5 bg-blue-800/50 hover:bg-blue-700/60 text-blue-300 rounded-lg text-xs transition"
+                    >
+                      {analyzeLoading === w.address ? '⏳' : '🔍 Аналіз'}
+                    </button>
+                    <a
+                      href={`/crypto-intel?addr=${encodeURIComponent(w.address)}&chain=${w.chain}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg text-xs transition"
+                    >
+                      ↗ Відкрити
+                    </a>
+                    <button
+                      onClick={() => handleUnlink(w.address)}
+                      className="px-2 py-1.5 bg-red-950/50 hover:bg-red-900/60 text-red-400 rounded-lg text-xs transition"
+                      title="Відв'язати"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+
+                {/* Wallet stats (after analysis) */}
+                {(detail || w.balance != null) && (
+                  <div className="mt-3 pt-3 border-t border-gray-700/50 grid grid-cols-4 gap-3">
+                    {[
+                      { label: 'Баланс', value: detail?.balance_native != null ? `${detail.balance_native} ${detail.symbol || ''}` : (w.balance != null ? `${w.balance}` : null) },
+                      { label: 'Транзакцій', value: detail?.tx_count ?? w.tx_count },
+                      { label: 'Ризик', value: detail?.risk_score != null ? `${detail.risk_score}/100` : (w.risk_score != null ? `${w.risk_score}/100` : null) },
+                      { label: 'Остання tx', value: detail?.last_tx ?? w.last_tx },
+                    ].filter(s => s.value != null).map(stat => (
+                      <div key={stat.label}>
+                        <p className="text-gray-600 text-xs">{stat.label}</p>
+                        <p className="text-gray-300 text-sm font-medium">{String(stat.value)}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <p className="text-gray-700 text-xs mt-2">
+                  Прив'язано: {w.linked_at ? new Date(w.linked_at).toLocaleDateString('uk-UA') : '—'}
+                </p>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Link to Crypto Intel */}
+      <div className="bg-orange-950/20 border border-orange-900/30 rounded-xl p-4 flex items-center gap-3">
+        <span className="text-2xl">🕵️</span>
+        <div className="flex-1">
+          <p className="text-orange-400 text-sm font-medium">Крипто-розвідка</p>
+          <p className="text-gray-500 text-xs">Знайдіть гаманці через OSINT Bridge і прив'яжіть до цієї особи</p>
+        </div>
+        <a
+          href="/crypto-intel"
+          className="px-4 py-2 bg-orange-700 hover:bg-orange-600 text-white rounded-lg text-sm transition shrink-0"
+        >
+          Відкрити →
+        </a>
+      </div>
+    </div>
+  )
+}
+
 export default function PersonDetailPage() {
   const [person, setPerson] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('overview')
+  const [osintAutoRan, setOsintAutoRan] = useState(false)
   const [photoUrl, setPhotoUrl] = useState('')
   const [editingPhoto, setEditingPhoto] = useState(false)
   const [savingPhoto, setSavingPhoto] = useState(false)
   const [photoLightbox, setPhotoLightbox] = useState(false)
+  const [photoLightboxIdx, setPhotoLightboxIdx] = useState<number | null>(null)
+  const [addingPhotoUrl, setAddingPhotoUrl] = useState('')
+  const [savingNewPhoto, setSavingNewPhoto] = useState(false)
 
   const [osintLoading, setOsintLoading] = useState(false)
   const [osintData, setOsintData] = useState<OsintSearchData | null>(null)
@@ -215,6 +490,9 @@ export default function PersonDetailPage() {
   const [tgPhoneResults, setTgPhoneResults] = useState<any[]>([])
   const [tgPhoneError, setTgPhoneError] = useState('')
 
+  // Evidence (фото/відео/документи) — завантажуємо для хедера та огляду
+  const [evidenceItems, setEvidenceItems] = useState<any[]>([])
+
   // Photo collection (VK/OK/Instagram)
   const [photoCollLoading, setPhotoCollLoading] = useState(false)
   const [photoCollMsg, setPhotoCollMsg] = useState('')
@@ -223,6 +501,16 @@ export default function PersonDetailPage() {
   const [presenceLoading, setPresenceLoading] = useState(false)
   const [presenceResults, setPresenceResults] = useState<any[]>([])
   const [presenceError, setPresenceError] = useState('')
+
+  // 🏛️ Реєстри (НАЗК, Миротворець, ЄРБ, МВС, Санкції, ЄДР) — авто при відкритті
+  const [regLoading, setRegLoading] = useState(false)
+  const [regAutoRan, setRegAutoRan] = useState(false)
+  const [regNazk, setRegNazk] = useState<any>(null)
+  const [regMyrotvorets, setRegMyrotvorets] = useState<any>(null)
+  const [regErb, setRegErb] = useState<any>(null)
+  const [regMvs, setRegMvs] = useState<any>(null)
+  const [regSanctions, setRegSanctions] = useState<any>(null)
+  const [regCompany, setRegCompany] = useState<any>(null)
 
   // FindFace / FindClone
   const [findFaceLoading, setFindFaceLoading] = useState(false)
@@ -241,6 +529,24 @@ export default function PersonDetailPage() {
   const [tgFullJobId, setTgFullJobId] = useState<string | null>(null)
   const [tgFullError, setTgFullError] = useState('')
   const [tgFullResults, setTgFullResults] = useState<any[]>([])
+
+  // OsintKit — база даних РФ (731 БД: Альфабанк, ГосУслуги, etc.)
+  const [osintKitLoading, setOsintKitLoading] = useState(false)
+  const [osintKitResults, setOsintKitResults] = useState<any[]>([])
+  const [osintKitTotal, setOsintKitTotal] = useState(0)
+  const [osintKitError, setOsintKitError] = useState('')
+  const [osintKitRan, setOsintKitRan] = useState(false)
+  const [osintKitSaving, setOsintKitSaving] = useState(false)
+  const [osintKitSaved, setOsintKitSaved] = useState(false)
+
+  // LeakOsint — 800+ баз РФ/СНД
+  const [leakOsintLoading, setLeakOsintLoading] = useState(false)
+  const [leakOsintResults, setLeakOsintResults] = useState<any[]>([])
+  const [leakOsintTotal, setLeakOsintTotal] = useState(0)
+  const [leakOsintError, setLeakOsintError] = useState('')
+  const [leakOsintRan, setLeakOsintRan] = useState(false)
+  const [leakOsintSaving, setLeakOsintSaving] = useState(false)
+  const [leakOsintSaved, setLeakOsintSaved] = useState(false)
 
   const [videos, setVideos] = useState<{ url: string; note: string }[]>([])
   const [videoUrl, setVideoUrl] = useState('')
@@ -282,9 +588,11 @@ export default function PersonDetailPage() {
 
   useEffect(() => {
     async function init() {
+      try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { router.push('/login'); return }
       const res = await fetch(`/api/persons/${params.id}`)
+      if (!res.ok) { setLoading(false); return }
       const data = await res.json()
       setPerson(data)
       if (data.photo_url) setPhotoUrl(data.photo_url)
@@ -302,20 +610,14 @@ export default function PersonDetailPage() {
         if (mentions) setPersonMentions(mentions)
       } catch {}
 
-      // ── Авто-OSINT: запускаємо у фоні після завантаження ──
-      setTimeout(async () => {
-        try {
-          setOsintLoading(true)
-          const osintRes = await fetch(`/api/osint/search/${params.id}`, { method: 'POST' })
-          const osintResult = await osintRes.json()
-          if (!osintResult.error) {
-            setOsintData(osintResult)
-            if (osintResult.vectors?.length > 0) setActiveVector(osintResult.vectors[0].vector)
-          }
-        } catch {}
-        finally { setOsintLoading(false) }
+      // ── Авто-реєстри: НАЗК + Миротворець + ЄРБ + МВС ──
+      const personName = data?.name_ukr || data?.name_rus || data?.name || ''
+      if (personName.length >= 3) {
+        setTimeout(() => runRegistriesCheck(personName), 1000)
+      }
 
-        // ── Авто-детект Миротворця у фоні ──
+      // ── Авто-детект Миротворця у фоні (веб-OSINT тепер запускається вручну) ──
+      setTimeout(async () => {
         try {
           const enrichRes = await fetch(`/api/persons/${params.id}/enrich`)
           const enrichData = await enrichRes.json()
@@ -325,9 +627,33 @@ export default function PersonDetailPage() {
           }
         } catch {}
       }, 800)
+      } catch { setLoading(false) }
     }
     init()
   }, [params.id])
+
+  // Окремий useEffect для evidence — спрацьовує щойно person завантажено
+  useEffect(() => {
+    if (!person?.id) return
+    fetch(`/api/evidence/${person.id}?type=person`)
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d.evidence)) setEvidenceItems(d.evidence) })
+      .catch(() => {})
+  }, [person?.id])
+
+  // ── Авто-запуск OsintKit + LeakOsint + Telegram при відкритті OSINT вкладки ──
+  useEffect(() => {
+    if (activeTab !== 'osint') return
+    if (osintAutoRan) return
+    if (!person) return
+    setOsintAutoRan(true)
+    // Паралельний запуск всіх трьох джерел
+    if (!osintKitRan) runOsintKit()
+    if (!leakOsintRan) runLeakOsint()
+    const tgQ = [person.name_rus, person.name_ukr, person.name].find(n => n && n.trim().length >= 3) || ''
+    if (tgQ.length >= 3) runTelegramSearch(tgQ)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, person])
 
   async function loadIncidents() {
     setIncidentsLoading(true)
@@ -378,9 +704,232 @@ export default function PersonDetailPage() {
       const res = await fetch(`/api/osint/search/${params.id}`, { method: 'POST' })
       const data = await res.json()
       if (data.error) { setOsintError(data.error) }
-      else { setOsintData(data); if (data.vectors?.length > 0) setActiveVector(data.vectors[0].vector) }
+      else {
+        setOsintData(data)
+        if (data.vectors?.length > 0) setActiveVector(data.vectors[0].vector)
+        // Оновлюємо person_mentions (зберігались тільки >= 80 балів)
+        try {
+          const { data: mentions } = await supabase
+            .from('person_mentions')
+            .select('*')
+            .eq('person_id', params.id)
+            .eq('source_type', 'web')
+            .order('created_at', { ascending: false })
+            .limit(20)
+          if (mentions) setPersonMentions(mentions)
+        } catch {}
+        // Якщо знайдено якісні збіги — оновлюємо AI профіль у фоні
+        const highQualityHits = data.vectors?.reduce(
+          (acc: number, v: any) => acc + (v.results?.filter((r: any) => (r.relevanceScore ?? 0) >= 80).length || 0), 0
+        ) || 0
+        if (highQualityHits > 0) {
+          setAiLoading(true)
+          fetch(`/api/osint/ai-profile/${params.id}`, { method: 'POST' })
+            .then(r => r.json())
+            .then(aiData => {
+              if (aiData.ai_profile || aiData.threat_score !== undefined) {
+                setPerson((prev: any) => ({
+                  ...prev,
+                  ai_profile: aiData.ai_profile || prev.ai_profile,
+                  threat_score: aiData.threat_score ?? prev.threat_score,
+                }))
+              }
+            })
+            .catch(() => {})
+            .finally(() => setAiLoading(false))
+        }
+      }
     } catch (e: any) { setOsintError(e.message) }
     finally { setOsintLoading(false) }
+  }
+
+  // ── OsintKit: пошук по 731 БД РФ за відомими ідентифікаторами ──────────────
+  // OsintKit використовує AND між фільтрами → шукаємо по одному ідентифікатору,
+  // починаємо з найунікальнішого (ІПН → телефони → паспорт → ім'я+ДН)
+  async function runOsintKit() {
+    setOsintKitLoading(true); setOsintKitError(''); setOsintKitRan(true)
+    try {
+      const aiObj: any = (() => {
+        const raw = person.ai_profile
+        if (!raw) return null
+        if (typeof raw === 'object') return raw
+        try { return JSON.parse(raw as string) } catch { return null }
+      })()
+      const aiP0 = aiObj?.persons?.[0] || null
+
+      // Збираємо унікальні ідентифікатори (від найунікальнішого до менш унікального)
+      const queries: { fields: Record<string,string>; label: string }[] = []
+
+      // 1. ІПН (12 цифр — абсолютно унікальний)
+      const inn = String(person.ipn || aiP0?.inn || '').replace(/\D/g,'')
+      if (inn.length >= 10) queries.push({ fields: { inn }, label: `ІПН: ${inn}` })
+
+      // 2. СНІЛС
+      const snils = (person.snils || aiP0?.snils || '').replace(/\D/g,'')
+      if (snils.length >= 9) queries.push({ fields: { snils }, label: `СНІЛС: ${snils}` })
+
+      // 3. Телефони (кожен окремо)
+      const phones: string[] = [
+        ...(aiP0?.phones || []),
+        ...(Array.isArray(person.phones) ? person.phones : []),
+      ].map((p: string) => p.replace(/\D/g,'')).filter(p => p.length >= 9)
+      const uniquePhones = [...new Set(phones)].slice(0, 5) // не більше 5
+      for (const phone of uniquePhones) {
+        queries.push({ fields: { phone }, label: `Телефон: ${phone}` })
+      }
+
+      // 4. Паспорти
+      const passports: string[] = [
+        ...(person.passport ? [person.passport] : []),
+        ...(aiP0?.passports || []),
+      ].filter(Boolean)
+      for (const passport of [...new Set(passports)].slice(0,2)) {
+        queries.push({ fields: { passport }, label: `Паспорт: ${passport}` })
+      }
+
+      // 5. Ім'я + дата народження (якщо немає більш унікальних)
+      if (queries.length === 0) {
+        const name = person.name_rus || person.name_ukr || person.name
+        if (name) {
+          const f: Record<string,string> = { name }
+          if (person.dob) {
+            const dobMatch = String(person.dob).match(/^(\d{4})-(\d{2})-(\d{2})$/)
+            if (dobMatch) f.dob = `${dobMatch[3]}.${dobMatch[2]}.${dobMatch[1]}`
+          }
+          queries.push({ fields: f, label: `Ім'я: ${name}` })
+        }
+      }
+
+      if (queries.length === 0) {
+        setOsintKitError('Недостатньо ідентифікаторів для пошуку')
+        return
+      }
+
+      // Виконуємо всі запити паралельно
+      const results = await Promise.all(
+        queries.map(async ({ fields, label }) => {
+          try {
+            const res = await fetch('/api/breach/search', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ fields }),
+            })
+            const data = await res.json()
+            const ok = data.sources?.osintkit
+            if (ok?.error || !ok?.entries?.length) return []
+            return ok.entries.map((e: any) => ({ ...e, _query: label }))
+          } catch { return [] }
+        })
+      )
+
+      // Дедублікуємо по database + name
+      const seen = new Set<string>()
+      const allEntries: any[] = []
+      for (const batch of results) {
+        for (const entry of batch) {
+          const key = `${entry.database || ''}|${entry.name || ''}|${entry.phone || ''}`
+          if (!seen.has(key)) { seen.add(key); allEntries.push(entry) }
+        }
+      }
+
+      setOsintKitResults(allEntries)
+      setOsintKitTotal(allEntries.length)
+      if (allEntries.length === 0) setOsintKitError('')
+    } catch (e: any) {
+      setOsintKitError(e.message)
+    } finally {
+      setOsintKitLoading(false)
+    }
+  }
+
+  // ── Зберегти дані OsintKit / LeakOsint в картку особи ──────────────────────
+  async function saveLeakDataToDb(entries: any[], sourceName: string,
+    setSaving: (v: boolean) => void, setSaved: (v: boolean) => void) {
+    setSaving(true)
+    try {
+      const uniq = (a: string[]) => [...new Set(a.filter(Boolean))]
+      const phones = uniq(entries.flatMap(e => {
+        const all: string[] = []
+        if (e.phone) all.push(String(e.phone).replace(/\D/g,''))
+        if (e.extra_phones) all.push(...String(e.extra_phones).split(/[,;]/).map((s: string) => s.replace(/\D/g,'')))
+        return all.filter(p => p.length >= 9)
+      }))
+      const emails = uniq(entries.flatMap(e => e.email ? [String(e.email).toLowerCase().trim()] : []))
+      const addresses = uniq(entries.flatMap(e => e.address ? [String(e.address).trim()] : []))
+      const inns = uniq(entries.flatMap(e => e.inn ? [String(e.inn).trim()] : []))
+      const passports = uniq(entries.flatMap(e => e.passport ? [String(e.passport).trim()] : []))
+      const vkUrls = uniq(entries.flatMap(e => e.vk_id ? [String(e.vk_id)] : []))
+
+      const patch: Record<string, any> = {}
+
+      if (phones.length > 0) {
+        const existing: string[] = Array.isArray(person.phones) ? person.phones : []
+        const merged = uniq([...existing, ...phones]).slice(0, 20)
+        if (merged.length > existing.length) patch.phones = merged
+      }
+      if (emails.length > 0 && !person.email) patch.email = emails[0]
+      if (addresses.length > 0 && !person.addr_live) patch.addr_live = addresses[0]
+      if (inns.length > 0 && !person.ipn) patch.ipn = inns[0]
+      if (passports.length > 0 && !person.passport) patch.passport = passports[0]
+      if (vkUrls.length > 0 && !person.vk_url) patch.vk_url = vkUrls[0]
+
+      // Додаємо тег "перевірено"
+      const existingTags: string[] = Array.isArray(person.tags) ? person.tags : []
+      if (!existingTags.includes('перевірено')) {
+        patch.tags = [...existingTags, 'перевірено']
+      }
+
+      if (Object.keys(patch).length === 0) {
+        alert(`${sourceName}: всі знайдені дані вже є в картці`)
+        return
+      }
+
+      const res = await fetch(`/api/persons/${person.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+
+      const saved: string[] = []
+      if (patch.phones) saved.push(`📱 ${patch.phones.length} тел.`)
+      if (patch.email) saved.push(`✉️ email`)
+      if (patch.addr_live) saved.push(`📍 адреса`)
+      if (patch.ipn) saved.push(`ІПН`)
+      if (patch.passport) saved.push(`🪪 паспорт`)
+      if (patch.vk_url) saved.push(`VK`)
+      alert(`${sourceName}: збережено в базу:\n${saved.join(', ')}`)
+      setSaved(true)
+      // Перезавантажуємо дані особи
+      window.location.reload()
+    } catch (e: any) {
+      alert(`Помилка збереження: ${e.message}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // ── LeakOsint: пошук по 800+ БД РФ/СНД ──────────────────────────────────────
+  async function runLeakOsint() {
+    setLeakOsintLoading(true); setLeakOsintError(''); setLeakOsintRan(true)
+    try {
+      const name = person.name_rus || person.name_ukr || person.name || ''
+      if (!name) { setLeakOsintError('Немає імені для пошуку'); return }
+
+      const res = await fetch('/api/leaks/leakosint', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: name, limit: 100 }),
+      })
+      const data = await res.json()
+      if (data.error) { setLeakOsintError(data.error); return }
+      setLeakOsintResults(data.entries || [])
+      setLeakOsintTotal(data.total || data.entries?.length || 0)
+    } catch (e: any) {
+      setLeakOsintError(e.message)
+    } finally {
+      setLeakOsintLoading(false)
+    }
   }
 
   async function runAiProfile() {
@@ -404,6 +953,49 @@ export default function PersonDetailPage() {
     } finally {
       setAiLoading(false)
     }
+  }
+
+  // 🏛️ Перевірка по всіх реєстрах одночасно
+  async function runRegistriesCheck(forceName?: string) {
+    if (regLoading) return
+    setRegLoading(true)
+    const name = forceName || person?.name_ukr || person?.name_rus || person?.name || ''
+    if (!name || name.length < 3) { setRegLoading(false); return }
+    const lastName = name.trim().split(/\s+/)[0]
+    const [nazkRes, myroRes, erbRes, mvsRes, sanctionsRes, companyRes] = await Promise.allSettled([
+      fetch('/api/nazk/search', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: name }),
+      }).then(r => r.json()),
+      fetch('/api/myrotvorets/search', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: name }),
+      }).then(r => r.json()),
+      fetch('/api/erb/search', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: lastName, last_name: lastName }),
+      }).then(r => r.json()),
+      fetch('/api/mvs/search', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: name, resource: 'wanted' }),
+      }).then(r => r.json()),
+      fetch('/api/sanctions/search', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: name }),
+      }).then(r => r.json()),
+      fetch('/api/company/search', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: lastName }),
+      }).then(r => r.json()),
+    ])
+    if (nazkRes.status === 'fulfilled') setRegNazk(nazkRes.value)
+    if (myroRes.status === 'fulfilled') setRegMyrotvorets(myroRes.value)
+    if (erbRes.status === 'fulfilled') setRegErb(erbRes.value)
+    if (mvsRes.status === 'fulfilled') setRegMvs(mvsRes.value)
+    if (sanctionsRes.status === 'fulfilled') setRegSanctions(sanctionsRes.value)
+    if (companyRes.status === 'fulfilled') setRegCompany(companyRes.value)
+    setRegAutoRan(true)
+    setRegLoading(false)
   }
 
   async function runVkSearch() {
@@ -527,10 +1119,14 @@ export default function PersonDetailPage() {
     try {
       const res = await fetch(`/api/osint/vpn-search/${params.id}`, { method: 'POST' })
       const data = await res.json()
-      if (!data.success && !data.results) {
-        setVpnError(data.error || data.message || 'Помилка VPN пошуку')
+      if (res.status === 403 || (!data.success && !data.results)) {
+        setVpnError(data.error || data.reason || data.message || 'Помилка VPN пошуку')
       } else {
-        setVpnResults(data.results || [])
+        const results = data.results || []
+        setVpnResults(results)
+        if (results.length === 0) {
+          setVpnError('Нічого не знайдено в ipbd.ru та leb.su (або сайти заблокували запит)')
+        }
       }
     } catch (e: any) { setVpnError(e.message) }
     finally { setVpnLoading(false) }
@@ -638,6 +1234,35 @@ export default function PersonDetailPage() {
         const raw = deduplicateTgResults(data.results || [])
         setTgRawAll(raw) // зберігаємо всі результати без фільтрації
         setTgResults(filterTgByQuery(raw, q, person?.dob))
+        // Автоматично зберігаємо telegram_raw в БД якщо є результати
+        if (raw.length > 0) {
+          const existingRaw: any[] = person.telegram_raw || []
+          const newEntry = {
+            searched_at: new Date().toISOString(),
+            query: dob ? `${q} ${dob}` : q,
+            bot: '@PeopleFindBaseBot',
+            leaks: raw.map((r: any) => ({
+              source_label: r.source_label,
+              page: r.page || 1,
+              snippet: r.snippet,
+              fields: r.fields || {},
+              url: r.url || null,
+              date: r.date || null,
+            }))
+          }
+          // Зберігаємо у фоні — не блокуємо UI
+          fetch(`/api/persons/${params.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ telegram_raw: [...existingRaw, newEntry] }),
+          }).then(() => {
+            // Оновлюємо person в стейті щоб overview показував нові дані
+            fetch(`/api/persons/${params.id}`)
+              .then(r => r.json())
+              .then(updated => setPerson(updated))
+              .catch(() => {})
+          }).catch(() => {})
+        }
       }
     } catch (e: any) {
       setTgError('Telegram сервіс недоступний')
@@ -842,8 +1467,28 @@ export default function PersonDetailPage() {
       body: JSON.stringify(patch),
     })
     const refreshed = await fetch(`/api/persons/${params.id}`)
-    setPerson(await refreshed.json())
-    alert(`✅ Збережено ${Object.keys(patch).length} полів до картки`)
+    const updatedPerson = await refreshed.json()
+    setPerson(updatedPerson)
+    // Автоматично генеруємо AI-профіль з новими даними
+    setActiveTab('overview')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+    // Запускаємо AI аналіз у фоні (не блокуємо UI)
+    setAiLoading(true)
+    setAiError('')
+    fetch(`/api/osint/ai-profile/${params.id}`, { method: 'POST' })
+      .then(r => r.json())
+      .then(data => {
+        if (data.ai_profile || data.threat_score !== undefined) {
+          setPerson((prev: any) => ({
+            ...prev,
+            ai_profile: data.ai_profile || prev.ai_profile,
+            threat_score: data.threat_score ?? prev.threat_score,
+          }))
+        }
+        if (data.error && !data.ai_profile) setAiError(`⚠️ AI: ${data.error}`)
+      })
+      .catch(() => {})
+      .finally(() => setAiLoading(false))
   }
 
   async function savePhoto() {
@@ -857,6 +1502,64 @@ export default function PersonDetailPage() {
       setPerson((p: any) => ({ ...p, photo_url: photoUrl }))
       setEditingPhoto(false)
     } finally { setSavingPhoto(false) }
+  }
+
+  // Всі фото особи: головне + manual + evidence
+  const evidencePhotos: string[] = evidenceItems
+    .filter(e => e.ev_type === 'photo')
+    .map(e => e.file_url as string)
+    .filter(Boolean)
+
+  const allPersonPhotos: string[] = person ? [
+    ...(person.photo_url ? [person.photo_url] : []),
+    ...((person.person_photos || []) as any[])
+      .filter((p: any) => p.source === 'manual' && p.url)
+      .map((p: any) => p.url as string),
+    ...evidencePhotos,
+  ].filter((url, idx, arr) => url && arr.indexOf(url) === idx) : []
+
+  async function addPersonPhoto(url: string) {
+    if (!url.trim()) return
+    setSavingNewPhoto(true)
+    try {
+      const current: any[] = person.person_photos || []
+      const newEntry = { url: url.trim(), source: 'manual', added_at: new Date().toISOString() }
+      const updates: any = { person_photos: [...current, newEntry] }
+      if (!person.photo_url) updates.photo_url = url.trim()
+      await fetch(`/api/persons/${params.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      })
+      setPerson((p: any) => ({ ...p, ...updates }))
+      setAddingPhotoUrl('')
+    } finally { setSavingNewPhoto(false) }
+  }
+
+  async function removePersonPhoto(url: string) {
+    const current: any[] = person.person_photos || []
+    const updated = current.filter((p: any) => !(p.source === 'manual' && p.url === url))
+    const isMain = person.photo_url === url
+    const remaining = updated
+      .filter((p: any) => p.source === 'manual' && p.url)
+      .map((p: any) => p.url as string)
+    const updates: any = { person_photos: updated }
+    if (isMain) updates.photo_url = remaining[0] || null
+    await fetch(`/api/persons/${params.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    })
+    setPerson((p: any) => ({ ...p, ...updates }))
+  }
+
+  async function setMainPersonPhoto(url: string) {
+    await fetch(`/api/persons/${params.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ photo_url: url }),
+    })
+    setPerson((p: any) => ({ ...p, photo_url: url }))
   }
 
   const [showPhotoSearch, setShowPhotoSearch] = useState(false)
@@ -1020,9 +1723,20 @@ export default function PersonDetailPage() {
   }
 
   const activeVectorData = osintData?.vectors.find(v => v.vector === activeVector)
-  const osintPdfs = osintData?.vectors.flatMap(v =>
+  const osintPdfsAll = osintData?.vectors.flatMap(v =>
     v.results.filter(r => r.link.toLowerCase().endsWith('.pdf') || r.title.toLowerCase().includes('[pdf]'))
   ) ?? []
+  // Фільтруємо PDF — тільки з достатньою релевантністю або з прізвищем в тексті
+  const personSurnameForFilter = (person?.name_rus || person?.name || '').split(' ')[0]?.toLowerCase() || ''
+  const osintPdfs = osintPdfsAll.filter(r => {
+    const rel = r.relevanceScore ?? 100
+    if (rel >= 60) return true
+    if (personSurnameForFilter.length >= 4) {
+      const text = `${r.title} ${r.snippet || ''}`.toLowerCase()
+      return text.includes(personSurnameForFilter)
+    }
+    return rel >= 45
+  })
   const osintRelatives = osintData?.vectors.filter(v => v.vector === 'relatives' || v.vector === 'relatives_vk') ?? []
 
   // Знаходимо посилання на Миротворець в OSINT результатах
@@ -1091,7 +1805,7 @@ export default function PersonDetailPage() {
               target="_blank"
               rel="noopener noreferrer"
               className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm font-medium transition flex items-center gap-1.5 text-gray-300">
-              🖨️ Досьє
+              📄 Звіт PDF
             </a>
             <button onClick={() => runOsint()} disabled={osintLoading}
               className="px-4 py-2 bg-purple-700 hover:bg-purple-600 disabled:opacity-60 rounded-lg text-sm font-medium transition flex items-center gap-2">
@@ -1102,64 +1816,141 @@ export default function PersonDetailPage() {
 
         {/* Name banner з фото */}
         <div className="bg-gray-800/40 border-b border-gray-700 px-6 py-3 flex items-center gap-4">
-          {/* Фото */}
-          <div className="relative shrink-0">
-            {person.photo_url ? (
-              <img
-                src={person.photo_url}
-                alt={personName}
-                onClick={() => setPhotoLightbox(true)}
-                className="w-16 h-16 rounded-xl object-cover border-2 border-gray-600 cursor-zoom-in hover:border-blue-500 transition"
-                title="Натисніть для збільшення"
-              />
+          {/* Фото-галерея */}
+          <div className="relative shrink-0 flex gap-1.5 items-end pb-1">
+            {allPersonPhotos.length > 0 ? (
+              <>
+                {allPersonPhotos.slice(0, 5).map((url, idx) => (
+                  <div key={idx} className="relative group shrink-0">
+                    <img
+                      src={url}
+                      alt={personName}
+                      onClick={() => setPhotoLightboxIdx(idx)}
+                      className={`cursor-zoom-in object-cover rounded-lg border-2 transition
+                        ${idx === 0
+                          ? 'w-16 h-16 border-blue-500 hover:border-blue-300'
+                          : 'w-11 h-11 border-gray-600 opacity-80 hover:opacity-100 hover:border-gray-400'
+                        }`}
+                      title={idx === 0 ? 'Головне фото' : `Фото ${idx + 1}`}
+                    />
+                    {idx === 0 && (
+                      <span className="absolute top-0.5 left-0.5 text-[8px] bg-blue-600 text-white rounded px-0.5 leading-tight">★</span>
+                    )}
+                  </div>
+                ))}
+                {allPersonPhotos.length > 5 && (
+                  <div
+                    onClick={() => setPhotoLightboxIdx(0)}
+                    className="w-11 h-11 shrink-0 rounded-lg bg-gray-700 border-2 border-gray-600 flex items-center justify-center text-xs text-gray-300 cursor-pointer hover:bg-gray-600 font-medium"
+                  >+{allPersonPhotos.length - 5}</div>
+                )}
+              </>
             ) : (
               <div className="w-16 h-16 rounded-xl bg-gray-700 border-2 border-gray-600 flex items-center justify-center text-2xl">
                 👤
               </div>
             )}
-            <button onClick={() => setEditingPhoto(true)}
-              className="absolute -bottom-1 -right-1 w-6 h-6 bg-blue-600 hover:bg-blue-500 rounded-full text-xs flex items-center justify-center transition"
-              title="Змінити фото">
+            <button
+              onClick={() => { setEditingPhoto(true); setAddingPhotoUrl('') }}
+              className="absolute -bottom-2 -right-2 w-6 h-6 bg-blue-600 hover:bg-blue-500 rounded-full text-xs flex items-center justify-center transition shadow-lg"
+              title="Управління фото">
               ✏️
             </button>
           </div>
 
-          {/* Lightbox */}
-          {photoLightbox && person.photo_url && (
+          {/* Лайтбокс з навігацією */}
+          {photoLightboxIdx !== null && allPersonPhotos.length > 0 && (
             <div
-              className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4"
-              onClick={() => setPhotoLightbox(false)}>
-              <div className="relative max-w-2xl max-h-full" onClick={e => e.stopPropagation()}>
+              className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-4"
+              onClick={() => setPhotoLightboxIdx(null)}
+            >
+              <div className="relative flex flex-col items-center max-w-3xl w-full" onClick={e => e.stopPropagation()}>
+                {/* Головне зображення */}
                 <img
-                  src={person.photo_url}
+                  src={allPersonPhotos[photoLightboxIdx]}
                   alt={personName}
-                  className="max-w-full max-h-[85vh] rounded-xl object-contain shadow-2xl"
+                  className="max-h-[75vh] max-w-full rounded-xl object-contain shadow-2xl"
                 />
-                <div className="mt-3 text-center text-gray-300 text-sm font-medium">{personName}</div>
+                <div className="mt-2 text-gray-300 text-sm text-center">
+                  {personName}
+                  {allPersonPhotos.length > 1 && (
+                    <span className="text-gray-500 ml-2">{photoLightboxIdx + 1} / {allPersonPhotos.length}</span>
+                  )}
+                </div>
+
+                {/* Мініатюри */}
+                {allPersonPhotos.length > 1 && (
+                  <div className="flex gap-2 mt-3 flex-wrap justify-center">
+                    {allPersonPhotos.map((url, idx) => (
+                      <img
+                        key={idx}
+                        src={url}
+                        onClick={() => setPhotoLightboxIdx(idx)}
+                        className={`w-12 h-12 object-cover rounded-lg cursor-pointer border-2 transition
+                          ${idx === photoLightboxIdx ? 'border-blue-400 opacity-100' : 'border-gray-600 opacity-50 hover:opacity-80'}`}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {/* Кнопка закрити */}
                 <button
-                  onClick={() => setPhotoLightbox(false)}
-                  className="absolute -top-3 -right-3 w-8 h-8 bg-gray-700 hover:bg-red-700 rounded-full text-white text-sm flex items-center justify-center transition">
-                  ✕
-                </button>
+                  onClick={() => setPhotoLightboxIdx(null)}
+                  className="absolute top-0 right-0 -translate-y-3 translate-x-3 w-8 h-8 bg-gray-700 hover:bg-red-700 rounded-full text-white flex items-center justify-center transition text-sm"
+                >✕</button>
+
+                {/* Відкрити оригінал */}
                 <a
-                  href={person.photo_url}
+                  href={allPersonPhotos[photoLightboxIdx]}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="absolute -top-3 -left-3 w-8 h-8 bg-gray-700 hover:bg-blue-700 rounded-full text-white text-xs flex items-center justify-center transition"
-                  title="Відкрити оригінал">
-                  ↗
-                </a>
+                  className="absolute top-0 left-0 -translate-y-3 -translate-x-3 w-8 h-8 bg-gray-700 hover:bg-blue-700 rounded-full text-white flex items-center justify-center transition text-xs"
+                  title="Відкрити оригінал"
+                >↗</a>
+
+                {/* Стрілка назад */}
+                {photoLightboxIdx > 0 && (
+                  <button
+                    onClick={e => { e.stopPropagation(); setPhotoLightboxIdx(i => i! - 1) }}
+                    className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-10 text-white text-4xl hover:text-gray-300 px-2"
+                  >‹</button>
+                )}
+                {/* Стрілка вперед */}
+                {photoLightboxIdx < allPersonPhotos.length - 1 && (
+                  <button
+                    onClick={e => { e.stopPropagation(); setPhotoLightboxIdx(i => i! + 1) }}
+                    className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-10 text-white text-4xl hover:text-gray-300 px-2"
+                  >›</button>
+                )}
+
+                {/* Зробити головним */}
+                {allPersonPhotos[photoLightboxIdx] !== person.photo_url && (
+                  <button
+                    onClick={() => { setMainPersonPhoto(allPersonPhotos[photoLightboxIdx!]); setPhotoLightboxIdx(null) }}
+                    className="mt-2 px-3 py-1 bg-blue-700 hover:bg-blue-600 text-white rounded-lg text-xs transition"
+                  >★ Зробити головним</button>
+                )}
               </div>
             </div>
           )}
 
           <div className="flex-1 min-w-0">
-            <div className="flex items-baseline gap-3 flex-wrap">
+            <div className="flex items-baseline gap-2 flex-wrap">
               <span className="text-xl font-bold text-blue-400 truncate">{personName}</span>
-              {person.name_rus && person.name_ukr && (
-                <span className="text-gray-400 text-sm">{person.name_rus}</span>
+              {person.dob && (() => {
+                const year = person.dob.match(/(\d{4})/)?.[1]
+                const age = year ? new Date().getFullYear() - parseInt(year) : null
+                return (
+                  <span className="text-gray-400 text-sm font-mono shrink-0">
+                    {person.dob.replace(/^(\d{4})-(\d{2})-(\d{2})$/, '$3.$2.$1')}
+                    {age ? ` (${age} р.)` : ''}
+                  </span>
+                )
+              })()}
+              {person.name_rus && person.name_ukr && person.name_rus !== personName && (
+                <span className="text-gray-500 text-sm">{person.name_rus}</span>
               )}
-              {person.name_eng && <span className="text-gray-500 text-xs">{person.name_eng}</span>}
+              {person.name_eng && <span className="text-gray-600 text-xs">{person.name_eng}</span>}
             </div>
             {person.rank && (
               <p className="text-gray-400 text-sm mt-0.5">{person.rank}{person.unit ? ` • ${person.unit}` : ''}</p>
@@ -1188,6 +1979,14 @@ export default function PersonDetailPage() {
                 🔗 Профіль
               </a>
             )}
+            <button
+              onClick={() => {
+                const printUrl = `/persons/${params.id}/report`
+                window.open(printUrl, '_blank')
+              }}
+              className="px-3 py-1.5 bg-indigo-800 hover:bg-indigo-700 text-indigo-200 rounded-lg text-xs transition">
+              📄 PDF звіт
+            </button>
             <button
               onClick={async () => {
                 if (!confirm(`Видалити "${person.name_rus || person.name_ukr || person.name}"? Це незворотньо.`)) return
@@ -1329,18 +2128,112 @@ export default function PersonDetailPage() {
           </div>
         )}
 
-        {/* Форма редагування фото */}
+        {/* Менеджер фото */}
         {editingPhoto && (
-          <div className="bg-blue-950 border-b border-blue-800 px-6 py-3 flex gap-3 items-center">
-            <input type="text" value={photoUrl} onChange={e => setPhotoUrl(e.target.value)}
-              placeholder="URL фото (https://...)"
-              className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm focus:border-blue-500 focus:outline-none" />
-            <button onClick={savePhoto} disabled={savingPhoto}
-              className="px-4 py-2 bg-blue-700 hover:bg-blue-600 disabled:opacity-60 rounded-lg text-sm transition">
-              {savingPhoto ? 'Збереження...' : '💾 Зберегти'}
-            </button>
-            <button onClick={() => { setEditingPhoto(false); setPhotoUrl(person.photo_url || '') }}
-              className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition">Скасувати</button>
+          <div className="bg-blue-950/80 border-b border-blue-800 px-6 py-4">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-blue-300 font-semibold text-sm">🖼️ Фото особи</span>
+              <button onClick={() => { setEditingPhoto(false); setAddingPhotoUrl('') }}
+                className="text-gray-500 hover:text-white text-lg leading-none">✕</button>
+            </div>
+
+            {/* Поточні фото */}
+            {allPersonPhotos.length > 0 && (
+              <div className="flex gap-2 flex-wrap mb-3">
+                {allPersonPhotos.map((url, idx) => {
+                  const isMain = url === person.photo_url || (idx === 0 && !person.photo_url)
+                  const isManual = ((person.person_photos || []) as any[]).some((p: any) => p.source === 'manual' && p.url === url)
+                  const isEvidence = evidenceItems.some(e => e.file_url === url)
+                  return (
+                    <div key={idx} className="relative group">
+                      <img
+                        src={url}
+                        onClick={() => setPhotoLightboxIdx(idx)}
+                        className={`w-14 h-14 object-cover rounded-lg border-2 cursor-pointer transition
+                          ${isMain ? 'border-blue-500' : 'border-gray-600 hover:border-gray-400'}`}
+                      />
+                      {isMain && (
+                        <span className="absolute top-0.5 left-0.5 text-[8px] bg-blue-600 text-white rounded px-0.5 leading-tight">★</span>
+                      )}
+                      {isEvidence && !isMain && (
+                        <span className="absolute bottom-0.5 left-0.5 text-[8px] bg-gray-800/80 text-gray-300 rounded px-0.5 leading-tight">📁</span>
+                      )}
+                      {/* Зробити головним */}
+                      {!isMain && (
+                        <button
+                          onClick={() => setMainPersonPhoto(url)}
+                          className="absolute top-0 left-0 hidden group-hover:flex w-5 h-5 bg-blue-700 rounded-br-lg text-white text-[9px] items-center justify-center"
+                          title="Зробити головним"
+                        >★</button>
+                      )}
+                      {/* Видалити (manual або evidence) */}
+                      {(isManual || isEvidence) && (
+                        <button
+                          onClick={async () => {
+                            if (isManual) { removePersonPhoto(url); return }
+                            // видалення з evidence
+                            const ev = evidenceItems.find(e => e.file_url === url)
+                            if (ev) {
+                              await fetch(`/api/evidence/${ev.id}`, { method: 'DELETE' })
+                              setEvidenceItems(prev => prev.filter(e => e.id !== ev.id))
+                              if (person.photo_url === url) setMainPersonPhoto('')
+                            }
+                          }}
+                          className="absolute -top-1.5 -right-1.5 hidden group-hover:flex w-5 h-5 bg-red-600 hover:bg-red-500 rounded-full text-white text-xs items-center justify-center"
+                          title="Видалити"
+                        >✕</button>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* Завантаження файлу або URL */}
+            <div className="flex gap-2 items-center">
+              {/* Завантажити файл */}
+              <label className="cursor-pointer px-3 py-2 bg-gray-600 hover:bg-gray-500 rounded-lg text-sm text-gray-200 transition whitespace-nowrap flex items-center gap-1.5" title="Завантажити з комп'ютера">
+                📁 Файл
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={async e => {
+                    const file = e.target.files?.[0]
+                    if (!file || !person?.id) return
+                    setSavingNewPhoto(true)
+                    try {
+                      const fd = new FormData()
+                      fd.append('file', file)
+                      fd.append('person_id', person.id)
+                      fd.append('source', 'manual')
+                      const res = await fetch('/api/evidence/upload', { method: 'POST', body: fd })
+                      const data = await res.json()
+                      if (data.evidence) {
+                        setEvidenceItems(prev => [data.evidence, ...prev])
+                      }
+                    } finally { setSavingNewPhoto(false); e.target.value = '' }
+                  }}
+                />
+              </label>
+              {/* URL */}
+              <input
+                type="text"
+                value={addingPhotoUrl}
+                onChange={e => setAddingPhotoUrl(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && addPersonPhoto(addingPhotoUrl)}
+                placeholder="або вставте URL фото..."
+                className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm focus:border-blue-500 focus:outline-none"
+              />
+              <button
+                onClick={() => addPersonPhoto(addingPhotoUrl)}
+                disabled={!addingPhotoUrl.trim() || savingNewPhoto}
+                className="px-4 py-2 bg-blue-700 hover:bg-blue-600 disabled:opacity-50 rounded-lg text-sm transition whitespace-nowrap"
+              >
+                {savingNewPhoto ? <span className="animate-spin inline-block">⟳</span> : '➕'}
+              </button>
+            </div>
+            <p className="text-gray-600 text-xs mt-1.5">★ = головне фото · наведіть для управління · завантажуйте з комп'ютера або URL</p>
           </div>
         )}
 
@@ -1354,11 +2247,20 @@ export default function PersonDetailPage() {
                   : 'border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-500'
               }`}>
               <span>{tab.icon}</span><span>{tab.label}</span>
+              {tab.id === 'registries' && regLoading && (
+                <span className="ml-1 animate-spin text-xs">⟳</span>
+              )}
+              {tab.id === 'registries' && !regLoading && regAutoRan && (() => {
+                const hits = (regNazk?.found || 0) + (regMyrotvorets?.found || 0) + (regErb?.found || 0) + (regMvs?.total || 0) + (regSanctions?.total || 0)
+                return hits > 0 ? <span className="ml-1 bg-red-700 text-red-200 text-xs px-1.5 py-0.5 rounded-full">{hits}</span> : null
+              })()}
               {tab.id === 'osint' && osintData && (
                 <span className="ml-1 bg-purple-800 text-purple-200 text-xs px-1.5 py-0.5 rounded-full">{osintData.total}</span>
               )}
-              {tab.id === 'documents' && osintPdfs.length > 0 && (
-                <span className="ml-1 bg-yellow-800 text-yellow-200 text-xs px-1.5 py-0.5 rounded-full">{osintPdfs.length}</span>
+              {tab.id === 'documents' && (evidenceItems.length > 0 || osintPdfsAll.length > 0) && (
+                <span className="ml-1 bg-yellow-800 text-yellow-200 text-xs px-1.5 py-0.5 rounded-full">
+                  {evidenceItems.length > 0 ? evidenceItems.length : osintPdfs.length}
+                </span>
               )}
             </button>
           ))}
@@ -1384,9 +2286,13 @@ export default function PersonDetailPage() {
               if (Array.isArray(f.car_plates_list)) tgCarPlates.push(...f.car_plates_list)
               if (Array.isArray(f.emails_list)) tgEmails.push(...f.emails_list)
             }
-            const allPhones = Array.from(new Set([...(person.phones || []), ...tgPhones]))
+            // Додаємо телефони та email з ai_profile.persons[0] (може мати більше даних)
+            const aiP0 = (() => { const ap = typeof person.ai_profile === 'object' ? person.ai_profile : null; return ap?.persons?.[0] || null })()
+            const aiPhones: string[] = aiP0?.phones || []
+            const aiEmails: string[] = aiP0?.emails || []
+            const allPhones = Array.from(new Set([...(person.phones || []), ...aiPhones, ...tgPhones]))
             const allCarPlates = Array.from(new Set(tgCarPlates))
-            const allEmails = Array.from(new Set([...(person.email ? [person.email] : []), ...tgEmails]))
+            const allEmails = Array.from(new Set([...(person.email ? [person.email] : []), ...aiEmails, ...tgEmails]))
             const tgLastSearch = person.telegram_raw?.length
               ? new Date(person.telegram_raw[person.telegram_raw.length - 1].searched_at).toLocaleString('uk-UA')
               : null
@@ -1397,6 +2303,81 @@ export default function PersonDetailPage() {
 
             return (
               <div className="space-y-4">
+
+                {/* ── Hero: Threat Score + Quick Stats ── */}
+                <div className="bg-gradient-to-r from-gray-800 to-gray-900 rounded-xl p-4 border border-gray-700">
+                  <div className="flex items-center gap-4 flex-wrap">
+                    {/* Threat Score */}
+                    <div className="flex items-center gap-3">
+                      <div className={`w-16 h-16 rounded-full flex items-center justify-center text-xl font-bold border-4 shrink-0 ${
+                        (person.threat_score || 0) >= 80 ? 'border-red-500 bg-red-950/60 text-red-300' :
+                        (person.threat_score || 0) >= 50 ? 'border-orange-500 bg-orange-950/60 text-orange-300' :
+                        (person.threat_score || 0) >= 20 ? 'border-yellow-500 bg-yellow-950/60 text-yellow-300' :
+                        'border-gray-600 bg-gray-800 text-gray-400'
+                      }`}>
+                        {person.threat_score || '?'}
+                      </div>
+                      <div>
+                        <p className="text-gray-400 text-xs uppercase tracking-wide">Threat Score</p>
+                        <p className={`text-sm font-semibold ${
+                          (person.threat_score || 0) >= 80 ? 'text-red-400' :
+                          (person.threat_score || 0) >= 50 ? 'text-orange-400' :
+                          (person.threat_score || 0) >= 20 ? 'text-yellow-400' : 'text-gray-500'
+                        }`}>
+                          {(person.threat_score || 0) >= 80 ? '🔴 Критичний' :
+                           (person.threat_score || 0) >= 50 ? '🟠 Високий' :
+                           (person.threat_score || 0) >= 20 ? '🟡 Помірний' : '⚪ Не оцінено'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="h-12 w-px bg-gray-700 hidden md:block" />
+
+                    {/* Quick Stats */}
+                    <div className="flex gap-4 flex-wrap flex-1">
+                      {[
+                        { icon: '⚖️', label: 'Злочинів', value: incidents.length, color: incidents.length > 0 ? 'text-red-400' : 'text-gray-500' },
+                        { icon: '🔗', label: 'Зв\'язків', value: person.connections_count || 0, color: 'text-blue-400' },
+                        { icon: '📜', label: 'НАЗК декл.', value: regNazk?.total || 0, color: regNazk?.total > 0 ? 'text-yellow-400' : 'text-gray-500' },
+                        { icon: '🔍', label: 'OSINT хітів', value: osintData?.total || personMentions.length, color: 'text-purple-400' },
+                        { icon: '💧', label: 'Витоки', value: (person.telegram_raw || []).flatMap((e: any) => e.leaks || []).length, color: 'text-amber-400' },
+                      ].map(({ icon, label, value, color }) => (
+                        <div key={label} className="text-center">
+                          <p className={`text-lg font-bold ${color}`}>{value}</p>
+                          <p className="text-gray-500 text-xs">{icon} {label}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Quick actions */}
+                    <div className="flex gap-2 shrink-0">
+                      <button onClick={() => setActiveTab('registries')}
+                        className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg text-xs transition">
+                        🏛️ Реєстри
+                      </button>
+                      <button onClick={() => runOsint(true)}
+                        disabled={osintLoading}
+                        className="px-3 py-1.5 bg-purple-800 hover:bg-purple-700 disabled:opacity-50 text-purple-200 rounded-lg text-xs transition">
+                        {osintLoading ? '⟳' : '🔍 OSINT'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* AI summary — тільки текстове резюме без JSON */}
+                  {person.ai_profile && (() => {
+                    const ap = typeof person.ai_profile === 'object'
+                      ? person.ai_profile
+                      : (() => { try { return JSON.parse(person.ai_profile) } catch { return null } })()
+                    const summary: string = ap?.summary || ap?.persons?.[0]?.notes || ''
+                    if (!summary) return null
+                    return (
+                      <div className="mt-3 pt-3 border-t border-gray-700">
+                        <p className="text-gray-400 text-xs uppercase tracking-wide mb-1">🤖 AI Резюме</p>
+                        <p className="text-gray-300 text-sm leading-relaxed line-clamp-3">{summary}</p>
+                      </div>
+                    )
+                  })()}
+                </div>
 
                 {/* ── Тривожний банер: Миротворець ── */}
                 {person.myrotvorets_url && (
@@ -1415,6 +2396,119 @@ export default function PersonDetailPage() {
                     </a>
                   </div>
                 )}
+
+                {/* ── AI Profile Card — одразу після hero ── */}
+                {person.ai_profile && (
+                  <div>
+                    {person.last_full_osint && (
+                      <p className="text-gray-600 text-xs text-right mb-1">
+                        AI оновлено: {new Date(person.last_full_osint).toLocaleString('uk-UA')}
+                      </p>
+                    )}
+                    <AiProfileCard
+                      aiProfileRaw={person.ai_profile || ''}
+                      threatScore={person.threat_score}
+                      onRefresh={runAiProfile}
+                      loading={aiLoading}
+                      error={aiError}
+                    />
+                  </div>
+                )}
+                {!person.ai_profile && (
+                  <AiProfileCard
+                    aiProfileRaw=""
+                    threatScore={person.threat_score}
+                    onRefresh={runAiProfile}
+                    loading={aiLoading}
+                    error={aiError}
+                  />
+                )}
+
+                {/* ── Фото та Документи у досьє ── */}
+                {(evidenceItems.length > 0) && (() => {
+                  const evPhotos  = evidenceItems.filter(e => e.ev_type === 'photo')
+                  const evVideos  = evidenceItems.filter(e => e.ev_type === 'video')
+                  const evDocs    = evidenceItems.filter(e => e.ev_type === 'document' || e.ev_type === 'audio')
+                  return (
+                    <div className="bg-gray-800 rounded-xl border border-gray-700 p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <p className="text-gray-300 font-semibold text-sm">📎 Файли та докази</p>
+                        <button
+                          onClick={() => setActiveTab('documents')}
+                          className="text-blue-400 hover:text-blue-300 text-xs"
+                        >Всі {evidenceItems.length} →</button>
+                      </div>
+
+                      {/* Фото-стрічка */}
+                      {evPhotos.length > 0 && (
+                        <div className="mb-3">
+                          <p className="text-gray-500 text-xs mb-2">🖼️ Фото ({evPhotos.length})</p>
+                          <div className="flex gap-2 flex-wrap">
+                            {evPhotos.map((item, idx) => (
+                              <img
+                                key={item.id}
+                                src={item.file_url}
+                                alt={item.original_name}
+                                onClick={() => setPhotoLightboxIdx(allPersonPhotos.indexOf(item.file_url) >= 0 ? allPersonPhotos.indexOf(item.file_url) : 0)}
+                                className="w-20 h-20 object-cover rounded-lg border border-gray-600 cursor-zoom-in hover:border-blue-500 transition"
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Відео */}
+                      {evVideos.length > 0 && (
+                        <div className="mb-3">
+                          <p className="text-gray-500 text-xs mb-2">🎬 Відео ({evVideos.length})</p>
+                          <div className="flex gap-2 flex-wrap">
+                            {evVideos.map(item => (
+                              <a
+                                key={item.id}
+                                href={item.file_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-2 px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-xs text-gray-300 transition max-w-xs truncate"
+                              >
+                                🎬 {item.original_name}
+                              </a>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Документи */}
+                      {evDocs.length > 0 && (
+                        <div>
+                          <p className="text-gray-500 text-xs mb-2">📄 Документи ({evDocs.length})</p>
+                          <div className="space-y-1.5">
+                            {evDocs.map(item => (
+                              <a
+                                key={item.id}
+                                href={item.mime_type === 'text/html' ? `/api/evidence/view/${item.id}` : item.file_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-3 px-3 py-2 bg-gray-700/50 hover:bg-gray-700 rounded-lg transition group"
+                              >
+                                <span className="text-lg">
+                                  {item.mime_type === 'application/pdf' ? '📄' :
+                                   item.mime_type?.includes('word') ? '📝' :
+                                   item.mime_type === 'text/html' ? '🌐' : '📁'}
+                                </span>
+                                <span className="text-gray-300 text-xs flex-1 truncate group-hover:text-white">
+                                  {item.original_name}
+                                </span>
+                                <span className="text-gray-600 text-xs shrink-0">
+                                  {item.file_size ? `${(item.file_size / 1024).toFixed(0)} KB` : ''}
+                                </span>
+                              </a>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
 
                 {/* ── Рядок 1: Особисті | Військові | Документи ── */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1446,20 +2540,49 @@ export default function PersonDetailPage() {
                     <Field label="ІПН" value={person.ipn || tgFieldMap.inn} />
                     <Field label="СНІЛС" value={person.snils || tgFieldMap.snils} />
                     <Field label="Паспорт" value={person.passport} />
-                    {(allCarPlates.length > 0 || tgFieldMap.vin || tgFieldMap.car_info || tgFieldMap.car_plate) && (
-                      <div className="mb-3 mt-2 pt-2 border-t border-gray-700">
-                        <p className="text-gray-500 text-xs uppercase tracking-wide mb-1">🚗 Транспорт</p>
-                        {allCarPlates.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mb-1">
-                            {allCarPlates.map((p: string, i: number) => (
-                              <span key={i} className="text-yellow-300 text-sm font-mono bg-yellow-950/40 px-2 py-0.5 rounded border border-yellow-800/50">{p}</span>
-                            ))}
-                          </div>
-                        )}
-                        <Field label="VIN" value={tgFieldMap.vin} />
-                        <Field label="Автомобіль" value={tgFieldMap.car_info} />
-                      </div>
-                    )}
+                    {/* Транспорт — з ai_profile або tg витоків */}
+                    {(() => {
+                      const aiVehicles: string[] = (() => {
+                        const ap = typeof person.ai_profile === 'object' ? person.ai_profile : null
+                        return ap?.persons?.[0]?.vehicles || []
+                      })()
+                      const dbVehicles: any[] = Array.isArray(person.vehicles) ? person.vehicles : []
+                      const hasTransport = aiVehicles.length > 0 || dbVehicles.length > 0
+                        || allCarPlates.length > 0 || tgFieldMap.vin || tgFieldMap.car_info
+
+                      return hasTransport ? (
+                        <div className="mb-3 mt-2 pt-2 border-t border-gray-700">
+                          <p className="text-gray-500 text-xs uppercase tracking-wide mb-2">🚗 Транспорт</p>
+                          {aiVehicles.length > 0 && (
+                            <div className="space-y-1.5 mb-2">
+                              {aiVehicles.map((v: string, i: number) => (
+                                <div key={i} className="bg-gray-900/50 rounded px-2 py-1 border border-gray-700">
+                                  <p className="text-gray-200 text-xs">{v}</p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {dbVehicles.length > 0 && aiVehicles.length === 0 && (
+                            <div className="space-y-1.5 mb-2">
+                              {dbVehicles.map((v: any, i: number) => (
+                                <div key={i} className="bg-gray-900/50 rounded px-2 py-1 border border-gray-700">
+                                  <p className="text-gray-200 text-xs">{typeof v === 'string' ? v : (v.raw || v.plate || JSON.stringify(v))}</p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {allCarPlates.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mb-1">
+                              {allCarPlates.map((p: string, i: number) => (
+                                <span key={i} className="text-yellow-300 text-sm font-mono bg-yellow-950/40 px-2 py-0.5 rounded border border-yellow-800/50">{p}</span>
+                              ))}
+                            </div>
+                          )}
+                          {tgFieldMap.vin && <Field label="VIN" value={tgFieldMap.vin} />}
+                          {tgFieldMap.car_info && <Field label="Авто" value={tgFieldMap.car_info} />}
+                        </div>
+                      ) : null
+                    })()}
                     {(tgFieldMap.credit_card || tgFieldMap.card) && (
                       <div className="mb-3 mt-2 pt-2 border-t border-gray-700">
                         <p className="text-gray-500 text-xs uppercase tracking-wide mb-1">💳 Банківські картки</p>
@@ -1475,19 +2598,32 @@ export default function PersonDetailPage() {
                     {allPhones.length > 0 && (
                       <div className="mb-3">
                         <p className="text-gray-500 text-xs uppercase tracking-wide mb-1">Телефони ({allPhones.length})</p>
-                        <div className="flex flex-col gap-0.5">
+                        <div className="flex flex-col gap-1">
                           {allPhones.map((p: string, i: number) => (
-                            <p key={i} className="text-green-400 text-sm font-mono">{p}</p>
+                            <a key={i} href={`/breach-intel?q=${encodeURIComponent(p.replace(/\D/g,''))}`}
+                              target="_blank" rel="noopener noreferrer"
+                              className="text-green-400 hover:text-green-300 text-sm font-mono hover:underline transition flex items-center gap-1 group">
+                              📱 {p}
+                              <span className="text-gray-600 group-hover:text-gray-400 text-xs">↗</span>
+                            </a>
                           ))}
                         </div>
+                        <p className="text-gray-600 text-xs mt-1">↗ Клік — пошук по всіх базах</p>
                       </div>
                     )}
                     {allEmails.length > 0 && (
                       <div className="mb-3">
-                        <p className="text-gray-500 text-xs uppercase tracking-wide mb-1">Email</p>
-                        {allEmails.map((em: string, i: number) => (
-                          <p key={i} className="text-blue-400 text-sm font-mono">{em}</p>
-                        ))}
+                        <p className="text-gray-500 text-xs uppercase tracking-wide mb-1">Email ({allEmails.length})</p>
+                        <div className="flex flex-col gap-1">
+                          {allEmails.map((em: string, i: number) => (
+                            <a key={i} href={`/breach-intel?q=${encodeURIComponent(em)}`}
+                              target="_blank" rel="noopener noreferrer"
+                              className="text-blue-400 hover:text-blue-300 text-sm font-mono hover:underline transition flex items-center gap-1 group">
+                              ✉️ {em}
+                              <span className="text-gray-600 group-hover:text-gray-400 text-xs">↗</span>
+                            </a>
+                          ))}
+                        </div>
                       </div>
                     )}
                     {allEmails.length === 0 && <Field label="Email" value={person.email} />}
@@ -1527,11 +2663,202 @@ export default function PersonDetailPage() {
                   </Card>
 
                   <Card title="👨‍👩‍👧 Родичі та зв'язки">
-                    {tgFieldMap.relatives ? (
-                      <div className="text-gray-200 text-sm leading-relaxed whitespace-pre-wrap">{tgFieldMap.relatives}</div>
-                    ) : (
-                      <p className="text-gray-600 text-sm italic">Дані відсутні</p>
-                    )}
+                    {(() => {
+                      // ── Парсимо ai_profile (може бути рядок АБО об'єкт) ──
+                      const aiObj: any = (() => {
+                        const raw = person.ai_profile
+                        if (!raw) return null
+                        if (typeof raw === 'object') return raw
+                        try { return JSON.parse(raw as string) } catch { return null }
+                      })()
+                      const aiP0: any = aiObj?.persons?.[0] || null
+
+                      // ── Родичі з ai_profile + збагачення даними з persons[] ──
+                      const allPersonsMap: Record<number, any> = {}
+                      if (aiObj?.persons) {
+                        for (const p of aiObj.persons) {
+                          if (p.id) allPersonsMap[p.id] = p
+                        }
+                      }
+
+                      // Знаходимо id родичів через relationships
+                      const relIdByName: Record<string, number> = {}
+                      for (const r of (aiObj?.relationships || [])) {
+                        const p2 = allPersonsMap[r.person2_id]
+                        if (p2?.full_name) relIdByName[p2.full_name.toLowerCase()] = r.person2_id
+                      }
+
+                      const aiRelatives: any[] = (aiP0?.relatives || []).map((rel: any) => {
+                        // Знаходимо відповідну особу в persons[] для збагачення даними
+                        const personId = relIdByName[(rel.name || '').toLowerCase()]
+                        const enriched = personId ? allPersonsMap[personId] : null
+                        return {
+                          ...rel,
+                          phones: enriched?.phones?.length ? enriched.phones : (rel.phones || []),
+                          emails: enriched?.emails?.length ? enriched.emails : (rel.emails || []),
+                          addresses: enriched?.addresses?.length ? enriched.addresses : (rel.addresses || []),
+                          passports: enriched?.passports || rel.passports || [],
+                          inn: enriched?.inn || rel.inn || null,
+                        }
+                      })
+
+                      // ── Родичі з БД (person.relatives) — парсимо JSON-рядки якщо треба ──
+                      const dbRelatives: any[] = (() => {
+                        const raw = Array.isArray(person.relatives) ? person.relatives : []
+                        return raw.map((r: any) => {
+                          if (typeof r === 'string') {
+                            try { return JSON.parse(r) } catch { return { name: r } }
+                          }
+                          return r
+                        })
+                      })()
+
+                      // ── Об'єднуємо: AI пріоритетніше, дедублікація по імені ──
+                      const seen = new Set<string>()
+                      const allRels: any[] = []
+                      for (const r of [...aiRelatives, ...dbRelatives]) {
+                        const nm = (r.name || r.full_name || '').toLowerCase()
+                        if (nm && seen.has(nm)) continue
+                        if (nm) seen.add(nm)
+                        allRels.push(r)
+                      }
+
+                      // ── Зв'язки між особами (relationships[]) ──
+                      const relationships: any[] = aiObj?.relationships || []
+
+                      const ICONS: Record<string, string> = {
+                        'батько': '👨', 'мати': '👩', 'брат': '👦', 'сестра': '👧',
+                        'дружина': '💍', 'чоловік': '💍', 'дитина': '👶',
+                        'дід': '👴', 'баба': '👵', 'бабуся': '👵', 'онук': '👦',
+                        'племінниця': '👧', 'племінник': '👦', 'дядько': '👨', 'тітка': '👩',
+                        'родич': '🧑', 'брат/сестра': '🧑',
+                      }
+
+                      if (allRels.length === 0 && relationships.length === 0 && !tgFieldMap.relatives) {
+                        return <p className="text-gray-600 text-sm italic">Дані відсутні</p>
+                      }
+
+                      return (
+                        <div className="space-y-2">
+                          {allRels.map((rel: any, i: number) => {
+                            // Support both 'role' (new format) and 'relation' (legacy)
+                            const relLabel = rel.role || rel.relation || ''
+                            const relStr = relLabel.toLowerCase()
+                            const icon = Object.entries(ICONS).find(([k]) => relStr.includes(k))?.[1] || '👤'
+                            const name = rel.name || rel.full_name || '—'
+                            const phones: string[] = rel.phones || (rel.phone ? [rel.phone] : [])
+                            const emails: string[] = rel.emails || (rel.email ? [rel.email] : [])
+                            const addresses: string[] = rel.addresses || (rel.address ? [rel.address] : [])
+                            const hasExtra = phones.length > 0 || emails.length > 0 || addresses.length > 0 || rel.inn || rel.passports?.length
+                            return (
+                              <div key={i} className="bg-gray-900/60 rounded-xl border border-gray-700 overflow-hidden">
+                                {/* Рядок імені */}
+                                <div className="flex items-center justify-between px-3 py-2.5">
+                                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                                    <span className="text-base shrink-0">{icon}</span>
+                                    <div className="min-w-0">
+                                      <p className="text-gray-200 text-sm font-medium truncate">{name}</p>
+                                      <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                                        {rel.dob && (
+                                          <span className="text-gray-500 text-xs">📅 {rel.dob}</span>
+                                        )}
+                                        {rel.inn && (
+                                          <span className="text-yellow-600 text-xs font-mono">ІПН: {rel.inn}</span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2 shrink-0 ml-2">
+                                    {relLabel && (
+                                      <span className="text-xs px-2 py-0.5 bg-blue-900/40 text-blue-300 rounded-full border border-blue-800/50">
+                                        {relLabel}
+                                      </span>
+                                    )}
+                                    {/* Пошук по базах за іменем */}
+                                    <a
+                                      href={`/breach-intel?q=${encodeURIComponent(name)}`}
+                                      target="_blank" rel="noopener noreferrer"
+                                      title="Пошук по базах даних"
+                                      className="text-gray-600 hover:text-green-400 transition text-sm"
+                                    >🔍</a>
+                                  </div>
+                                </div>
+                                {/* Паспорти */}
+                                {rel.passports?.length > 0 && (
+                                  <div className="border-t border-gray-800 px-3 py-1.5 flex flex-wrap gap-1.5">
+                                    {rel.passports.map((p: string, pi: number) => (
+                                      <span key={pi} className="text-green-300 text-xs font-mono px-2 py-0.5 bg-green-950/30 border border-green-800/50 rounded">
+                                        🪪 {p}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                                {/* Телефони */}
+                                {phones.length > 0 && (
+                                  <div className="border-t border-gray-800 px-3 py-1.5 flex flex-wrap gap-x-3 gap-y-1">
+                                    {phones.map((p: string, pi: number) => (
+                                      <a key={pi}
+                                        href={`/breach-intel?q=${encodeURIComponent(p.replace(/\D/g, ''))}`}
+                                        target="_blank" rel="noopener noreferrer"
+                                        className="text-green-400 hover:text-green-300 text-xs font-mono hover:underline transition">
+                                        📱 {p}
+                                      </a>
+                                    ))}
+                                  </div>
+                                )}
+                                {/* Emails */}
+                                {emails.length > 0 && (
+                                  <div className="border-t border-gray-800 px-3 py-1.5 flex flex-wrap gap-x-3 gap-y-1">
+                                    {emails.map((e: string, ei: number) => (
+                                      <a key={ei}
+                                        href={`/breach-intel?q=${encodeURIComponent(e)}`}
+                                        target="_blank" rel="noopener noreferrer"
+                                        className="text-blue-400 hover:text-blue-300 text-xs font-mono hover:underline transition">
+                                        ✉️ {e}
+                                      </a>
+                                    ))}
+                                  </div>
+                                )}
+                                {/* Адреси */}
+                                {addresses.length > 0 && (
+                                  <div className="border-t border-gray-800 px-3 py-1.5 space-y-1">
+                                    {addresses.map((addr: string, ai: number) => (
+                                      <div key={ai} className="flex items-start gap-1.5 group">
+                                        <span className="text-gray-600 text-xs mt-0.5 shrink-0">📍</span>
+                                        <span className="text-gray-400 text-xs flex-1">{addr}</span>
+                                        <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                                          <a href={`https://maps.google.com/?q=${encodeURIComponent(addr)}`}
+                                            target="_blank" rel="noopener noreferrer"
+                                            className="text-blue-500 hover:text-blue-400 text-xs">🗺️</a>
+                                          <a href={`/breach-intel?q=${encodeURIComponent(addr)}`}
+                                            target="_blank" rel="noopener noreferrer"
+                                            className="text-green-500 hover:text-green-400 text-xs">🔍</a>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+
+                          {/* Встановлені зв'язки */}
+                          {(relationships.length > 0 || tgFieldMap.relatives) && (
+                            <div className="mt-1 pt-2 border-t border-gray-800">
+                              <p className="text-gray-600 text-xs mb-1.5">🔗 Встановлені зв'язки</p>
+                              {relationships.map((r: any, i: number) => (
+                                <p key={i} className="text-gray-500 text-xs leading-relaxed">
+                                  {r.type || r.relation_type}: {r.evidence || r.description || ''}
+                                </p>
+                              ))}
+                              {tgFieldMap.relatives && !allRels.length && (
+                                <p className="text-gray-400 text-xs whitespace-pre-wrap">{tgFieldMap.relatives}</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })()}
                     {(tgFieldMap.debt_collector || tgFieldMap.debt_amount) && (
                       <div className="mt-3 pt-3 border-t border-gray-700">
                         <p className="text-yellow-500 text-xs font-semibold uppercase mb-2">⚠️ Борги</p>
@@ -2053,7 +3380,7 @@ export default function PersonDetailPage() {
                   <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-700">
                     <div>
                       <h3 className="text-gray-300 font-semibold text-sm">🔒 VPN пошук (ipbd/leb.su)</h3>
-                      <p className="text-gray-600 text-xs mt-0.5">Потрібно мін. 2 ідентифікатори</p>
+                      <p className="text-gray-600 text-xs mt-0.5">ipbd.ru · leb.su · rusprofile.ru</p>
                     </div>
                     <button
                       onClick={runVpnSearch}
@@ -2118,69 +3445,7 @@ export default function PersonDetailPage() {
                   )}
                 </div>
 
-                {/* ── AI-профіль ── */}
-                <div className="bg-gray-800 rounded-xl p-5 border border-gray-700">
-                  <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-700">
-                    <div>
-                      <h3 className="text-gray-300 font-semibold text-sm">🤖 AI-аналіз</h3>
-                      {person.last_full_osint && (
-                        <p className="text-gray-600 text-xs mt-0.5">
-                          Оновлено: {new Date(person.last_full_osint).toLocaleString('uk-UA')}
-                        </p>
-                      )}
-                    </div>
-                    <button
-                      onClick={runAiProfile}
-                      disabled={aiLoading}
-                      className="px-3 py-1.5 bg-purple-700 hover:bg-purple-600 disabled:opacity-50 rounded-lg text-xs font-medium transition flex items-center gap-1.5">
-                      {aiLoading
-                        ? <><span className="animate-spin">⟳</span> Аналіз...</>
-                        : person.ai_profile ? '🔄 Оновити аналіз' : '✨ Згенерувати профіль'}
-                    </button>
-                  </div>
-                  {aiError && <p className="text-yellow-400 text-xs mb-3">{aiError}</p>}
-                  {aiLoading && (
-                    <div className="text-center py-8">
-                      <div className="text-purple-400 text-2xl mb-2 animate-pulse">🤖</div>
-                      <p className="text-gray-400 text-sm">Claude аналізує дані...</p>
-                    </div>
-                  )}
-                  {!aiLoading && person.ai_profile ? (
-                    <div className="prose prose-invert prose-sm max-w-none text-gray-200 leading-relaxed
-                      [&>h2]:text-blue-400 [&>h2]:font-semibold [&>h2]:text-sm [&>h2]:mt-4 [&>h2]:mb-2
-                      [&>h3]:text-blue-300 [&>h3]:font-medium [&>h3]:text-sm [&>h3]:mt-3 [&>h3]:mb-1
-                      [&>p]:text-gray-200 [&>p]:text-sm [&>p]:mb-2
-                      [&>ul]:text-gray-300 [&>ul]:text-sm [&>ul>li]:mb-1
-                      [&>strong]:text-white [&_strong]:text-white">
-                      {/* Простий markdown рендер без залежностей */}
-                      {person.ai_profile.split('\n').map((line: string, i: number) => {
-                        if (line.startsWith('## ')) return <h2 key={i}>{line.slice(3)}</h2>
-                        if (line.startsWith('### ')) return <h3 key={i}>{line.slice(4)}</h3>
-                        if (line.startsWith('**') && line.endsWith('**')) return (
-                          <p key={i} className="text-white font-semibold">{line.slice(2, -2)}</p>
-                        )
-                        if (line.startsWith('- ') || line.startsWith('* ')) return (
-                          <p key={i} className="text-gray-300 text-sm ml-3">• {line.slice(2)}</p>
-                        )
-                        if (line.trim() === '') return <div key={i} className="h-2" />
-                        // Bold inline
-                        const parts = line.split(/\*\*([^*]+)\*\*/g)
-                        return (
-                          <p key={i} className="text-gray-200 text-sm">
-                            {parts.map((part, j) =>
-                              j % 2 === 1 ? <strong key={j} className="text-white">{part}</strong> : part
-                            )}
-                          </p>
-                        )
-                      })}
-                    </div>
-                  ) : !aiLoading && (
-                    <p className="text-gray-600 text-sm italic">
-                      AI-профіль ще не згенеровано. Натисніть кнопку вище — Claude проаналізує всі зібрані дані та складе структурований звіт.
-                      {!process.env.NEXT_PUBLIC_SUPABASE_URL && ' Потрібен ANTHROPIC_API_KEY у .env.local.'}
-                    </p>
-                  )}
-                </div>
+                {/* AI-профіль перенесено вище, одразу після hero */}
 
                 {/* ── Аналітика ── */}
                 <Card title="📊 Аналітика та верифікація">
@@ -2216,6 +3481,378 @@ export default function PersonDetailPage() {
           {/* ═══ ЗВ'ЯЗКИ ═══ */}
           {activeTab === 'connections' && (
             <ConnectionsGraph personId={String(params.id)} personName={personName} />
+          )}
+
+          {/* ═══ РЕЄСТРИ ═══ */}
+          {activeTab === 'registries' && (
+            <div className="space-y-4">
+              {/* Заголовок + кнопка перезапуску */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-white font-semibold">🏛️ Перевірка по реєстрах</h3>
+                  <p className="text-gray-500 text-xs mt-0.5">НАЗК · Миротворець · ЄРБ · МВС Розшук · OpenSanctions · ЄДР/ФОП</p>
+                </div>
+                <button
+                  onClick={() => runRegistriesCheck()}
+                  disabled={regLoading}
+                  className="px-4 py-2 bg-blue-700 hover:bg-blue-600 disabled:opacity-50 rounded-lg text-sm font-medium transition flex items-center gap-2">
+                  {regLoading ? <><span className="animate-spin">⟳</span> Перевірка...</> : '🔄 Оновити'}
+                </button>
+              </div>
+
+              {/* Швидкий підсумок */}
+              {regAutoRan && !regLoading && (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                  {[
+                    { icon: '📜', label: 'НАЗК декл.', value: regNazk?.found || 0, total: regNazk?.total, color: regNazk?.found > 0 ? 'yellow' : 'gray' },
+                    { icon: '🚨', label: 'Миротворець', value: regMyrotvorets?.found || 0, color: regMyrotvorets?.found > 0 ? 'red' : 'gray' },
+                    { icon: '💳', label: 'ЄРБ боржники', value: regErb?.found || 0, color: regErb?.found > 0 ? 'orange' : 'gray' },
+                    { icon: '🚔', label: 'МВС Розшук', value: regMvs?.total || 0, color: regMvs?.total > 0 ? 'red' : (regMvs?.fallback_url ? 'yellow' : 'gray') },
+                    { icon: '🌍', label: 'Санкції', value: regSanctions?.total || 0, color: regSanctions?.total > 0 ? 'red' : 'gray' },
+                    { icon: '🏢', label: 'ЄДР/ФОП', value: regCompany?.total || 0, color: regCompany?.total > 0 ? 'blue' : 'gray' },
+                  ].map(({ icon, label, value, total, color }) => (
+                    <div key={label} className={`rounded-xl p-4 border text-center ${
+                      color === 'red' ? 'bg-red-950/50 border-red-700' :
+                      color === 'orange' ? 'bg-orange-950/50 border-orange-700' :
+                      color === 'yellow' ? 'bg-yellow-950/50 border-yellow-700' :
+                      color === 'blue' ? 'bg-blue-950/50 border-blue-700' :
+                      'bg-gray-800 border-gray-700'
+                    }`}>
+                      <div className="text-2xl mb-1">{icon}</div>
+                      <div className={`text-2xl font-bold ${color === 'gray' ? 'text-gray-400' : 'text-white'}`}>
+                        {value}{total && total > value ? <span className="text-sm text-gray-400">/{total}</span> : ''}
+                      </div>
+                      <div className="text-gray-400 text-xs mt-0.5">{label}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* ── НАЗК Декларації ── */}
+              <div className="bg-gray-800 rounded-xl p-5 border border-gray-700">
+                <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-700">
+                  <h4 className="text-yellow-400 font-semibold text-sm">📜 НАЗК — Декларації держслужбовців</h4>
+                  {regNazk?.total > 0 && (
+                    <a href={`https://public.nazk.gov.ua/search?query=${encodeURIComponent(personName)}`}
+                      target="_blank" rel="noopener noreferrer"
+                      className="text-yellow-600 hover:text-yellow-400 text-xs">Відкрити на НАЗК →</a>
+                  )}
+                </div>
+                {!regAutoRan && !regLoading && <p className="text-gray-600 text-sm italic">Буде перевірено автоматично при завантаженні</p>}
+                {regLoading && <p className="text-gray-500 text-sm animate-pulse">⟳ Перевірка НАЗК...</p>}
+                {regNazk && !regLoading && (
+                  regNazk.found === 0
+                    ? <p className="text-gray-500 text-sm italic">Декларацій не знайдено — особа не є держслужбовцем або не подавала декларацію</p>
+                    : <div className="space-y-2">
+                        <p className="text-yellow-300/80 text-xs mb-2">Знайдено {regNazk.total} декларацій, показано {regNazk.declarations?.length}</p>
+                        {regNazk.declarations?.map((d: any, i: number) => (
+                          <div key={i} className="p-3 rounded-lg bg-yellow-950/20 border border-yellow-800/30">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1">
+                                <p className="text-white text-sm font-medium">{d.full_name || d.last_name}</p>
+                                <p className="text-yellow-300/70 text-xs mt-0.5">{d.position} · {d.organization}</p>
+                                <p className="text-gray-500 text-xs">{d.declaration_type} · {d.declaration_year}</p>
+                              </div>
+                              <a href={d.url} target="_blank" rel="noopener noreferrer"
+                                className="shrink-0 px-2 py-1 bg-yellow-900/50 hover:bg-yellow-800/60 text-yellow-300 text-xs rounded transition">
+                                Відкрити →
+                              </a>
+                            </div>
+                            {regNazk.latest?.id === d.id && regNazk.latest?.assets && (
+                              <div className="mt-2 pt-2 border-t border-yellow-900/50 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                                {regNazk.latest.assets.real_estate?.length > 0 && (
+                                  <span className="text-gray-300">🏠 Нерухомість: {regNazk.latest.assets.real_estate.length} об'єктів</span>
+                                )}
+                                {regNazk.latest.assets.vehicles?.length > 0 && (
+                                  <span className="text-gray-300">🚗 Авто: {regNazk.latest.assets.vehicles.length} шт</span>
+                                )}
+                                {regNazk.latest.assets.total_income_uah > 0 && (
+                                  <span className="text-gray-300">💰 Дохід: {(regNazk.latest.assets.total_income_uah / 1000).toFixed(0)}k грн</span>
+                                )}
+                                {regNazk.latest.assets.cash?.length > 0 && (
+                                  <span className="text-gray-300">💵 Готівка: {regNazk.latest.assets.cash.map((c: any) => `${c.amount?.toLocaleString()} ${c.currency}`).join(', ')}</span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                )}
+              </div>
+
+              {/* ── Миротворець ── */}
+              <div className="bg-gray-800 rounded-xl p-5 border border-gray-700">
+                <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-700">
+                  <h4 className="text-red-400 font-semibold text-sm">🚨 Миротворець</h4>
+                  {regMyrotvorets?.found > 0 && (
+                    <a href={`https://myrotvorets.center/?s=${encodeURIComponent(personName)}`}
+                      target="_blank" rel="noopener noreferrer"
+                      className="text-red-500 hover:text-red-300 text-xs">Відкрити на сайті →</a>
+                  )}
+                </div>
+                {regLoading && <p className="text-gray-500 text-sm animate-pulse">⟳ Перевірка Миротворця...</p>}
+                {regMyrotvorets && !regLoading && (
+                  regMyrotvorets.found === 0
+                    ? <p className="text-green-600 text-sm">✅ У базі Миротворця не знайдено</p>
+                    : <div className="space-y-2">
+                        <p className="text-red-400/80 text-xs mb-2">⚠️ Знайдено {regMyrotvorets.found} записів</p>
+                        {regMyrotvorets.results?.map((r: any, i: number) => (
+                          <div key={i} className="p-3 rounded-lg bg-red-950/20 border border-red-800/30">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1">
+                                <p className="text-white text-sm font-medium">{r.title}</p>
+                                {r.excerpt && <p className="text-gray-400 text-xs mt-1 line-clamp-2">{r.excerpt}</p>}
+                                <p className="text-gray-600 text-xs mt-1">{r.date}</p>
+                              </div>
+                              <a href={r.url} target="_blank" rel="noopener noreferrer"
+                                className="shrink-0 px-2 py-1 bg-red-900/50 hover:bg-red-800/60 text-red-300 text-xs rounded transition">
+                                Відкрити →
+                              </a>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                )}
+              </div>
+
+              {/* ── ЄРБ Боржники ── */}
+              <div className="bg-gray-800 rounded-xl p-5 border border-gray-700">
+                <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-700">
+                  <h4 className="text-orange-400 font-semibold text-sm">💳 ЄРБ — Реєстр боржників</h4>
+                  {regErb?.fallback_url && (
+                    <a href={regErb.fallback_url} target="_blank" rel="noopener noreferrer"
+                      className="text-orange-500 hover:text-orange-300 text-xs">Перевірити вручну →</a>
+                  )}
+                </div>
+                {regLoading && <p className="text-gray-500 text-sm animate-pulse">⟳ Перевірка ЄРБ...</p>}
+                {regErb && !regLoading && (
+                  regErb.found === 0
+                    ? <p className="text-green-600 text-sm">✅ Боргів не знайдено{regErb.fallback_url ? ' (або захист від ботів — перевірте вручну)' : ''}</p>
+                    : <div className="space-y-2">
+                        <p className="text-orange-400/80 text-xs mb-2">Знайдено {regErb.found} записів про борги</p>
+                        {regErb.debtors?.map((d: any, i: number) => (
+                          <div key={i} className="p-3 rounded-lg bg-orange-950/20 border border-orange-800/30 text-sm">
+                            <p className="text-white font-medium">{d.lastName} {d.firstName} {d.middleName}</p>
+                            {d.birthDate && <p className="text-gray-400 text-xs">ДН: {d.birthDate}</p>}
+                            {d.debtSum && <p className="text-orange-300 text-xs">Борг: {d.debtSum?.toLocaleString()} грн</p>}
+                            {d.creditorName && <p className="text-gray-400 text-xs">Стягувач: {d.creditorName}</p>}
+                          </div>
+                        ))}
+                      </div>
+                )}
+              </div>
+
+              {/* ── МВС Розшук ── */}
+              <div className="bg-gray-800 rounded-xl p-5 border border-gray-700">
+                <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-700">
+                  <h4 className="text-blue-400 font-semibold text-sm">🚔 МВС — Розшук</h4>
+                  {regMvs?.fallback_url && (
+                    <a href={regMvs.fallback_url} target="_blank" rel="noopener noreferrer"
+                      className="text-blue-500 hover:text-blue-300 text-xs">Перевірити на сайті →</a>
+                  )}
+                </div>
+                {regLoading && <p className="text-gray-500 text-sm animate-pulse">⟳ Перевірка МВС...</p>}
+                {regMvs && !regLoading && (
+                  regMvs.fallback_url && regMvs.total === 0
+                    ? <div>
+                        <p className="text-gray-500 text-sm mb-2">OpenData МВС тимчасово недоступний. Перевірте вручну:</p>
+                        <a href={regMvs.fallback_url} target="_blank" rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-900/50 hover:bg-blue-800/60 text-blue-300 rounded-lg text-sm transition">
+                          🚔 Відкрити МВС Розшук
+                        </a>
+                      </div>
+                    : regMvs.total === 0
+                      ? <p className="text-green-600 text-sm">✅ В розшуку МВС не значиться</p>
+                      : <div className="space-y-2">
+                          <p className="text-red-400/80 text-xs mb-2">⚠️ Знайдено {regMvs.total} записів у розшуку</p>
+                          {regMvs.records?.map((r: any, i: number) => (
+                            <div key={i} className="p-3 rounded-lg bg-blue-950/20 border border-blue-800/30 text-sm">
+                              <p className="text-white font-medium">{r.LAST_NAME_U || r.lastname} {r.FIRST_NAME_U || r.firstname}</p>
+                              {(r.BORN_DATE || r.dob) && <p className="text-gray-400 text-xs">ДН: {r.BORN_DATE || r.dob}</p>}
+                              {(r.ARTICLE_CRIM || r.article) && <p className="text-red-400 text-xs">Стаття: {r.ARTICLE_CRIM || r.article}</p>}
+                            </div>
+                          ))}
+                        </div>
+                )}
+              </div>
+
+              {/* ── OpenSanctions — міжнародні санкційні списки ── */}
+              <div className="bg-gray-800 rounded-xl p-5 border border-gray-700">
+                <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-700">
+                  <div>
+                    <h4 className="text-red-400 font-semibold text-sm">🌍 Міжнародні санкційні списки</h4>
+                    <p className="text-gray-600 text-xs mt-0.5">OFAC (США) · EU · ООН РБ · UK HMT · РНБО України · Інтерпол · Panama Papers</p>
+                  </div>
+                  <a href={`https://www.opensanctions.org/search/?q=${encodeURIComponent(personName)}`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="text-red-500 hover:text-red-300 text-xs shrink-0">OpenSanctions →</a>
+                </div>
+                {regLoading && <p className="text-gray-500 text-sm animate-pulse">⟳ Перевірка санкційних баз...</p>}
+                {regSanctions && !regLoading && (
+                  regSanctions.no_key
+                    ? <div className="space-y-3">
+                        <p className="text-yellow-500 text-sm">⚠️ API ключ OpenSanctions не налаштовано. Перевірте вручну:</p>
+                        <div className="flex flex-wrap gap-2">
+                          {Object.entries(regSanctions.fallback_urls || {}).map(([k, url]: any) => (
+                            <a key={k} href={url} target="_blank" rel="noopener noreferrer"
+                              className="px-3 py-1.5 bg-red-900/30 hover:bg-red-800/50 text-red-300 text-xs rounded-lg border border-red-800/40 transition">
+                              🔗 {k.toUpperCase()}
+                            </a>
+                          ))}
+                        </div>
+                        <p className="text-gray-600 text-xs">
+                          Безплатний ключ: <a href="https://www.opensanctions.org/api/" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">opensanctions.org/api</a>
+                          {' → додайте '}<code className="bg-gray-900 px-1 rounded text-gray-300">OPENSANCTIONS_API_KEY</code>{' у .env.local'}
+                        </p>
+                      </div>
+                    : regSanctions.error
+                    ? <p className="text-red-500 text-sm">❌ Помилка: {regSanctions.error}</p>
+                    : regSanctions.total === 0
+                      ? <p className="text-green-600 text-sm">✅ У санкційних списках не знайдено</p>
+                      : <div className="space-y-3">
+                          <p className="text-red-400/80 text-xs mb-2">⚠️ Знайдено {regSanctions.total} збігів у {regSanctions.sources_checked?.length || 6} базах</p>
+                          {(regSanctions.entries || []).slice(0, 8).map((e: any, i: number) => (
+                            <div key={i} className={`p-3 rounded-lg border text-sm ${
+                              e.is_priority ? 'bg-red-950/30 border-red-700/50' : 'bg-gray-900 border-gray-700'
+                            }`}>
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <p className="text-white font-semibold">{e.name}</p>
+                                    {e.is_priority && <span className="text-xs bg-red-900 text-red-300 px-1.5 py-0.5 rounded">🇷🇺 Росія/Білорусь</span>}
+                                    {e.schema === 'LegalEntity' && <span className="text-xs bg-gray-700 text-gray-400 px-1.5 py-0.5 rounded">🏢 Юрособа</span>}
+                                  </div>
+                                  {e.aliases?.length > 0 && (
+                                    <p className="text-gray-400 text-xs mt-0.5">Alias: {e.aliases.join(', ')}</p>
+                                  )}
+                                  {e.dob && <p className="text-gray-500 text-xs">ДН: {e.dob}</p>}
+                                  {e.positions?.length > 0 && (
+                                    <p className="text-gray-400 text-xs">Посада: {e.positions.join('; ')}</p>
+                                  )}
+                                  {e.programs?.length > 0 && (
+                                    <div className="flex flex-wrap gap-1 mt-1.5">
+                                      {e.programs.slice(0, 5).map((p: string, pi: number) => (
+                                        <span key={pi} className="text-xs bg-red-900/60 text-red-300 border border-red-800/40 px-1.5 py-0.5 rounded">
+                                          {p}
+                                        </span>
+                                      ))}
+                                      {e.programs.length > 5 && (
+                                        <span className="text-xs text-gray-500">+{e.programs.length - 5} ще</span>
+                                      )}
+                                    </div>
+                                  )}
+                                  {e.passports?.length > 0 && (
+                                    <p className="text-gray-500 text-xs mt-1">Паспорт: {e.passports.join(', ')}</p>
+                                  )}
+                                </div>
+                                <a href={e.url} target="_blank" rel="noopener noreferrer"
+                                  className="shrink-0 px-2 py-1 bg-red-900/50 hover:bg-red-800/60 text-red-300 text-xs rounded transition">
+                                  Деталі →
+                                </a>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                )}
+                {!regAutoRan && !regLoading && (
+                  <p className="text-gray-600 text-sm italic">Буде перевірено автоматично при завантаженні</p>
+                )}
+              </div>
+
+              {/* ── ЄДР / ФОП / Бізнес-реєстри ── */}
+              <div className="bg-gray-800 rounded-xl p-5 border border-gray-700">
+                <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-700">
+                  <div>
+                    <h4 className="text-blue-400 font-semibold text-sm">🏢 Бізнес-реєстри (ЄДР · ФОП · YouControl)</h4>
+                    <p className="text-gray-600 text-xs mt-0.5">Компанії, ФОП, де особа є директором або засновником</p>
+                  </div>
+                  <a href={`https://youcontrol.com.ua/search/?q=${encodeURIComponent(personName)}`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="text-blue-500 hover:text-blue-300 text-xs shrink-0">YouControl →</a>
+                </div>
+                {regLoading && <p className="text-gray-500 text-sm animate-pulse">⟳ Пошук у бізнес-реєстрах...</p>}
+                {regCompany && !regLoading && (
+                  regCompany.error
+                    ? <p className="text-red-500 text-sm">❌ {regCompany.error}</p>
+                    : (regCompany.companies || []).filter((c: any) => c.type !== 'fallback').length === 0
+                      ? (
+                        <div>
+                          <p className="text-gray-500 text-sm mb-2">Компаній не знайдено у відкритих реєстрах. Перевірте вручну:</p>
+                          <div className="flex flex-wrap gap-2">
+                            {(regCompany.companies || []).filter((c: any) => c.type === 'fallback').map((c: any, i: number) => (
+                              <a key={i} href={c.url} target="_blank" rel="noopener noreferrer"
+                                className="px-3 py-1.5 bg-blue-900/40 hover:bg-blue-800/60 text-blue-300 text-xs rounded-lg transition">
+                                🔗 {c.name}
+                              </a>
+                            ))}
+                            <a href={`https://clarity-project.info/person/?search=${encodeURIComponent(personName)}`}
+                              target="_blank" rel="noopener noreferrer"
+                              className="px-3 py-1.5 bg-blue-900/40 hover:bg-blue-800/60 text-blue-300 text-xs rounded-lg transition">
+                              🔗 Clarity Project
+                            </a>
+                            <a href={`https://prozorro.gov.ua/search/?mode=_all_&q=${encodeURIComponent(personName)}`}
+                              target="_blank" rel="noopener noreferrer"
+                              className="px-3 py-1.5 bg-blue-900/40 hover:bg-blue-800/60 text-blue-300 text-xs rounded-lg transition">
+                              🔗 Prozorro тендери
+                            </a>
+                          </div>
+                        </div>
+                      )
+                      : <div className="space-y-2">
+                          <p className="text-blue-400/80 text-xs mb-2">Знайдено {(regCompany.companies || []).filter((c: any) => c.type !== 'fallback').length} компаній/ФОП</p>
+                          {(regCompany.companies || []).filter((c: any) => c.type !== 'fallback').slice(0, 10).map((c: any, i: number) => (
+                            <div key={i} className="p-3 rounded-lg bg-blue-950/20 border border-blue-800/30 text-sm">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <p className="text-white font-medium">{c.name}</p>
+                                    {c.type === 'fop' && <span className="text-xs bg-gray-700 text-gray-400 px-1.5 py-0.5 rounded">ФОП</span>}
+                                    <span className={`text-xs px-1.5 py-0.5 rounded ${
+                                      c.status?.toLowerCase().includes('зареєстр') ? 'bg-green-900 text-green-400' :
+                                      c.status?.toLowerCase().includes('припин') || c.status?.toLowerCase().includes('ліквід') ? 'bg-red-900/50 text-red-400' :
+                                      'bg-gray-700 text-gray-400'
+                                    }`}>{c.status || 'Статус невідомий'}</span>
+                                  </div>
+                                  {c.edrpou && <p className="text-gray-500 text-xs">ЄДРПОУ: {c.edrpou}</p>}
+                                  {c.director && <p className="text-gray-400 text-xs">Директор: {c.director}</p>}
+                                  {c.address && <p className="text-gray-600 text-xs truncate">{c.address}</p>}
+                                  <p className="text-gray-700 text-xs mt-0.5">Джерело: {c.source}</p>
+                                </div>
+                                {c.url && (
+                                  <a href={c.url} target="_blank" rel="noopener noreferrer"
+                                    className="shrink-0 px-2 py-1 bg-blue-900/50 hover:bg-blue-800/60 text-blue-300 text-xs rounded transition">
+                                    →
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                          {/* Кнопки зовнішніх баз */}
+                          <div className="pt-2 flex flex-wrap gap-2">
+                            <a href={`https://prozorro.gov.ua/search/?mode=_all_&q=${encodeURIComponent(personName)}`}
+                              target="_blank" rel="noopener noreferrer"
+                              className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs rounded-lg transition">
+                              🔗 Prozorro тендери
+                            </a>
+                            <a href={`https://clarity-project.info/person/?search=${encodeURIComponent(personName)}`}
+                              target="_blank" rel="noopener noreferrer"
+                              className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs rounded-lg transition">
+                              🔗 Clarity Project
+                            </a>
+                            <a href={`https://opendatabot.ua/search?q=${encodeURIComponent(personName)}`}
+                              target="_blank" rel="noopener noreferrer"
+                              className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs rounded-lg transition">
+                              🔗 Opendatabot
+                            </a>
+                          </div>
+                        </div>
+                )}
+                {!regAutoRan && !regLoading && (
+                  <p className="text-gray-600 text-sm italic">Буде перевірено автоматично при завантаженні</p>
+                )}
+              </div>
+
+            </div>
           )}
 
           {/* ═══ ЗЛОЧИНИ ═══ */}
@@ -2355,70 +3992,15 @@ export default function PersonDetailPage() {
             </div>
           )}
 
-          {/* ═══ МЕДІА ═══ */}
-          {activeTab === 'media' && (
-            <div className="space-y-6">
-              <div className="bg-gray-800 rounded-xl p-5 border border-gray-700">
-                <h3 className="text-blue-400 font-semibold mb-3 text-sm">➕ Додати відео</h3>
-                <div className="flex gap-3">
-                  <input type="text" placeholder="URL відео (YouTube, Telegram, mp4...)" value={videoUrl}
-                    onChange={e => setVideoUrl(e.target.value)}
-                    className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm focus:border-blue-500 focus:outline-none" />
-                  <input type="text" placeholder="Примітка" value={videoNote}
-                    onChange={e => setVideoNote(e.target.value)}
-                    className="w-40 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm focus:border-blue-500 focus:outline-none" />
-                  <button onClick={() => { if (videoUrl) { setVideos(p => [...p, { url: videoUrl, note: videoNote }]); setVideoUrl(''); setVideoNote('') } }}
-                    className="px-4 py-2 bg-blue-700 hover:bg-blue-600 rounded-lg text-sm transition">Додати</button>
-                </div>
-                <p className="text-gray-600 text-xs mt-2">Підтримує YouTube, Telegram, прямі посилання на .mp4</p>
-              </div>
-              {videos.length === 0 ? (
-                <div className="text-center py-16 text-gray-600">
-                  <p className="text-5xl mb-3">🎬</p><p>Відеоматеріали ще не додано</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {videos.map((v, i) => {
-                    const embed = getYouTubeEmbed(v.url)
-                    return (
-                      <div key={i} className="bg-gray-800 rounded-xl overflow-hidden border border-gray-700">
-                        {embed ? (
-                          <iframe src={embed} className="w-full aspect-video" allowFullScreen />
-                        ) : (
-                          <div className="aspect-video bg-gray-900 flex items-center justify-center">
-                            <a href={v.url} target="_blank" rel="noopener noreferrer" className="text-blue-400 text-sm">🔗 Відкрити відео</a>
-                          </div>
-                        )}
-                        <div className="p-3 flex justify-between">
-                          <div>
-                            {v.note && <p className="text-gray-300 text-sm">{v.note}</p>}
-                          </div>
-                          <button onClick={() => setVideos(p => p.filter((_, idx) => idx !== i))} className="text-gray-600 hover:text-red-400 text-xs">✕</button>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
+          {/* ═══ МЕДІА (Блок 2) ═══ */}
+          {activeTab === 'media' && person && (
+            <EvidenceUploader personId={person.id} />
           )}
 
-          {/* ═══ ДОКУМЕНТИ ═══ */}
-          {activeTab === 'documents' && (
+          {/* ═══ ДОКУМЕНТИ (Блок 2) ═══ */}
+          {activeTab === 'documents' && person && (
             <div className="space-y-6">
-              <div className="bg-gray-800 rounded-xl p-5 border border-gray-700">
-                <h3 className="text-yellow-400 font-semibold mb-3 text-sm">➕ Додати документ</h3>
-                <div className="flex gap-3">
-                  <input type="text" placeholder="URL документу або PDF" value={docUrl}
-                    onChange={e => setDocUrl(e.target.value)}
-                    className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm focus:border-yellow-500 focus:outline-none" />
-                  <input type="text" placeholder="Назва" value={docTitle}
-                    onChange={e => setDocTitle(e.target.value)}
-                    className="w-48 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm focus:border-yellow-500 focus:outline-none" />
-                  <button onClick={() => { if (docUrl) { setDocs(p => [...p, { url: docUrl, title: docTitle || docUrl }]); setDocUrl(''); setDocTitle('') } }}
-                    className="px-4 py-2 bg-yellow-700 hover:bg-yellow-600 rounded-lg text-sm transition">Додати</button>
-                </div>
-              </div>
+              {/* OSINT PDFs залишаємо */}
               {osintPdfs.length > 0 && (
                 <div className="bg-gray-800 rounded-xl p-5 border border-purple-800">
                   <h3 className="text-purple-400 font-semibold mb-4 text-sm">🔍 PDF знайдені через OSINT ({osintPdfs.length})</h3>
@@ -2438,26 +4020,8 @@ export default function PersonDetailPage() {
                   </div>
                 </div>
               )}
-              {docs.length > 0 && (
-                <div className="space-y-2">
-                  {docs.map((doc, i) => (
-                    <div key={i} className="bg-gray-800 rounded-lg p-4 border border-gray-700 flex items-center justify-between">
-                      <p className="text-white text-sm">{doc.title}</p>
-                      <div className="flex gap-2">
-                        <a href={doc.url} target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 bg-blue-900 hover:bg-blue-800 text-blue-300 rounded-lg text-xs transition">Відкрити →</a>
-                        <button onClick={() => setDocs(p => p.filter((_, idx) => idx !== i))} className="px-2 py-1.5 bg-red-950 hover:bg-red-900 text-red-400 rounded-lg text-xs transition">✕</button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {docs.length === 0 && osintPdfs.length === 0 && (
-                <div className="text-center py-16 text-gray-600">
-                  <p className="text-5xl mb-3">📁</p>
-                  <p>Документи ще не додано</p>
-                  <p className="text-sm mt-1">Запустіть OSINT або додайте посилання вручну</p>
-                </div>
-              )}
+              {/* Завантажувач файлів */}
+              <EvidenceUploader personId={person.id} />
             </div>
           )}
 
@@ -2577,61 +4141,32 @@ export default function PersonDetailPage() {
             </div>
           )}
 
+          {/* ═══ КРИПТО ═══ */}
+          {activeTab === 'crypto' && (
+            <CryptoWalletsTab personId={person.id} personName={person.name || person.name_ukr || person.name_rus || ''} />
+          )}
+
           {/* ═══ OSINT ═══ */}
           {activeTab === 'osint' && (
             <div>
-              {!osintData && !osintLoading && !osintError && (
-                <div className="text-center py-20">
-                  <p className="text-6xl mb-4">🔍</p>
-                  <p className="text-gray-400 text-lg mb-2">OSINT пошук не запущено</p>
-                  <p className="text-gray-600 text-sm mb-6">Паралельний пошук по 18+ векторах: рос/укр мова, ДН, соцмережі, бази загиблих, родичі</p>
-                  <button onClick={() => runOsint()} className="px-6 py-3 bg-purple-700 hover:bg-purple-600 rounded-lg font-medium transition">
-                    🔍 Запустити OSINT Пошук
-                  </button>
-                </div>
-              )}
-              {osintLoading && (
-                <div className="text-center py-20">
-                  <p className="text-6xl mb-4">⟳</p>
-                  <p className="text-purple-400 text-lg">Виконується пошук...</p>
-                  <p className="text-gray-600 text-sm mt-2">Паралельний пошук по 18+ векторах</p>
+              {/* ── Статус авто-запуску ── */}
+              {(osintKitLoading || leakOsintLoading || tgLoading) && (
+                <div className="mb-3 px-4 py-2 bg-blue-950/50 border border-blue-800/50 rounded-lg flex items-center gap-3 text-xs text-blue-300">
+                  <span className="animate-spin inline-block">⟳</span>
+                  Авто-пошук запущено:
+                  {osintKitLoading && <span className="bg-orange-900/50 px-2 py-0.5 rounded text-orange-300">OsintKit...</span>}
+                  {leakOsintLoading && <span className="bg-red-900/50 px-2 py-0.5 rounded text-red-300">LeakOsint...</span>}
+                  {tgLoading && <span className="bg-blue-900/50 px-2 py-0.5 rounded text-blue-300">Telegram...</span>}
                 </div>
               )}
               {osintError && (
-                <div className="bg-red-950 border border-red-700 rounded-xl p-4 text-red-300">❌ {osintError}</div>
+                <div className="bg-red-950 border border-red-700 rounded-xl p-4 text-red-300 mb-3">❌ {osintError}</div>
               )}
-              {/* Банер: знайдено в Миротворці */}
-              {osintData && myrotvoretsOsintUrl && !person.myrotvorets_url && (
-                <div className="mb-4 bg-yellow-950 border border-yellow-700 rounded-xl p-4 flex items-center justify-between gap-4">
-                  <div>
-                    <p className="text-yellow-400 font-semibold text-sm">🇺🇦 Знайдено профіль у Миротворці!</p>
-                    <p className="text-yellow-700 text-xs mt-1 font-mono truncate">{myrotvoretsOsintUrl}</p>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setEnrichUrl(myrotvoretsOsintUrl)
-                      setEnrichOpen(true)
-                      // Скрол вгору до панелі
-                      window.scrollTo({ top: 0, behavior: 'smooth' })
-                    }}
-                    className="px-4 py-2 bg-yellow-700 hover:bg-yellow-600 text-white rounded-lg text-sm font-medium transition whitespace-nowrap shrink-0">
-                    📥 Імпортувати дані
-                  </button>
-                </div>
-              )}
-
-              {osintData && (
-                <div className="bg-gray-800 rounded-xl border border-purple-800 overflow-hidden">
-                  <div className="bg-purple-950 border-b border-purple-800 px-5 py-4">
-                    <h3 className="text-purple-300 font-semibold">🔍 OSINT Результати</h3>
-                    <p className="text-purple-400 text-sm mt-0.5">
-                      Знайдено <span className="text-white font-bold">{osintData.total}</span> результатів
-                      по <span className="text-white font-bold">{osintData.vectorCount}</span> векторах •{' '}
-                      {new Date(osintData.searchedAt).toLocaleString('uk-UA')}
-                    </p>
-                  </div>
+              {/* Старий дубльований веб-блок видалено — веб-пошук тепер внизу */}
+              {false && osintData && (
+                <div>
                   <div className="flex gap-1 p-3 bg-gray-900 border-b border-gray-700 overflow-x-auto flex-wrap">
-                    {osintData.vectors.map(v => (
+                    {osintData?.vectors?.map(v => (
                       <button key={v.vector} onClick={() => setActiveVector(v.vector)}
                         className={`px-3 py-1.5 rounded text-xs font-medium whitespace-nowrap transition ${
                           activeVector === v.vector ? 'bg-purple-700 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
@@ -2640,69 +4175,389 @@ export default function PersonDetailPage() {
                       </button>
                     ))}
                   </div>
-                  {activeVectorData && (
-                    <div className="p-4">
-                      <p className="text-gray-600 text-xs mb-3">
-                        Запит: <span className="text-gray-300 font-mono">{activeVectorData.query}</span>
-                      </p>
-                      <div className="space-y-3">
-                        {activeVectorData.results.map((result, i) => {
-                          const isPdf = result.link.toLowerCase().endsWith('.pdf') || result.title.toLowerCase().includes('[pdf]')
-                          const isMyrotvorets = result.link?.includes('myrotvorets.center/criminal/')
-                          return (
-                            <div key={i} className={`rounded-lg p-4 border transition ${
-                              isMyrotvorets
-                                ? 'bg-yellow-950/40 border-yellow-700 hover:border-yellow-500'
-                                : 'bg-gray-900 border-gray-700 hover:border-gray-500'
-                            }`}>
-                              <div className="flex items-start justify-between gap-2">
-                                <a href={result.link} target="_blank" rel="noopener noreferrer"
-                                  className={`font-medium text-sm ${isMyrotvorets ? 'text-yellow-400 hover:text-yellow-300' : 'text-blue-400 hover:text-blue-300'}`}>
-                                  {isMyrotvorets && '🇺🇦 '}{result.title}
-                                </a>
-                                {isMyrotvorets && !person.myrotvorets_url && (
-                                  <button
-                                    onClick={() => {
-                                      setEnrichUrl(result.link)
-                                      setEnrichOpen(true)
-                                      window.scrollTo({ top: 0, behavior: 'smooth' })
-                                    }}
-                                    className="shrink-0 px-3 py-1 bg-yellow-700 hover:bg-yellow-600 text-white rounded text-xs font-medium transition">
-                                    📥 Імпорт
-                                  </button>
-                                )}
-                              </div>
-                              <p className={`text-xs mt-1 truncate ${isMyrotvorets ? 'text-yellow-800' : 'text-green-700'}`}>{result.link}</p>
-                              {result.snippet && <p className="text-gray-400 text-sm mt-2 leading-relaxed">{result.snippet}</p>}
-                              <div className="flex items-center gap-2 mt-2 flex-wrap">
-                                <span className={`text-xs px-2 py-0.5 rounded ${isMyrotvorets ? 'bg-yellow-900 text-yellow-600' : 'bg-gray-800 text-gray-500'}`}>{result.source}</span>
-                                {result.relevanceScore !== undefined && (
-                                  <span className={`text-xs px-2 py-0.5 rounded font-mono ${
-                                    result.relevanceScore >= 70 ? 'bg-green-900 text-green-400' :
-                                    result.relevanceScore >= 40 ? 'bg-yellow-900 text-yellow-500' :
-                                    'bg-red-950 text-red-500'
-                                  }`}>
-                                    rel: {result.relevanceScore}
-                                  </span>
-                                )}
-                                {isPdf && (
-                                  <>
-                                    <button onClick={() => openWayback(result.link)} className="text-xs bg-blue-900 hover:bg-blue-800 text-blue-300 px-2 py-0.5 rounded transition">📦 Wayback</button>
-                                    <button onClick={() => openGoogleCache(result.link)} className="text-xs bg-green-900 hover:bg-green-800 text-green-300 px-2 py-0.5 rounded transition">🔍 Cache</button>
-                                  </>
-                                )}
-                              </div>
-                            </div>
-                          )
-                        })}
+                  {activeVectorData && (() => {
+                    // Фільтруємо нерелевантні результати
+                    const REL_THRESHOLD = 35
+                    const personSurname = (person.name_rus || person.name || '').split(' ')[0]?.toLowerCase() || ''
+                    const relevantResults = (activeVectorData?.results ?? []).filter(r => {
+                      const rel = r.relevanceScore ?? 100
+                      if (rel < REL_THRESHOLD) return false
+                      // Для результатів з rel 35-60 — додатково перевіряємо чи прізвище є в title/snippet
+                      if (rel < 60 && personSurname.length >= 4) {
+                        const text = `${r.title} ${r.snippet}`.toLowerCase()
+                        if (!text.includes(personSurname)) return false
+                      }
+                      return true
+                    })
+                    const hiddenCount = activeVectorData.results.length - relevantResults.length
+
+                    return (
+                      <div className="p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <p className="text-gray-600 text-xs">
+                            Запит: <span className="text-gray-300 font-mono">{activeVectorData.query}</span>
+                          </p>
+                          {hiddenCount > 0 && (
+                            <span className="text-gray-600 text-xs bg-gray-800 px-2 py-0.5 rounded">
+                              🔽 {hiddenCount} нерелевантних приховано
+                            </span>
+                          )}
+                        </div>
+                        {relevantResults.length === 0 ? (
+                          <p className="text-gray-600 text-sm text-center py-6 italic">
+                            Всі {activeVectorData.results.length} результатів нерелевантні (rel &lt; {REL_THRESHOLD})
+                          </p>
+                        ) : (
+                          <div className="space-y-3">
+                            {relevantResults.map((result, i) => {
+                              const isPdf = result.link.toLowerCase().endsWith('.pdf') || result.title.toLowerCase().includes('[pdf]')
+                              const isMyrotvorets = result.link?.includes('myrotvorets.center/criminal/')
+                              const rel = result.relevanceScore ?? 100
+                              const relColor = rel >= 70 ? 'bg-green-900 text-green-400' : rel >= 40 ? 'bg-yellow-900 text-yellow-500' : 'bg-gray-800 text-gray-500'
+                              return (
+                                <div key={i} className={`rounded-lg p-4 border transition ${
+                                  isMyrotvorets
+                                    ? 'bg-yellow-950/40 border-yellow-700 hover:border-yellow-500'
+                                    : 'bg-gray-900 border-gray-700 hover:border-gray-500'
+                                }`}>
+                                  <div className="flex items-start justify-between gap-2">
+                                    <a href={result.link} target="_blank" rel="noopener noreferrer"
+                                      className={`font-medium text-sm leading-snug ${isMyrotvorets ? 'text-yellow-400 hover:text-yellow-300' : 'text-blue-400 hover:text-blue-300'}`}>
+                                      {isMyrotvorets && '🇺🇦 '}{result.title}
+                                    </a>
+                                    {isMyrotvorets && !person.myrotvorets_url && (
+                                      <button
+                                        onClick={() => { setEnrichUrl(result.link); setEnrichOpen(true); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
+                                        className="shrink-0 px-3 py-1 bg-yellow-700 hover:bg-yellow-600 text-white rounded text-xs font-medium transition">
+                                        📥 Імпорт
+                                      </button>
+                                    )}
+                                  </div>
+                                  <p className={`text-xs mt-1 truncate ${isMyrotvorets ? 'text-yellow-800' : 'text-green-700'}`}>{result.link}</p>
+                                  {result.snippet && <p className="text-gray-400 text-sm mt-2 leading-relaxed line-clamp-3">{result.snippet}</p>}
+                                  <div className="flex items-center gap-2 mt-2 flex-wrap">
+                                    <span className="text-xs px-2 py-0.5 rounded bg-gray-800 text-gray-500">{result.source}</span>
+                                    {result.relevanceScore !== undefined && (
+                                      <span className={`text-xs px-2 py-0.5 rounded font-mono ${relColor}`}>rel: {result.relevanceScore}</span>
+                                    )}
+                                    {isPdf && (
+                                      <>
+                                        <button onClick={() => openWayback(result.link)} className="text-xs bg-blue-900 hover:bg-blue-800 text-blue-300 px-2 py-0.5 rounded transition">📦 Wayback</button>
+                                        <button onClick={() => openGoogleCache(result.link)} className="text-xs bg-green-900 hover:bg-green-800 text-green-300 px-2 py-0.5 rounded transition">🔍 Cache</button>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  )}
+                    )
+                  })()}
                   {osintData.total === 0 && (
                     <div className="p-8 text-center text-gray-600">Нічого не знайдено по жодному вектору</div>
                   )}
                 </div>
               )}
+
+              {/* ── OsintKit — 731 баз РФ (Альфабанк, ГосУслуги, РСА, ГИБДД, ФНС...) ── */}
+              <div className="mt-4 bg-gray-800 rounded-xl border border-orange-900 overflow-hidden">
+                <div className="bg-orange-950/60 border-b border-orange-900 px-5 py-3 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-orange-300 font-semibold flex items-center gap-2">
+                      🗄️ OsintKit — Бази даних РФ/СНД
+                      {osintKitTotal > 0 && (
+                        <span className="bg-orange-700 text-orange-100 text-xs px-2 py-0.5 rounded-full">{osintKitTotal}</span>
+                      )}
+                    </h3>
+                    <p className="text-orange-800 text-xs mt-0.5">731 баз: Альфабанк, ГосУслуги, ГИБДД, РСА, ФНС, МТС, Білайн, Ощадбанк, Сбербанк...</p>
+                  </div>
+                  <button
+                    onClick={runOsintKit}
+                    disabled={osintKitLoading}
+                    className="px-3 py-1.5 bg-orange-700 hover:bg-orange-600 disabled:opacity-50 rounded-lg text-xs font-medium transition flex items-center gap-1 whitespace-nowrap">
+                    {osintKitLoading
+                      ? <><span className="animate-spin inline-block">⟳</span> Пошук...</>
+                      : osintKitRan ? '🔄 Оновити' : '🔍 Перевірити'}
+                  </button>
+                </div>
+
+                {osintKitError && (
+                  <div className="px-5 py-3 text-sm text-red-400 bg-red-950/30">❌ {osintKitError}</div>
+                )}
+                {osintKitLoading && (
+                  <div className="px-5 py-8 text-center text-orange-400 text-sm">
+                    <span className="animate-spin inline-block mr-2 text-xl">⟳</span>
+                    Пошук у 731 базах РФ/СНД...
+                  </div>
+                )}
+                {!osintKitLoading && !osintKitRan && (
+                  <div className="px-5 py-6 text-center text-gray-600 text-sm">
+                    Натисніть "Перевірити" для пошуку по базах даних РФ/СНД<br/>
+                    <span className="text-xs text-gray-700">Використовує: ІПН, телефон, паспорт, ім'я, дата народження</span>
+                  </div>
+                )}
+                {!osintKitLoading && osintKitRan && osintKitResults.length === 0 && !osintKitError && (
+                  <div className="px-5 py-6 text-center text-gray-600 text-sm">Нічого не знайдено в базах OsintKit</div>
+                )}
+                {osintKitResults.length > 0 && (
+                  <div className="p-4 space-y-2">
+                    {osintKitResults.map((entry: any, i: number) => (
+                      <div key={i} className="bg-gray-900/70 rounded-lg border border-gray-700 px-4 py-3">
+                        <div className="flex items-start justify-between gap-2 mb-1.5">
+                          <p className="text-orange-300 text-xs font-medium">
+                            📂 {entry.database || '—'}
+                          </p>
+                          {entry.as_of && (
+                            <span className="text-gray-600 text-xs shrink-0">{entry.as_of}</span>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                          {entry.name && (
+                            <div className="col-span-2 flex gap-2">
+                              <span className="text-gray-500 text-xs w-20 shrink-0">Ім'я</span>
+                              <span className="text-gray-200 text-xs">{entry.name}</span>
+                            </div>
+                          )}
+                          {entry.phone && (
+                            <div className="flex gap-2 items-center">
+                              <span className="text-gray-500 text-xs w-20 shrink-0">Телефон</span>
+                              <a href={`/breach-intel?q=${encodeURIComponent(entry.phone.replace(/\D/g,''))}`}
+                                target="_blank" rel="noopener noreferrer"
+                                className="text-green-400 text-xs font-mono hover:underline">
+                                📱 {entry.phone}
+                              </a>
+                            </div>
+                          )}
+                          {entry.email && (
+                            <div className="flex gap-2 items-center">
+                              <span className="text-gray-500 text-xs w-20 shrink-0">Email</span>
+                              <a href={`/breach-intel?q=${encodeURIComponent(entry.email)}`}
+                                target="_blank" rel="noopener noreferrer"
+                                className="text-blue-400 text-xs font-mono hover:underline">
+                                ✉️ {entry.email}
+                              </a>
+                            </div>
+                          )}
+                          {entry.dob && (
+                            <div className="flex gap-2">
+                              <span className="text-gray-500 text-xs w-20 shrink-0">ДН</span>
+                              <span className="text-gray-300 text-xs">📅 {entry.dob}</span>
+                            </div>
+                          )}
+                          {entry.address && (
+                            <div className="col-span-2 flex gap-2">
+                              <span className="text-gray-500 text-xs w-20 shrink-0">Адреса</span>
+                              <a href={`/breach-intel?q=${encodeURIComponent(entry.address)}`}
+                                target="_blank" rel="noopener noreferrer"
+                                className="text-gray-300 text-xs hover:text-green-400 hover:underline">
+                                📍 {entry.address}
+                              </a>
+                            </div>
+                          )}
+                          {entry.inn && (
+                            <div className="flex gap-2">
+                              <span className="text-gray-500 text-xs w-20 shrink-0">ІПН</span>
+                              <span className="text-yellow-300 text-xs font-mono">{entry.inn}</span>
+                            </div>
+                          )}
+                          {entry.passport && (
+                            <div className="flex gap-2">
+                              <span className="text-gray-500 text-xs w-20 shrink-0">Паспорт</span>
+                              <span className="text-green-300 text-xs font-mono">🪪 {entry.passport}</span>
+                            </div>
+                          )}
+                          {entry.vehicle && (
+                            <div className="col-span-2 flex gap-2">
+                              <span className="text-gray-500 text-xs w-20 shrink-0">Авто</span>
+                              <span className="text-gray-300 text-xs">🚗 {entry.vehicle}</span>
+                            </div>
+                          )}
+                          {entry.military && (
+                            <div className="col-span-2 flex gap-2">
+                              <span className="text-gray-500 text-xs w-20 shrink-0">Військо</span>
+                              <span className="text-red-300 text-xs">🎖️ {entry.military}</span>
+                            </div>
+                          )}
+                          {entry.username && (
+                            <div className="flex gap-2">
+                              <span className="text-gray-500 text-xs w-20 shrink-0">Логін</span>
+                              <span className="text-purple-300 text-xs font-mono">{entry.username}</span>
+                            </div>
+                          )}
+                          {entry.extra_phones && (
+                            <div className="col-span-2 flex gap-2">
+                              <span className="text-gray-500 text-xs w-20 shrink-0">Ще тел.</span>
+                              <span className="text-green-400 text-xs font-mono">{entry.extra_phones}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    {/* ── Кнопка Зберегти в базу ── */}
+                    <div className="mt-3 pt-3 border-t border-gray-700 flex justify-end">
+                      <button
+                        onClick={() => saveLeakDataToDb(osintKitResults, 'OsintKit', setOsintKitSaving, setOsintKitSaved)}
+                        disabled={osintKitSaving || osintKitSaved}
+                        className="px-4 py-2 bg-green-700 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-xs font-medium transition flex items-center gap-2">
+                        {osintKitSaving
+                          ? <><span className="animate-spin inline-block">⟳</span> Зберігаємо...</>
+                          : osintKitSaved
+                          ? '✅ Збережено'
+                          : '💾 Зберегти в базу'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* ── LeakOsint блок ── */}
+              <div className="mt-4 bg-gray-800 rounded-xl border border-red-900/50 overflow-hidden">
+                <div className="bg-red-950/50 border-b border-red-900/50 px-5 py-3 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-red-300 font-semibold flex items-center gap-2">
+                      🔴 LeakOsint — Бази даних РФ/СНД
+                      {leakOsintTotal > 0 && (
+                        <span className="bg-red-700 text-red-100 text-xs px-2 py-0.5 rounded-full">{leakOsintTotal}</span>
+                      )}
+                    </h3>
+                    <p className="text-red-800 text-xs mt-0.5">800+ баз: ВКонтакте, ГИБДД, МТС, Сбербанк, ФНС, Білайн, Авіаквитки...</p>
+                  </div>
+                  <button
+                    onClick={runLeakOsint}
+                    disabled={leakOsintLoading}
+                    className="px-3 py-1.5 bg-red-800 hover:bg-red-700 disabled:opacity-50 rounded-lg text-xs font-medium transition flex items-center gap-1 whitespace-nowrap">
+                    {leakOsintLoading
+                      ? <><span className="animate-spin inline-block">⟳</span> Пошук...</>
+                      : leakOsintRan ? '🔄 Оновити' : '🔍 Перевірити'}
+                  </button>
+                </div>
+
+                {leakOsintError && (
+                  <div className="px-5 py-3 text-sm text-red-400 bg-red-950/30">❌ {leakOsintError}</div>
+                )}
+                {leakOsintLoading && (
+                  <div className="px-5 py-8 text-center text-red-400 text-sm">
+                    <span className="animate-spin inline-block mr-2 text-xl">⟳</span>
+                    Пошук у 800+ базах РФ/СНД...
+                  </div>
+                )}
+                {!leakOsintLoading && !leakOsintRan && (
+                  <div className="px-5 py-6 text-center text-gray-600 text-sm">
+                    Натисніть "Перевірити" для пошуку по LeakOsint<br/>
+                    <span className="text-xs text-gray-700">Пошук по ім'ю у 800+ базах даних</span>
+                  </div>
+                )}
+                {!leakOsintLoading && leakOsintRan && leakOsintResults.length === 0 && !leakOsintError && (
+                  <div className="px-5 py-6 text-center text-gray-600 text-sm">Нічого не знайдено в LeakOsint</div>
+                )}
+                {leakOsintResults.length > 0 && (
+                  <div className="p-4 space-y-2">
+                    {leakOsintResults.map((entry: any, i: number) => (
+                      <div key={i} className="bg-gray-900/70 rounded-lg border border-gray-700 px-4 py-3">
+                        <div className="flex items-start justify-between gap-2 mb-1.5">
+                          <p className="text-red-300 text-xs font-medium">📂 {entry.database || '—'}</p>
+                        </div>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                          {entry.name && (
+                            <div className="col-span-2 flex gap-2">
+                              <span className="text-gray-500 text-xs w-20 shrink-0">Ім'я</span>
+                              <span className="text-gray-200 text-xs">{entry.name}</span>
+                            </div>
+                          )}
+                          {entry.phone && (
+                            <div className="flex gap-2 items-center">
+                              <span className="text-gray-500 text-xs w-20 shrink-0">Телефон</span>
+                              <a href={`/breach-intel?q=${encodeURIComponent(entry.phone.replace(/\D/g,''))}`}
+                                target="_blank" rel="noopener noreferrer"
+                                className="text-green-400 text-xs font-mono hover:underline">
+                                📱 {entry.phone}
+                              </a>
+                            </div>
+                          )}
+                          {entry.extra_phones && (
+                            <div className="flex gap-2">
+                              <span className="text-gray-500 text-xs w-20 shrink-0">Ще тел.</span>
+                              <span className="text-green-400 text-xs font-mono">{entry.extra_phones}</span>
+                            </div>
+                          )}
+                          {entry.email && (
+                            <div className="flex gap-2 items-center">
+                              <span className="text-gray-500 text-xs w-20 shrink-0">Email</span>
+                              <a href={`/breach-intel?q=${encodeURIComponent(entry.email)}`}
+                                target="_blank" rel="noopener noreferrer"
+                                className="text-blue-400 text-xs font-mono hover:underline">
+                                ✉️ {entry.email}
+                              </a>
+                            </div>
+                          )}
+                          {entry.dob && (
+                            <div className="flex gap-2">
+                              <span className="text-gray-500 text-xs w-20 shrink-0">ДН</span>
+                              <span className="text-gray-300 text-xs">📅 {entry.dob}</span>
+                            </div>
+                          )}
+                          {entry.address && (
+                            <div className="col-span-2 flex gap-2">
+                              <span className="text-gray-500 text-xs w-20 shrink-0">Адреса</span>
+                              <a href={`/breach-intel?q=${encodeURIComponent(entry.address)}`}
+                                target="_blank" rel="noopener noreferrer"
+                                className="text-gray-300 text-xs hover:text-green-400 hover:underline">
+                                📍 {entry.address}
+                              </a>
+                            </div>
+                          )}
+                          {entry.inn && (
+                            <div className="flex gap-2">
+                              <span className="text-gray-500 text-xs w-20 shrink-0">ІПН</span>
+                              <span className="text-yellow-300 text-xs font-mono">{entry.inn}</span>
+                            </div>
+                          )}
+                          {entry.passport && (
+                            <div className="flex gap-2">
+                              <span className="text-gray-500 text-xs w-20 shrink-0">Паспорт</span>
+                              <span className="text-green-300 text-xs font-mono">🪪 {entry.passport}</span>
+                            </div>
+                          )}
+                          {entry.snils && (
+                            <div className="flex gap-2">
+                              <span className="text-gray-500 text-xs w-20 shrink-0">СНІЛС</span>
+                              <span className="text-yellow-300 text-xs font-mono">{entry.snils}</span>
+                            </div>
+                          )}
+                          {entry.vk_id && (
+                            <div className="flex gap-2">
+                              <span className="text-gray-500 text-xs w-20 shrink-0">VK</span>
+                              <a href={entry.vk_id} target="_blank" rel="noopener noreferrer"
+                                className="text-blue-400 text-xs hover:underline">🔵 {entry.vk_id}</a>
+                            </div>
+                          )}
+                          {entry.username && (
+                            <div className="flex gap-2">
+                              <span className="text-gray-500 text-xs w-20 shrink-0">Логін</span>
+                              <span className="text-purple-300 text-xs font-mono">{entry.username}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    {/* ── Кнопка Зберегти в базу ── */}
+                    <div className="mt-3 pt-3 border-t border-gray-700 flex justify-end">
+                      <button
+                        onClick={() => saveLeakDataToDb(leakOsintResults, 'LeakOsint', setLeakOsintSaving, setLeakOsintSaved)}
+                        disabled={leakOsintSaving || leakOsintSaved}
+                        className="px-4 py-2 bg-green-700 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-xs font-medium transition flex items-center gap-2">
+                        {leakOsintSaving
+                          ? <><span className="animate-spin inline-block">⟳</span> Зберігаємо...</>
+                          : leakOsintSaved
+                          ? '✅ Збережено'
+                          : '💾 Зберегти в базу'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* ── Telegram блок ── */}
               <div className="mt-4 bg-gray-800 rounded-xl border border-blue-900 overflow-hidden">
@@ -2812,6 +4667,20 @@ export default function PersonDetailPage() {
                     </>
                   )
                 })()}
+
+                {tgResults.length > 0 && (
+                  <div className="px-5 py-2 bg-green-950/20 border-b border-green-900/30 flex items-center justify-between">
+                    <span className="text-green-400 text-xs">✅ Витоки автоматично збережено в досьє · {tgResults.length} записів</span>
+                    <button
+                      onClick={() => saveTelegramDataToPerson(
+                        tgResults.reduce((acc: any, r: any) => { Object.assign(acc, r.fields || {}); return acc }, {}),
+                        tgRawAll
+                      )}
+                      className="px-3 py-1 bg-green-700 hover:bg-green-600 text-white rounded-lg text-xs font-semibold transition">
+                      💾 Зберегти поля до картки
+                    </button>
+                  </div>
+                )}
 
                 {tgResults.length > 0 && (
                   <div className="divide-y divide-gray-700/50">
@@ -3064,6 +4933,73 @@ export default function PersonDetailPage() {
                             )}
                           </div>
                         ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* ── Веб-пошук (додатково, менш точний) ── */}
+              <div className="mt-4 bg-gray-800/40 rounded-xl border border-gray-700/50 overflow-hidden">
+                <div className="px-5 py-3 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-gray-500 font-medium text-sm">🌐 Веб-пошук</h3>
+                    <p className="text-gray-700 text-xs mt-0.5">Пошук через Google/Serper — може давати нерелевантні результати</p>
+                  </div>
+                  <button
+                    onClick={() => runOsint(false)}
+                    disabled={osintLoading}
+                    className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 rounded-lg text-xs text-gray-300 transition flex items-center gap-1 whitespace-nowrap">
+                    {osintLoading ? <><span className="animate-spin inline-block">⟳</span> Пошук...</> : osintData ? '🔄 Оновити' : '🌐 Запустити'}
+                  </button>
+                </div>
+                {osintData && (
+                  <div className="border-t border-gray-700/50">
+                    {/* Миротворець банер */}
+                    {myrotvoretsOsintUrl && !person.myrotvorets_url && (
+                      <div className="mx-4 my-3 bg-yellow-950 border border-yellow-700 rounded-xl p-3 flex items-center justify-between gap-4">
+                        <div>
+                          <p className="text-yellow-400 font-semibold text-xs">🇺🇦 Знайдено у Миротворці!</p>
+                          <p className="text-yellow-700 text-xs font-mono truncate">{myrotvoretsOsintUrl}</p>
+                        </div>
+                        <button onClick={() => { setEnrichUrl(myrotvoretsOsintUrl); setEnrichOpen(true) }}
+                          className="px-3 py-1.5 bg-yellow-700 hover:bg-yellow-600 text-white rounded-lg text-xs font-medium transition whitespace-nowrap">
+                          📥 Імпорт
+                        </button>
+                      </div>
+                    )}
+                    <div className="flex gap-1 px-4 py-2 overflow-x-auto flex-wrap">
+                      {osintData.vectors?.map((v: any) => (
+                        <button key={v.vector} onClick={() => setActiveVector(v.vector)}
+                          className={`px-2 py-1 rounded text-xs font-medium whitespace-nowrap transition ${
+                            activeVector === v.vector ? 'bg-gray-600 text-white' : 'bg-gray-800 text-gray-500 hover:bg-gray-700 hover:text-gray-300'
+                          }`}>
+                          {v.label} ({v.count})
+                        </button>
+                      ))}
+                    </div>
+                    {activeVectorData && (
+                      <div className="px-4 pb-4 space-y-2">
+                        {(() => {
+                          const REL_THRESHOLD = 35
+                          const personSurname = (person.name_rus || person.name || '').split(' ')[0]?.toLowerCase() || ''
+                          const relevantResults = activeVectorData.results.filter((r: any) => {
+                            const rel = r.relevanceScore ?? 100
+                            if (rel < REL_THRESHOLD) return false
+                            if (rel < 60 && personSurname.length >= 4) {
+                              const text = `${r.title} ${r.snippet}`.toLowerCase()
+                              if (!text.includes(personSurname)) return false
+                            }
+                            return true
+                          })
+                          return relevantResults.map((r: any, i: number) => (
+                            <div key={i} className="bg-gray-900/50 rounded-lg p-3 border border-gray-700/50">
+                              <a href={r.url} target="_blank" rel="noopener noreferrer" className="text-blue-400 text-sm hover:underline line-clamp-1">{r.title}</a>
+                              <p className="text-gray-500 text-xs mt-1 line-clamp-2">{r.snippet}</p>
+                              <p className="text-gray-700 text-xs mt-1">{r.domain} • rel:{r.relevanceScore}</p>
+                            </div>
+                          ))
+                        })()}
                       </div>
                     )}
                   </div>

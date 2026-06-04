@@ -30,10 +30,13 @@ export async function POST(
     // Запустити OSINT пошук
     const osintResult = await runOsintSearch(person)
 
-    // Зберегти результати в person_mentions
+    // Зберегти результати в person_mentions — тільки з relevanceScore >= 80 (100% збіг)
+    const HIGH_RELEVANCE_THRESHOLD = 80
     const mentionsToInsert: any[] = []
     for (const vector of osintResult.vectors) {
       for (const result of vector.results) {
+        const score = result.relevanceScore ?? 50
+        if (score < HIGH_RELEVANCE_THRESHOLD) continue  // пропускаємо низькорелевантні
         mentionsToInsert.push({
           person_id: id,
           source_type: 'web',
@@ -43,6 +46,7 @@ export async function POST(
           snippet: result.snippet,
           mention_date: new Date().toISOString().split('T')[0],
           relevance: vector.vector,
+          relevance_score: score,
         })
       }
     }
