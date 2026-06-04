@@ -383,6 +383,36 @@ export async function POST(req: NextRequest) {
       })())
     }
 
+    // ── 17b. Месенджери — WhatsApp/Viber/Telegram/Signal по номеру ──────────────
+    if (type === 'phone') {
+      tasks.push((async () => {
+        send('phone_presence', 'loading')
+        const d = await safeFetch(`${LOCAL}/api/phone-check`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone: q }),
+        }, 25000)
+        send('phone_presence', d ? 'done' : 'error', d)
+      })())
+    }
+
+    // ── 17c. Username/соцмережі пошук ───────────────────────────────────────────
+    if (type === 'username') {
+      tasks.push((async () => {
+        send('social', 'loading')
+        const d = await safeFetch(`http://${process.env.VPS_HOST || '161.35.86.145'}:8005/social/username`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: q }),
+        }, 15000)
+        send('social', d ? 'done' : 'error', d)
+      })())
+    }
+
+    // ── 17d. Instagram пошук по username (з web результатів) ─────────────────
+    // Якщо в web результатах знайдено Instagram посилання — перевіряємо профіль
+    // (запускається паралельно з іншими, результат додається до social секції)
+
     // ── 18. Авто/VIN пошук ─────────────────────────────────────────────────────
     if (['plate_ru', 'plate_ua', 'vin'].includes(type)) {
       tasks.push((async () => {
