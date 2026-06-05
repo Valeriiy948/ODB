@@ -17,6 +17,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient }              from '@supabase/supabase-js'
 import { scanTRC20 }                 from '@/lib/crypto/tron-scanner'
+import { getWalletBalance }          from '@/lib/crypto/wallet-balance'
 import { sendTelegramMessage, formatWatchlistAlert, formatCronSummary } from '@/lib/telegram'
 
 const supabase = createClient(
@@ -165,24 +166,30 @@ export async function GET(req: NextRequest) {
           (scan.whale_alerts.length ? ` | 🐋 ${scan.whale_alerts.length} whale(s)` : '')
         )
 
+        // Fetch wallet balance once per address (for first alert enrichment)
+        const balance = await getWalletBalance(address, chain).catch(() => null)
+
         // Send alert for each new tx (cap at 3 to avoid spam floods)
         const toAlert = scan.new_txs.slice(0, 3)
         for (const tx of toAlert) {
-          const message = formatWatchlistAlert({
-            label:       label || shortAddr,
+          const { text, keyboard } = formatWatchlistAlert({
+            label:           label || shortAddr,
             address,
             chain,
-            amount:      tx.amount,
-            symbol:      tx.symbol,
-            txHash:      tx.hash,
-            direction:   tx.direction,
-            is_whale:    tx.is_whale_tx,
-            risk_level:  risk_level || 'unknown',
-            explorer_url: tx.explorer_url,
-            notes:       notes || undefined,
+            amount:          tx.amount,
+            symbol:          tx.symbol,
+            txHash:          tx.hash,
+            direction:       tx.direction,
+            is_whale:        tx.is_whale_tx,
+            risk_level:      risk_level || 'unknown',
+            explorer_url:    tx.explorer_url,
+            notes:           notes || undefined,
+            balance_usdt:    balance?.usdt,
+            balance_native:  balance?.native,
+            native_symbol:   balance?.native_symbol,
           })
 
-          const sent = await sendTelegramMessage(message)
+          const sent = await sendTelegramMessage(text, 'HTML', undefined, { inline_keyboard: keyboard })
           if (sent) alertsSent++
           await sleep(200)  // slight delay between messages
         }
@@ -216,20 +223,23 @@ export async function GET(req: NextRequest) {
         }
 
         log.push(`  [${shortAddr}] 🔔 ETH new tx: ${result.amount_eth.toFixed(4)} ETH`)
-        const message = formatWatchlistAlert({
-          label:       label || shortAddr,
+        const ethBalance = await getWalletBalance(address, 'eth').catch(() => null)
+        const { text: ethText, keyboard: ethKb } = formatWatchlistAlert({
+          label:          label || shortAddr,
           address,
           chain,
-          amount:      result.amount_eth,
-          symbol:      'ETH',
-          txHash:      result.hash,
-          direction:   'in',
-          is_whale:    result.amount_eth * 3000 >= 10_000, // ~$3k/ETH estimate
-          risk_level:  risk_level || 'unknown',
-          explorer_url: `https://etherscan.io/tx/${result.hash}`,
-          notes:       notes || undefined,
+          amount:         result.amount_eth,
+          symbol:         'ETH',
+          txHash:         result.hash,
+          direction:      'in',
+          is_whale:       result.amount_eth * 3000 >= 10_000,
+          risk_level:     risk_level || 'unknown',
+          explorer_url:   `https://etherscan.io/tx/${result.hash}`,
+          notes:          notes || undefined,
+          balance_native: ethBalance?.native,
+          native_symbol:  'ETH',
         })
-        const sent = await sendTelegramMessage(message)
+        const sent = await sendTelegramMessage(ethText, 'HTML', undefined, { inline_keyboard: ethKb })
         if (sent) alertsSent++
         await supabase
           .from('crypto_watchlist')
@@ -251,20 +261,23 @@ export async function GET(req: NextRequest) {
         }
 
         log.push(`  [${shortAddr}] 🔔 BTC new tx: ${result.amount_btc.toFixed(6)} BTC`)
-        const message = formatWatchlistAlert({
-          label:       label || shortAddr,
+        const btcBalance = await getWalletBalance(address, 'btc').catch(() => null)
+        const { text: btcText, keyboard: btcKb } = formatWatchlistAlert({
+          label:          label || shortAddr,
           address,
           chain,
-          amount:      result.amount_btc,
-          symbol:      'BTC',
-          txHash:      result.hash,
-          direction:   'in',
-          is_whale:    result.amount_btc * 60_000 >= 10_000, // ~$60k/BTC estimate
-          risk_level:  risk_level || 'unknown',
-          explorer_url: `https://mempool.space/tx/${result.hash}`,
-          notes:       notes || undefined,
+          amount:         result.amount_btc,
+          symbol:         'BTC',
+          txHash:         result.hash,
+          direction:      'in',
+          is_whale:       result.amount_btc * 60_000 >= 10_000,
+          risk_level:     risk_level || 'unknown',
+          explorer_url:   `https://mempool.space/tx/${result.hash}`,
+          notes:          notes || undefined,
+          balance_native: btcBalance?.native,
+          native_symbol:  'BTC',
         })
-        const sent = await sendTelegramMessage(message)
+        const sent = await sendTelegramMessage(btcText, 'HTML', undefined, { inline_keyboard: btcKb })
         if (sent) alertsSent++
         await supabase
           .from('crypto_watchlist')
