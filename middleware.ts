@@ -5,6 +5,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 const PUBLIC_PATHS = [
   '/login',
   '/api/health',
+  '/api/cron/',    // cron jobs — перевіряють CRON_SECRET самостійно
   '/_next',
   '/favicon.ico',
 ]
