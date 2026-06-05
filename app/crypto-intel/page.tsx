@@ -5,7 +5,7 @@ import Sidebar from '../components/Sidebar'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Chain    = 'auto' | 'btc' | 'eth' | 'bsc' | 'tron' | 'ton' | 'polygon'
-type Tab      = 'wallet' | 'trace' | 'cluster' | 'osint' | 'deanon' | 'report'
+type Tab      = 'wallet' | 'trace' | 'cluster' | 'osint' | 'deanon' | 'identity' | 'report'
 
 interface Beneficiary {
   address:  string
@@ -858,6 +858,150 @@ function DeanonView({ data, onInvestigate }: { data: any; onInvestigate: (addr: 
   )
 }
 
+// ─── Identity View ─────────────────────────────────────────────────────────────
+const PLATFORM_ICON: Record<string, string> = {
+  'BitcoinTalk': '₿', 'Reddit': '🟠', 'GitHub': '🐙', 'Twitter/X': '𝕏',
+  'Telegram': '✈️', 'YouTube': '▶️', 'Pastebin': '📋', 'Web': '🌐',
+  'HackerNews': '🔶', 'Etherscan': '🔷', 'Blockchain.com': '⛓️',
+}
+const CONF_COLOR: Record<string, string> = {
+  high: 'text-green-400 bg-green-500/10 border-green-500/30',
+  medium: 'text-yellow-400 bg-yellow-500/10 border-yellow-500/30',
+  low: 'text-gray-400 bg-gray-500/10 border-gray-600/30',
+}
+
+function IdentityView({ data }: { data: any }) {
+  if (!data) return null
+
+  const candidates: any[] = data.candidates || []
+  const hits: any[]       = data.hits       || []
+  const walletEx          = data.wallet_explorer || {}
+
+  return (
+    <div className="space-y-5">
+
+      {/* ── Header ── */}
+      <div className="rounded-2xl border border-gray-700/50 bg-gray-800/40 p-5">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <div className="text-xs text-gray-500 uppercase tracking-widest mb-1">Ідентифікація особи</div>
+            <div className="text-2xl font-black text-white">
+              {candidates.length > 0
+                ? `${candidates.length} кандидат${candidates.length > 1 ? 'и' : ''}`
+                : 'Не знайдено'}
+            </div>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            {Object.entries(data.by_platform || {}).map(([p, n]: any) => (
+              <span key={p} className="px-2.5 py-1 bg-gray-700/60 border border-gray-600/40 rounded-lg text-xs text-gray-300">
+                {PLATFORM_ICON[p] || '🌐'} {p} <span className="text-gray-500">×{n}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+        {/* Flags */}
+        {data.flags?.length > 0 && (
+          <div className="flex flex-wrap gap-2 mt-3">
+            {data.flags.map((f: string) => (
+              <span key={f} className="px-2.5 py-1 bg-orange-900/30 border border-orange-700/40 rounded-lg text-xs text-orange-300">
+                {f.replace(/_/g, ' ')}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── WalletExplorer label (BTC) ── */}
+      {walletEx.label && (
+        <div className="bg-blue-950/20 border border-blue-700/40 rounded-xl p-4 flex items-center gap-4">
+          <span className="text-2xl">🏷️</span>
+          <div>
+            <div className="text-xs text-gray-500 mb-0.5">WalletExplorer (BTC entity)</div>
+            <div className="text-white font-bold text-lg">{walletEx.label}</div>
+            {walletEx.wallet_id && (
+              <a href={`https://www.walletexplorer.com/wallet/${walletEx.wallet_id}`}
+                target="_blank" rel="noopener noreferrer"
+                className="text-xs text-blue-400 hover:underline">
+                walletexplorer.com/wallet/{walletEx.wallet_id}
+              </a>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Candidate identities ── */}
+      {candidates.length > 0 && (
+        <div>
+          <SectionHeader icon="🪪" title="Кандидати — реальні особи" />
+          <div className="space-y-2 mt-2">
+            {candidates.map((c: any, i: number) => (
+              <div key={i} className={`rounded-xl border p-4 flex items-center gap-4 ${CONF_COLOR[c.confidence]}`}>
+                <div className="text-3xl font-black w-8 text-center text-gray-500">#{i + 1}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-bold text-lg text-white">{c.username}</div>
+                  <div className="flex flex-wrap gap-1.5 mt-1">
+                    {c.platforms.map((p: string) => (
+                      <span key={p} className="px-2 py-0.5 bg-gray-700/60 rounded text-xs text-gray-300">
+                        {PLATFORM_ICON[p] || '🌐'} {p}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className={`text-xs font-bold uppercase px-2 py-1 rounded border ${CONF_COLOR[c.confidence]}`}>
+                    {c.confidence}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">{c.hit_count} знахідок</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── All hits ── */}
+      {hits.length > 0 && (
+        <div>
+          <SectionHeader icon="🔍" title={`Всі знахідки (${hits.length})`} />
+          <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl overflow-hidden mt-2">
+            <div className="divide-y divide-gray-700/30 max-h-96 overflow-y-auto">
+              {hits.map((h: any, i: number) => (
+                <div key={i} className="px-4 py-3 hover:bg-gray-700/20 transition">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-sm">{PLATFORM_ICON[h.platform] || '🌐'}</span>
+                    <span className="text-xs font-bold text-gray-400">{h.platform}</span>
+                    {h.username && (
+                      <span className="px-2 py-0.5 bg-orange-500/20 border border-orange-500/40 rounded text-xs text-orange-300 font-bold">
+                        @{h.username}
+                      </span>
+                    )}
+                    <span className={`ml-auto text-xs font-bold ${
+                      h.confidence === 'high' ? 'text-green-400' : h.confidence === 'medium' ? 'text-yellow-400' : 'text-gray-600'
+                    }`}>{h.confidence}</span>
+                    {h.flags.map((f: string) => (
+                      <span key={f} className="px-1.5 py-0.5 bg-red-900/30 border border-red-700/40 rounded text-xs text-red-400">{f}</span>
+                    ))}
+                  </div>
+                  <a href={h.url} target="_blank" rel="noopener noreferrer"
+                    className="text-blue-400 hover:underline text-xs truncate block mb-1">{h.url}</a>
+                  <p className="text-xs text-gray-500 line-clamp-2">{h.snippet}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {hits.length === 0 && candidates.length === 0 && (
+        <div className="text-center py-10 text-gray-600">
+          <div className="text-4xl mb-2">🪪</div>
+          <div className="text-sm">Цей гаманець не залишив слідів у відкритих джерелах</div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function AiReportView({ data, onInvestigate }: { data: any; onInvestigate: (addr: string) => void }) {
   if (!data) return null
   const r = data.report || {}
@@ -1034,8 +1178,9 @@ export default function CryptoIntelPage() {
   const [traceData,   setTraceData]   = useState<any>(null)
   const [clusterData, setClusterData] = useState<any>(null)
   const [osintData,   setOsintData]   = useState<any>(null)
-  const [deanonData,  setDeanonData]  = useState<any>(null)
-  const [reportData,  setReportData]  = useState<any>(null)
+  const [deanonData,    setDeanonData]    = useState<any>(null)
+  const [identityData,  setIdentityData]  = useState<any>(null)
+  const [reportData,    setReportData]    = useState<any>(null)
 
   const [traceDepth, setTraceDepth]   = useState(2)
   const [autoRunAll, setAutoRunAll]   = useState(true)
@@ -1044,11 +1189,11 @@ export default function CryptoIntelPage() {
   const [chain_history, setChainHistory] = useState<string[]>([])
 
   const detectedChain = address ? detectChainUI(address.trim()) : 'auto'
-  const hasResults    = !!(walletData || traceData || clusterData || osintData || deanonData || reportData)
+  const hasResults    = !!(walletData || traceData || clusterData || osintData || deanonData || identityData || reportData)
 
   function resetAll() {
     setWalletData(null); setTraceData(null); setClusterData(null)
-    setOsintData(null);  setDeanonData(null); setReportData(null); setError('')
+    setOsintData(null);  setDeanonData(null); setIdentityData(null); setReportData(null); setError('')
   }
 
   async function post(endpoint: string, body: object): Promise<any> {
@@ -1101,6 +1246,10 @@ export default function CryptoIntelPage() {
       const dData = await post('/api/crypto/deanon', { address: addr, chain: ec })
       setDeanonData(dData)
 
+      setActiveTab('identity')
+      const iData = await post('/api/crypto/identity', { address: addr, chain: ec })
+      setIdentityData(iData)
+
       setActiveTab('report')
       const rData = await post('/api/crypto/ai-report', { address: addr, wallet: wData, trace: tData, cluster: cData, osint_bridge: oData })
       setReportData(rData)
@@ -1135,6 +1284,10 @@ export default function CryptoIntelPage() {
       const dData = await post('/api/crypto/deanon', { address: addr, chain: ec })
       setDeanonData(dData)
 
+      setActiveTab('identity')
+      const iData = await post('/api/crypto/identity', { address: addr, chain: ec })
+      setIdentityData(iData)
+
       setActiveTab('report')
       const rData = await post('/api/crypto/ai-report', { address: addr, wallet: wData, trace: tData, cluster: cData, osint_bridge: oData })
       setReportData(rData)
@@ -1152,7 +1305,8 @@ export default function CryptoIntelPage() {
       if (tab === 'trace')   { setTraceData(   await post('/api/crypto/trace',       { address: addr, chain: ec, depth: traceDepth })) }
       if (tab === 'cluster') { setClusterData( await post('/api/crypto/cluster',     { address: addr, chain: ec })) }
       if (tab === 'osint')   { setOsintData(   await post('/api/crypto/osint-bridge',{ address: addr, chain: ec })) }
-      if (tab === 'deanon')  { setDeanonData(  await post('/api/crypto/deanon',      { address: addr, chain: ec })) }
+      if (tab === 'deanon')   { setDeanonData(   await post('/api/crypto/deanon',    { address: addr, chain: ec })) }
+      if (tab === 'identity') { setIdentityData( await post('/api/crypto/identity',  { address: addr, chain: ec })) }
       if (tab === 'report')  { setReportData(  await post('/api/crypto/ai-report',   { address: addr, wallet: walletData, trace: traceData, cluster: clusterData, osint_bridge: osintData })) }
     } catch (e: any) { setError(e.message)
     } finally { setLoading(false) }
@@ -1163,8 +1317,9 @@ export default function CryptoIntelPage() {
     { id: 'trace',   label: 'Трасування',   icon: '🔗', hasData: !!traceData },
     { id: 'cluster', label: 'Кластер',      icon: '🕸️', hasData: !!clusterData },
     { id: 'osint',   label: 'OSINT-місток', icon: '🎯', hasData: !!osintData },
-    { id: 'deanon',  label: 'Де-анон',      icon: '🕵️', hasData: !!deanonData },
-    { id: 'report',  label: 'AI Звіт',      icon: '🤖', hasData: !!reportData },
+    { id: 'deanon',   label: 'Де-анон',      icon: '🕵️', hasData: !!deanonData },
+    { id: 'identity', label: 'Особа',        icon: '🪪',  hasData: !!identityData },
+    { id: 'report',   label: 'AI Звіт',      icon: '🤖', hasData: !!reportData },
   ]
 
   return (
@@ -1369,8 +1524,9 @@ export default function CryptoIntelPage() {
               {activeTab === 'trace'   && <TraceView       data={traceData} />}
               {activeTab === 'cluster' && <ClusterView     data={clusterData} />}
               {activeTab === 'osint'   && <OsintBridgeView data={osintData} />}
-              {activeTab === 'deanon'  && <DeanonView      data={deanonData}  onInvestigate={investigateBeneficiary} />}
-              {activeTab === 'report'  && <AiReportView    data={reportData}  onInvestigate={investigateBeneficiary} />}
+              {activeTab === 'deanon'   && <DeanonView      data={deanonData}    onInvestigate={investigateBeneficiary} />}
+              {activeTab === 'identity' && <IdentityView    data={identityData} />}
+              {activeTab === 'report'   && <AiReportView    data={reportData}    onInvestigate={investigateBeneficiary} />}
             </div>
           </div>
         )}
