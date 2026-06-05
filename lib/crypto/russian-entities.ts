@@ -1,17 +1,23 @@
 // lib/crypto/russian-entities.ts
 // Database of known Russian/Belarusian sanctioned crypto entities
 //
-// Sources (all public):
-//   - OFAC SDN List (sanctions.treasury.gov/ofac/downloads/sdnlist.pdf)
+// ⚠️  ВАЖЛИВО: Перед використанням адрес у реальних розслідуваннях —
+//     обов'язково верифікуй з офіційного джерела OFAC SDN List:
+//     https://sanctionssearch.ofac.treas.gov/
+//     або PDF: https://sanctionssearch.ofac.treas.gov/
+//
+// Адреси марковані як "NEEDS VERIFICATION" — НЕ перевірені,
+// можуть бути некоректними. Видаляй або заміняй після верифікації.
+//
+// Адреси без такого маркування — з публічних джерел (WannaCry,
+// Lazarus Group) але все одно перевіряй перед юридичним використанням.
+//
+// Sources:
+//   - OFAC SDN List (sanctionssearch.ofac.treas.gov)
 //   - DOJ press releases (justice.gov)
 //   - FinCEN enforcement (fincen.gov)
-//   - German BKA / Europol press releases
 //   - FBI IC3 advisories
-//   - Chainalysis public reports (chainalysis.com/blog)
 //   - Conti leaks (March 2022, verified by multiple researchers)
-//
-// All addresses here are PUBLICLY DOCUMENTED in official government sources.
-// For investigative use only. Cross-verify before legal action.
 
 export interface RussianEntity {
   name:          string
@@ -35,25 +41,18 @@ export const RUSSIAN_ENTITIES: Record<string, RussianEntity> = {
   // OFAC sanctioned: March 2, 2022 (updated Sept 2023 with BTC/TRON addresses)
   // HQ: Moscow, Russia | VASP for Russian dark-web payments
   // ══════════════════════════════════════════════════════════════
-  '0x4661b5f187bf6bc95da16d6a0d4bc2c979d8e2c': {
-    name: 'Garantex', type: 'exchange', risk_level: 'critical', country: 'RU', chain: 'eth',
-    description: 'Московська крипто-біржа під санкціями OFAC. Приймає кошти з Hydra, ransomware та тіньових схем. Продовжує роботу попри санкції.',
-    sanctioned_by: ['OFAC', 'EU', 'UK'], sanction_date: '2022-03-02',
-    source: 'OFAC SDN List 2022-03-02', related_case: 'OFAC-2022-GARANTEX',
-    vasp_contact: 'garantex.io',
-  },
-  'TUFkHoYKnQ4RB5K1u65RPAsmAa7YnBkDC': {
-    name: 'Garantex', type: 'exchange', risk_level: 'critical', country: 'RU', chain: 'tron',
-    description: 'Garantex TRON/USDT адреса. Головний канал для отримання USDT від darknet та ransomware.',
-    sanctioned_by: ['OFAC', 'EU', 'UK'], sanction_date: '2022-03-02',
-    source: 'OFAC SDN Updated 2023-09-14', related_case: 'OFAC-2022-GARANTEX',
-    vasp_contact: 'garantex.io',
-  },
+  // УВАГА: Реальні ETH/TRON адреси Garantex потребують верифікації
+  // з офіційного OFAC SDN List: https://sanctionssearch.ofac.treas.gov/
+  // Пошук: "Garantex" → Digital Currency Address
+  // Попередні записи були видалені через невалідну довжину (ETH: 41 замість 42, TRON: 33 замість 34)
+  // Додай сюди верифіковані адреси у форматі:
+  // '0x<40 hex chars>': { name: 'Garantex', type: 'exchange', ... }
+  // 'T<33 base58 chars>': { name: 'Garantex', type: 'exchange', ... }
   'TUn5nbsNGCRWxhbRFcLhSFGKBmXeGzpY9u': {
     name: 'Garantex', type: 'exchange', risk_level: 'critical', country: 'RU', chain: 'tron',
-    description: 'Garantex TRON адреса #2. Використовується для виведення USDT клієнтів.',
+    description: 'Garantex TRON адреса. Потребує верифікації з OFAC SDN Sept 2023.',
     sanctioned_by: ['OFAC', 'EU', 'UK'], sanction_date: '2022-03-02',
-    source: 'OFAC SDN Updated 2023-09-14',
+    source: 'NEEDS VERIFICATION — check sanctionssearch.ofac.treas.gov',
     vasp_contact: 'garantex.io',
   },
   '3GNJMw4xdKCAbLFVTKLTiHXiGSjhMdDVeB': {
