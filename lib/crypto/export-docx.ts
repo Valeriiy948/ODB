@@ -50,8 +50,12 @@ export async function generateCryptoReport(params: {
   const now = format(new Date(), 'dd.MM.yyyy HH:mm')
   const txRows: TableRow[] = []
 
+  // Wallet API повертає { wallet: {...}, address, chain, risk_score }
+  // Підтримуємо обидва формати: плаский (старий) і вкладений (новий)
+  const w = walletData?.wallet || walletData || {}
+
   // Build tx table from recent_txs
-  const txs: any[] = walletData?.recent_txs || walletData?.transactions || []
+  const txs: any[] = w?.recent_txs || w?.transactions || walletData?.recent_txs || []
   if (txs.length) {
     txRows.push(
       new TableRow({
@@ -131,14 +135,15 @@ export async function generateCryptoReport(params: {
           emptyLine(),
         ] : []),
 
-        // Wallet summary
-        ...(walletData ? [
+        // Wallet summary (w = walletData.wallet або walletData напряму)
+        ...(w.balance_native != null || w.tx_count != null ? [
           heading2('2. ПАРАМЕТРИ ГАМАНЦЯ'),
-          infoRow('Баланс (native)', `${walletData.balance_native ?? '—'} ${walletData.symbol ?? ''}`),
-          infoRow('Баланс (USD)', `${walletData.balance_usd ?? '—'}`),
-          infoRow('Кількість транзакцій', String(walletData.tx_count ?? '—')),
-          infoRow('Перша активність', walletData.first_tx || '—'),
-          infoRow('Остання активність', walletData.last_tx || '—'),
+          infoRow('Баланс (native)', `${w.balance_native ?? '—'} ${w.symbol ?? ''}`),
+          infoRow('Баланс (USD)',    w.balance_usd != null ? `$${Number(w.balance_usd).toLocaleString()}` : '—'),
+          infoRow('Кількість транзакцій', String(w.tx_count ?? w.n_tx ?? '—')),
+          infoRow('Перша активність',    w.first_tx    || w.first_seen || '—'),
+          infoRow('Остання активність',  w.last_tx     || w.last_seen  || '—'),
+          infoRow('Унікальних контрагентів', String(w.unique_counterparties ?? '—')),
           emptyLine(),
         ] : []),
 
