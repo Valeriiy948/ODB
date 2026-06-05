@@ -5,7 +5,7 @@ import Sidebar from '../components/Sidebar'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Chain    = 'auto' | 'btc' | 'eth' | 'bsc' | 'tron' | 'ton' | 'polygon'
-type Tab      = 'wallet' | 'trace' | 'cluster' | 'osint' | 'report'
+type Tab      = 'wallet' | 'trace' | 'cluster' | 'osint' | 'deanon' | 'report'
 
 interface Beneficiary {
   address:  string
@@ -703,6 +703,161 @@ function OsintBridgeView({ data }: { data: any }) {
   )
 }
 
+// ─── De-anonymization View ─────────────────────────────────────────────────────
+function DeanonView({ data, onInvestigate }: { data: any; onInvestigate: (addr: string) => void }) {
+  if (!data) return null
+
+  const DROP_PATTERN_LABEL: Record<string, { label: string; color: string }> = {
+    clean:      { label: 'Чистий',      color: 'text-green-400' },
+    suspicious: { label: 'Підозрілий',  color: 'text-yellow-400' },
+    drop:       { label: '🚨 ДРОП',      color: 'text-red-400' },
+    mixer:      { label: '⚠️ Міксер',   color: 'text-orange-400' },
+  }
+  const drop    = data.drop_analysis || {}
+  const pattern = DROP_PATTERN_LABEL[drop.pattern || 'clean']
+
+  return (
+    <div className="space-y-5">
+
+      {/* ── De-anon score header ── */}
+      <div className={`rounded-2xl border p-5 ${data.deanon_score >= 60
+        ? 'bg-orange-950/30 border-orange-500/50'
+        : 'bg-gray-800/40 border-gray-700/50'}`}>
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-xs text-gray-500 uppercase tracking-widest mb-1">Де-анонімізація</div>
+            <div className="text-3xl font-black text-white">{data.deanon_score ?? 0}<span className="text-lg text-gray-500">/100</span></div>
+          </div>
+          {data.entity_label && (
+            <div className={`px-4 py-2 rounded-xl border text-center ${
+              data.entity_label.type === 'sanctioned' ? 'bg-red-950/40 border-red-500/60 text-red-300'
+            : data.entity_label.type === 'mixer'      ? 'bg-orange-950/40 border-orange-500/60 text-orange-300'
+            : 'bg-blue-950/30 border-blue-500/40 text-blue-300'}`}>
+              <div className="text-xs text-gray-500 mb-0.5">Ідентифіковано як</div>
+              <div className="font-bold text-sm">{data.entity_label.name}</div>
+              <div className="text-xs mt-0.5">{data.entity_label.kyc ? '📋 KYC є' : '🚫 Без KYC'}</div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Subpoena targets (KYC exchanges) ── */}
+      {data.subpoena_targets?.length > 0 && (
+        <div className="bg-yellow-950/20 border border-yellow-600/40 rounded-xl p-4">
+          <SectionHeader icon="⚖️" title="Цілі для запиту (KYC)" />
+          <p className="text-xs text-gray-500 mb-3">Ці біржі мають KYC-дані власника — можливо подати офіційний запит або судовий ордер</p>
+          <div className="space-y-2">
+            {data.subpoena_targets.map((t: any, i: number) => (
+              <div key={i} className="flex items-center gap-3 bg-yellow-900/20 border border-yellow-700/30 rounded-lg px-4 py-3">
+                <span className="text-yellow-300 font-bold text-sm w-24 shrink-0">{t.entity}</span>
+                <span className="text-gray-400 text-xs font-mono flex-1 truncate">{t.address}</span>
+                {t.country && <span className="text-xs text-gray-500 shrink-0">{t.country}</span>}
+                <button onClick={() => onInvestigate(t.address)}
+                  className="text-xs px-2 py-1 bg-orange-600/30 hover:bg-orange-600/50 border border-orange-500/40 rounded text-orange-300 transition shrink-0">
+                  Досліджувати
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── ODB persons DB hits ── */}
+      {data.odb_persons?.length > 0 && (
+        <div className="bg-green-950/20 border border-green-600/40 rounded-xl p-4">
+          <SectionHeader icon="👤" title={`Знайдено в ODB (${data.odb_persons.length})`} />
+          <div className="space-y-2 mt-2">
+            {data.odb_persons.map((p: any) => (
+              <a key={p.id} href={`/persons/${p.id}`} target="_blank"
+                className="flex items-center gap-3 bg-green-900/20 border border-green-700/30 rounded-lg px-4 py-3 hover:bg-green-900/30 transition">
+                <span className="text-green-300 font-semibold text-sm">{p.name || p.name_rus || '—'}</span>
+                {p.dob && <span className="text-xs text-gray-500">{p.dob}</span>}
+                {p.source && <span className="text-xs text-gray-600 ml-auto">{p.source}</span>}
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Drop / money-mule analysis ── */}
+      <div className={`rounded-xl border p-4 ${drop.is_drop
+        ? 'bg-red-950/20 border-red-700/40'
+        : 'bg-gray-800/40 border-gray-700/40'}`}>
+        <div className="flex items-center justify-between mb-3">
+          <SectionHeader icon="🪤" title="Аналіз дропа (фінансовий мул)" />
+          <div className="flex items-center gap-3">
+            <span className={`font-black text-2xl ${pattern.color}`}>{drop.drop_score ?? 0}</span>
+            <span className={`text-sm font-bold ${pattern.color}`}>{pattern.label}</span>
+          </div>
+        </div>
+        {drop.flags?.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {drop.flags.map((f: string) => (
+              <span key={f} className="px-2.5 py-1 bg-red-900/40 border border-red-700/50 rounded-lg text-xs text-red-300">
+                {f.replace(/_/g, ' ')}
+              </span>
+            ))}
+          </div>
+        )}
+        {!drop.flags?.length && (
+          <p className="text-xs text-gray-500">Ознак дроп-патерну не виявлено</p>
+        )}
+      </div>
+
+      {/* ── Labeled counterparties ── */}
+      {(data.labeled_exchanges?.length > 0 || data.labeled_mixers?.length > 0 ||
+        data.labeled_sanctioned?.length > 0 || data.labeled_darknet?.length > 0) && (
+        <div>
+          <SectionHeader icon="🏷️" title="Ідентифіковані контрагенти" />
+          <div className="space-y-2 mt-2">
+            {[
+              ...( data.labeled_sanctioned || []).map((c: any) => ({ ...c, badge: '🚫 Санкційний', cls: 'border-red-700/50 bg-red-950/20 text-red-300' })),
+              ...( data.labeled_mixers     || []).map((c: any) => ({ ...c, badge: '⚠️ Міксер',     cls: 'border-orange-700/50 bg-orange-950/20 text-orange-300' })),
+              ...( data.labeled_darknet    || []).map((c: any) => ({ ...c, badge: '🌑 Даркнет',    cls: 'border-purple-700/50 bg-purple-950/20 text-purple-300' })),
+              ...( data.labeled_exchanges  || []).map((c: any) => ({ ...c, badge: '🏦 Біржа',      cls: 'border-blue-700/50 bg-blue-950/20 text-blue-300' })),
+            ].map((c: any, i: number) => (
+              <div key={i} className={`flex items-center gap-3 border rounded-lg px-4 py-2.5 ${c.cls}`}>
+                <span className="font-bold text-sm shrink-0">{c.label.name}</span>
+                <span className="text-xs">{c.badge}</span>
+                {c.label.kyc && <span className="text-xs text-green-400">📋 KYC</span>}
+                {c.label.country && <span className="text-xs text-gray-500">{c.label.country}</span>}
+                <span className="text-xs font-mono text-gray-600 ml-auto">{shortAddr(c.address)}</span>
+                <button onClick={() => onInvestigate(c.address)}
+                  className="text-xs px-2 py-1 bg-gray-700/50 hover:bg-gray-700 border border-gray-600/40 rounded text-gray-300 transition shrink-0">⧉</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Identity clues ── */}
+      {data.deanon_clues?.length > 0 && (
+        <div>
+          <SectionHeader icon="🔑" title="Ключі ідентифікації" />
+          <div className="space-y-1.5 mt-2">
+            {data.deanon_clues.map((c: any, i: number) => (
+              <div key={i} className="flex items-center gap-3 bg-gray-800/60 border border-gray-700/40 rounded-lg px-4 py-2.5 text-sm">
+                <span className={`text-xs font-bold uppercase shrink-0 ${
+                  c.confidence === 'high' ? 'text-green-400' : c.confidence === 'medium' ? 'text-yellow-400' : 'text-gray-500'
+                }`}>{c.confidence}</span>
+                <span className="text-gray-400 text-xs shrink-0">{c.type.replace(/_/g, ' ')}</span>
+                <span className="text-white flex-1 truncate">{c.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {data.deanon_score === 0 && !data.entity_label && data.odb_persons?.length === 0 && (
+        <div className="text-center py-8 text-gray-600">
+          <div className="text-4xl mb-2">🕵️</div>
+          <div className="text-sm">Ідентифікаторів не знайдено. Спробуй OSINT-місток або введи більше даних.</div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function AiReportView({ data, onInvestigate }: { data: any; onInvestigate: (addr: string) => void }) {
   if (!data) return null
   const r = data.report || {}
@@ -879,6 +1034,7 @@ export default function CryptoIntelPage() {
   const [traceData,   setTraceData]   = useState<any>(null)
   const [clusterData, setClusterData] = useState<any>(null)
   const [osintData,   setOsintData]   = useState<any>(null)
+  const [deanonData,  setDeanonData]  = useState<any>(null)
   const [reportData,  setReportData]  = useState<any>(null)
 
   const [traceDepth, setTraceDepth]   = useState(2)
@@ -888,11 +1044,11 @@ export default function CryptoIntelPage() {
   const [chain_history, setChainHistory] = useState<string[]>([])
 
   const detectedChain = address ? detectChainUI(address.trim()) : 'auto'
-  const hasResults    = !!(walletData || traceData || clusterData || osintData || reportData)
+  const hasResults    = !!(walletData || traceData || clusterData || osintData || deanonData || reportData)
 
   function resetAll() {
     setWalletData(null); setTraceData(null); setClusterData(null)
-    setOsintData(null);  setReportData(null); setError('')
+    setOsintData(null);  setDeanonData(null); setReportData(null); setError('')
   }
 
   async function post(endpoint: string, body: object): Promise<any> {
@@ -941,6 +1097,10 @@ export default function CryptoIntelPage() {
       const oData = await post('/api/crypto/osint-bridge', { address: addr, chain: ec })
       setOsintData(oData)
 
+      setActiveTab('deanon')
+      const dData = await post('/api/crypto/deanon', { address: addr, chain: ec })
+      setDeanonData(dData)
+
       setActiveTab('report')
       const rData = await post('/api/crypto/ai-report', { address: addr, wallet: wData, trace: tData, cluster: cData, osint_bridge: oData })
       setReportData(rData)
@@ -971,6 +1131,10 @@ export default function CryptoIntelPage() {
       const oData = await post('/api/crypto/osint-bridge', { address: addr, chain: ec })
       setOsintData(oData)
 
+      setActiveTab('deanon')
+      const dData = await post('/api/crypto/deanon', { address: addr, chain: ec })
+      setDeanonData(dData)
+
       setActiveTab('report')
       const rData = await post('/api/crypto/ai-report', { address: addr, wallet: wData, trace: tData, cluster: cData, osint_bridge: oData })
       setReportData(rData)
@@ -988,6 +1152,7 @@ export default function CryptoIntelPage() {
       if (tab === 'trace')   { setTraceData(   await post('/api/crypto/trace',       { address: addr, chain: ec, depth: traceDepth })) }
       if (tab === 'cluster') { setClusterData( await post('/api/crypto/cluster',     { address: addr, chain: ec })) }
       if (tab === 'osint')   { setOsintData(   await post('/api/crypto/osint-bridge',{ address: addr, chain: ec })) }
+      if (tab === 'deanon')  { setDeanonData(  await post('/api/crypto/deanon',      { address: addr, chain: ec })) }
       if (tab === 'report')  { setReportData(  await post('/api/crypto/ai-report',   { address: addr, wallet: walletData, trace: traceData, cluster: clusterData, osint_bridge: osintData })) }
     } catch (e: any) { setError(e.message)
     } finally { setLoading(false) }
@@ -998,6 +1163,7 @@ export default function CryptoIntelPage() {
     { id: 'trace',   label: 'Трасування',   icon: '🔗', hasData: !!traceData },
     { id: 'cluster', label: 'Кластер',      icon: '🕸️', hasData: !!clusterData },
     { id: 'osint',   label: 'OSINT-місток', icon: '🎯', hasData: !!osintData },
+    { id: 'deanon',  label: 'Де-анон',      icon: '🕵️', hasData: !!deanonData },
     { id: 'report',  label: 'AI Звіт',      icon: '🤖', hasData: !!reportData },
   ]
 
@@ -1203,6 +1369,7 @@ export default function CryptoIntelPage() {
               {activeTab === 'trace'   && <TraceView       data={traceData} />}
               {activeTab === 'cluster' && <ClusterView     data={clusterData} />}
               {activeTab === 'osint'   && <OsintBridgeView data={osintData} />}
+              {activeTab === 'deanon'  && <DeanonView      data={deanonData}  onInvestigate={investigateBeneficiary} />}
               {activeTab === 'report'  && <AiReportView    data={reportData}  onInvestigate={investigateBeneficiary} />}
             </div>
           </div>
