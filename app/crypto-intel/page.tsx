@@ -1,7 +1,14 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import dynamic from 'next/dynamic'
 import Sidebar from '../components/Sidebar'
+import RiskScore from '../components/crypto/RiskScore'
+
+const TransactionGraph = dynamic(
+  () => import('../components/crypto/TransactionGraph'),
+  { ssr: false, loading: () => <div className="h-[400px] bg-gray-900/40 border border-gray-700/50 rounded-xl animate-pulse" /> }
+)
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Chain    = 'auto' | 'btc' | 'eth' | 'bsc' | 'tron' | 'ton' | 'polygon'
@@ -598,7 +605,8 @@ function WalletView({ data, onInvestigate }: { data: any; onInvestigate: (addr: 
 
 function TraceView({ data }: { data: any }) {
   if (!data) return null
-  const nodes = Object.values(data.nodes || {}) as any[]
+  const nodes     = Object.values(data.nodes || {}) as any[]
+  const whales    = (data.whale_alerts || []) as any[]
 
   return (
     <div className="space-y-5">
@@ -607,6 +615,23 @@ function TraceView({ data }: { data: any }) {
         <StatCard label="Глибина аналізу" value={data.depth_analyzed} />
         <StatCard label="Ризикових" value={data.high_risk_nodes?.length || 0} accent="text-red-400" />
       </div>
+
+      {/* Whale / SMC alerts */}
+      {whales.length > 0 && (
+        <div className="space-y-2">
+          <SectionHeader icon="🐋" title={`Smart Money Alerts (${whales.length})`} />
+          {whales.map((w: any, i: number) => (
+            <div key={i} className="bg-yellow-950/20 border border-yellow-700/30 rounded-xl p-3 flex items-start gap-3">
+              <span className="text-yellow-400 text-base mt-0.5 shrink-0">⚡</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-yellow-300 text-sm font-semibold">{w.message}</p>
+                <p className="text-gray-500 text-xs font-mono mt-0.5 truncate">{w.address}</p>
+                <p className="text-gray-400 text-xs">{w.detail}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {data.high_risk_nodes?.length > 0 && (
         <div className="bg-red-950/20 border border-red-800/40 rounded-xl p-4">
@@ -621,13 +646,28 @@ function TraceView({ data }: { data: any }) {
         </div>
       )}
 
+      {/* Visual graph */}
       <div>
         <SectionHeader icon="🔗" title="Граф транзакцій" />
-        <div className="space-y-2">
+        <TransactionGraph
+          nodes={data.nodes || {}}
+          edges={data.edges || []}
+          root={data.root}
+          chain={data.chain}
+        />
+      </div>
+
+      {/* Text fallback: collapsible node list */}
+      <details className="group">
+        <summary className="cursor-pointer text-gray-500 text-xs hover:text-gray-300 flex items-center gap-1.5 select-none">
+          <span className="group-open:rotate-90 transition-transform inline-block">▶</span>
+          Детальна таблиця вузлів ({nodes.length})
+        </summary>
+        <div className="mt-2 space-y-1.5">
           {nodes.sort((a, b) => a.depth - b.depth).map((node: any) => (
             <div key={node.address}
               className={`bg-gray-800/60 border rounded-xl p-3 ${node.address === data.root ? 'border-blue-500/50' : 'border-gray-700/50'}`}
-              style={{ marginLeft: `${node.depth * 20}px` }}
+              style={{ marginLeft: `${node.depth * 16}px` }}
             >
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-gray-600 text-xs bg-gray-700/50 px-1.5 py-0.5 rounded">d:{node.depth}</span>
@@ -646,7 +686,7 @@ function TraceView({ data }: { data: any }) {
             </div>
           ))}
         </div>
-      </div>
+      </details>
     </div>
   )
 }
@@ -1088,9 +1128,36 @@ function IdentityView({ data }: { data: any }) {
   )
 }
 
-function AiReportView({ data, onInvestigate }: { data: any; onInvestigate: (addr: string) => void }) {
+function AiReportView({ data, walletData, traceData, onInvestigate }: {
+  data:          any
+  walletData?:   any
+  traceData?:    any
+  onInvestigate: (addr: string) => void
+}) {
+  const [exporting, setExporting] = useState(false)
   if (!data) return null
   const r = data.report || {}
+
+  async function exportDocx() {
+    setExporting(true)
+    try {
+      const { generateCryptoReport, downloadBlob } = await import('../../lib/crypto/export-docx')
+      const blob = await generateCryptoReport({
+        address:    walletData?.address || '',
+        chain:      walletData?.chain   || '',
+        riskScore:  r.risk_score ?? 0,
+        verdict:    r.verdict   ?? '',
+        walletData,
+        traceData,
+        reportData: data,
+      })
+      const addr  = (walletData?.address || 'wallet').slice(0, 10)
+      const stamp = new Date().toISOString().slice(0, 10)
+      downloadBlob(blob, `ODB_CryptoReport_${addr}_${stamp}.docx`)
+    } catch (e: any) {
+      alert(`Помилка експорту: ${e.message}`)
+    } finally { setExporting(false) }
+  }
 
   if (r.parse_error) {
     return <pre className="text-gray-300 text-xs whitespace-pre-wrap bg-gray-800 p-4 rounded-xl">{r.raw}</pre>
@@ -1098,9 +1165,9 @@ function AiReportView({ data, onInvestigate }: { data: any; onInvestigate: (addr
 
   return (
     <div className="space-y-5">
-      {/* Verdict */}
+      {/* Verdict + Risk Score + Export */}
       <div className={`rounded-2xl border p-5 ${RISK_STYLE[r.verdict || 'unknown']}`}>
-        <div className="flex items-start justify-between flex-wrap gap-4">
+        <div className="flex items-start justify-between flex-wrap gap-4 mb-4">
           <div>
             <p className="text-xs uppercase font-bold opacity-60 mb-1 tracking-widest">Вердикт AI</p>
             <p className="text-2xl font-black uppercase">{r.verdict || '—'}</p>
@@ -1108,11 +1175,17 @@ function AiReportView({ data, onInvestigate }: { data: any; onInvestigate: (addr
               <p className="text-sm opacity-80 mt-2 max-w-xl leading-relaxed">{r.executive_summary}</p>
             )}
           </div>
-          <div className="text-center shrink-0">
-            <p className="text-xs opacity-60 mb-1">Risk Score</p>
-            <p className="text-5xl font-black">{r.risk_score ?? '—'}</p>
-          </div>
+          <button
+            onClick={exportDocx}
+            disabled={exporting}
+            className="shrink-0 flex items-center gap-2 px-4 py-2 bg-blue-700/70 hover:bg-blue-600/80 disabled:opacity-50 text-white text-sm font-semibold rounded-xl border border-blue-600/50 transition"
+          >
+            {exporting ? '⏳ Генерую…' : '📄 Експорт DOCX'}
+          </button>
         </div>
+        {r.risk_score != null && (
+          <RiskScore score={r.risk_score} label={r.verdict} />
+        )}
       </div>
 
       {/* Subject */}
@@ -1616,7 +1689,7 @@ export default function CryptoIntelPage() {
               {activeTab === 'osint'   && <OsintBridgeView data={osintData} />}
               {activeTab === 'deanon'   && <DeanonView      data={deanonData}    onInvestigate={investigateBeneficiary} />}
               {activeTab === 'identity' && <IdentityView    data={identityData} />}
-              {activeTab === 'report'   && <AiReportView    data={reportData}    onInvestigate={investigateBeneficiary} />}
+              {activeTab === 'report'   && <AiReportView    data={reportData} walletData={walletData} traceData={traceData} onInvestigate={investigateBeneficiary} />}
             </div>
           </div>
         )}

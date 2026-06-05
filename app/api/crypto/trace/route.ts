@@ -7,6 +7,42 @@ import { NextRequest, NextResponse } from 'next/server'
 const ETHERSCAN_KEY = process.env.ETHERSCAN_API_KEY || ''
 const BSCSCAN_KEY   = process.env.BSCSCAN_API_KEY   || ''
 
+// ─── Whale / Smart Money detection ───────────────────────────────────────────
+export interface WhaleAlert {
+  type:      'WHALE_TRANSFER' | 'HIGH_FREQUENCY' | 'LARGE_OUT_RATIO'
+  message:   string
+  address:   string
+  detail:    string
+}
+
+export function detectSmartMoneyFlow(
+  nodes: Record<string, TraceNode>,
+  thresholdTxs: number = 200,
+): WhaleAlert[] {
+  const alerts: WhaleAlert[] = []
+
+  for (const node of Object.values(nodes)) {
+    if (node.txs >= thresholdTxs) {
+      alerts.push({
+        type:    'HIGH_FREQUENCY',
+        message: `⚠️ Висока частота: ${node.txs} транзакцій`,
+        address: node.address,
+        detail:  `Надіслано: ${node.sent} / Отримано: ${node.received}`,
+      })
+    }
+    if (node.sent > node.received * 3 && node.sent > 10) {
+      alerts.push({
+        type:    'LARGE_OUT_RATIO',
+        message: `🚨 Аномальний виток: надіслано у ${Math.round(node.sent / Math.max(node.received, 1))}x більше ніж отримано`,
+        address: node.address,
+        detail:  `Надіслано: ${node.sent} / Отримано: ${node.received}`,
+      })
+    }
+  }
+
+  return alerts
+}
+
 interface TraceNode {
   address:  string
   chain:    string
@@ -173,6 +209,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const whaleAlerts = detectSmartMoneyFlow(nodes)
+
     return NextResponse.json({
       success:    true,
       root:       address.trim(),
@@ -182,6 +220,7 @@ export async function POST(req: NextRequest) {
       nodes,
       edges,
       high_risk_nodes: Object.values(nodes).filter(n => n.flags.length > 1).map(n => n.address),
+      whale_alerts: whaleAlerts,
       analyzed_at: new Date().toISOString(),
     })
   } catch (err: any) {
