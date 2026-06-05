@@ -9,7 +9,10 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export const maxDuration = 60
 
-const VPS_URL = `http://${process.env.VPS_HOST || '161.35.86.145'}:8011`
+// VPS_URL — повний HTTPS URL: https://evidencebases.com/odb-api
+// Fallback на старий HTTP для зворотньої сумісності під час міграції
+const VPS_URL = process.env.VPS_URL
+  || `http://${process.env.VPS_HOST || '161.35.86.145'}:8011`
 const INTERNAL_KEY = process.env.INTERNAL_API_KEY || ''
 
 async function proxyToVPS(method: string, path: string, body?: string) {
