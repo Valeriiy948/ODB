@@ -5,7 +5,8 @@ import { NextResponse, type NextRequest } from 'next/server'
 const PUBLIC_PATHS = [
   '/login',
   '/api/health',
-  '/api/cron/',    // cron jobs — перевіряють CRON_SECRET самостійно
+  '/api/cron/',             // cron jobs — перевіряють CRON_SECRET самостійно
+  '/api/telegram/webhook', // Telegram webhook — Telegram не має сесії
   '/_next',
   '/favicon.ico',
 ]
