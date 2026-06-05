@@ -313,6 +313,86 @@ function LinkToPersonPanel({ address, chain, walletData }: { address: string; ch
 
 // ─── Tab views ─────────────────────────────────────────────────────────────────
 
+function WatchButton({ address, chain, riskLevel, dropScore }: {
+  address: string; chain: string; riskLevel?: string; dropScore?: number
+}) {
+  const [watching, setWatching]   = useState<boolean | null>(null)
+  const [loading,  setLoading]    = useState(false)
+  const [label,    setLabel]      = useState('')
+  const [showForm, setShowForm]   = useState(false)
+
+  useEffect(() => {
+    fetch(`/api/crypto/watchlist?address=${encodeURIComponent(address)}`)
+      .then(r => r.json())
+      .then(d => setWatching(d.watching))
+      .catch(() => setWatching(false))
+  }, [address])
+
+  async function toggle() {
+    if (watching) {
+      setLoading(true)
+      await fetch(`/api/crypto/watchlist?address=${encodeURIComponent(address)}`, { method: 'DELETE' })
+      setWatching(false)
+      setLoading(false)
+    } else {
+      setShowForm(true)
+    }
+  }
+
+  async function addToWatch() {
+    setLoading(true)
+    const res = await fetch('/api/crypto/watchlist', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address, chain, label: label || null, risk_level: riskLevel, drop_score: dropScore || 0 }),
+    })
+    const d = await res.json()
+    if (d.error === 'table_not_found') {
+      alert('Потрібно створити таблицю у Supabase.\n\n' + d.sql)
+    } else {
+      setWatching(true)
+    }
+    setShowForm(false)
+    setLoading(false)
+  }
+
+  if (watching === null) return null
+
+  return (
+    <div className="relative">
+      <button onClick={toggle} disabled={loading}
+        className={`flex items-center gap-1.5 px-3 py-1.5 border rounded-lg text-xs transition ${
+          watching
+            ? 'bg-green-900/30 border-green-600/50 text-green-300 hover:bg-red-900/20 hover:border-red-600/40 hover:text-red-300'
+            : 'bg-gray-900/50 hover:bg-orange-900/20 border-gray-700/50 hover:border-orange-500/40 text-gray-400 hover:text-orange-300'
+        }`}>
+        {loading ? '⏳' : watching ? '👁️ Стежу' : '👁 Стежити'}
+      </button>
+
+      {showForm && (
+        <div className="absolute top-9 right-0 z-50 bg-gray-900 border border-gray-700 rounded-xl p-4 shadow-2xl w-64">
+          <div className="text-sm font-semibold text-white mb-2">Додати до списку спостереження</div>
+          <input
+            value={label} onChange={e => setLabel(e.target.value)}
+            placeholder="Мітка (необов'язково)..."
+            className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-1.5 text-sm text-white placeholder-gray-600 mb-3 focus:outline-none focus:border-orange-500"
+          />
+          <div className="flex gap-2">
+            <button onClick={addToWatch} disabled={loading}
+              className="flex-1 py-1.5 bg-orange-600 hover:bg-orange-500 text-white text-xs font-semibold rounded-lg transition">
+              Додати
+            </button>
+            <button onClick={() => setShowForm(false)}
+              className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs rounded-lg transition">
+              Скасувати
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function WalletView({ data, onInvestigate }: { data: any; onInvestigate: (addr: string) => void }) {
   if (!data) return null
   const w     = data.wallet || {}
@@ -335,8 +415,14 @@ function WalletView({ data, onInvestigate }: { data: any; onInvestigate: (addr: 
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <RiskBadge level={data.risk_level} score={data.risk_score} />
+            <WatchButton
+              address={data.address}
+              chain={w.chain || data.chain || 'eth'}
+              riskLevel={data.risk_level}
+              dropScore={0}
+            />
             {w.explorer_url && (
               <a href={w.explorer_url} target="_blank" rel="noopener noreferrer"
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-900/50 hover:bg-gray-900/80 border border-gray-700/50 rounded-lg text-blue-400 text-xs transition">
@@ -1515,6 +1601,10 @@ export default function CryptoIntelPage() {
                     ↺ Оновити
                   </button>
                 )}
+                <a href="/crypto-intel/watchlist"
+                  className="text-xs px-3 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-gray-400 hover:text-green-300 transition flex items-center gap-1">
+                  👁️ Watchlist
+                </a>
               </div>
             </div>
 
