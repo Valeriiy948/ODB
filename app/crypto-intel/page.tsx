@@ -867,6 +867,66 @@ function DeanonView({ data, onInvestigate }: { data: any; onInvestigate: (addr: 
         </div>
       </div>
 
+      {/* ── Russian / Sanctioned Entity Hits ── */}
+      {(data.self_ru_entity || data.russian_entities?.length > 0) && (
+        <div className="bg-red-950/30 border-2 border-red-500/60 rounded-xl p-4">
+          <SectionHeader icon="🇷🇺" title="САНКЦІЙНІ СУБ'ЄКТИ РФ / БІЛОРУСІ" />
+          <p className="text-xs text-red-400/80 mb-3">
+            Задокументовано в офіційних джерелах: OFAC SDN, DOJ, FinCEN, BKA, Europol
+          </p>
+
+          {/* Self match */}
+          {data.self_ru_entity && (
+            <div className="bg-red-900/40 border border-red-500/60 rounded-xl p-4 mb-3">
+              <div className="flex items-center gap-3 mb-2">
+                <span className="text-red-400 text-xl">☢️</span>
+                <div>
+                  <p className="text-red-200 font-black text-base">{data.self_ru_entity.name}</p>
+                  <p className="text-red-400/80 text-xs uppercase tracking-wider">
+                    {data.self_ru_entity.type} · {data.self_ru_entity.country}
+                    {data.self_ru_entity.sanctioned_by?.length > 0 && (
+                      <span className="ml-2 text-orange-400">
+                        САНКЦІЇ: {data.self_ru_entity.sanctioned_by.join(' / ')}
+                      </span>
+                    )}
+                  </p>
+                </div>
+              </div>
+              <p className="text-gray-300 text-sm">{data.self_ru_entity.description}</p>
+              {data.self_ru_entity.sanction_date && (
+                <p className="text-gray-500 text-xs mt-2">
+                  📅 Дата санкцій: {data.self_ru_entity.sanction_date}
+                  {data.self_ru_entity.related_case && ` · Справа: ${data.self_ru_entity.related_case}`}
+                </p>
+              )}
+              <p className="text-gray-600 text-xs mt-1">Джерело: {data.self_ru_entity.source}</p>
+            </div>
+          )}
+
+          {/* Counterparty matches */}
+          {data.russian_entities?.filter((h: any) => h.address !== data.address).map((h: any, i: number) => (
+            <div key={i} className="bg-orange-950/30 border border-orange-600/40 rounded-xl p-3 mb-2">
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="text-orange-400">⚠️</span>
+                <p className="text-orange-200 font-bold text-sm">{h.entity.name}</p>
+                <span className="text-gray-600 text-xs font-mono ml-auto">{h.address.slice(0, 14)}…</span>
+                <CopyBtn value={h.address} />
+              </div>
+              <p className="text-gray-400 text-xs">{h.entity.description}</p>
+              {h.entity.sanctioned_by?.length > 0 && (
+                <div className="flex gap-1.5 mt-1.5 flex-wrap">
+                  {h.entity.sanctioned_by.map((s: string) => (
+                    <span key={s} className="text-xs px-2 py-0.5 bg-red-900/40 border border-red-700/40 text-red-300 rounded">
+                      {s}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* ── Subpoena targets (KYC exchanges) ── */}
       {data.subpoena_targets?.length > 0 && (
         <div className="bg-yellow-950/20 border border-yellow-600/40 rounded-xl p-4">

@@ -6,9 +6,11 @@
 // 2. Drop detection          — is this a money-mule wallet?
 // 3. ODB persons search      — is address in our 520k+ breach database?
 // 4. Blockchair entity label — public address labels
+// 5. Russian entity check    — OFAC/DOJ sanctioned RU entities (Garantex, Hydra, REvil…)
 
 import { NextRequest, NextResponse } from 'next/server'
 import { labelCounterparties, lookupAddress } from '@/lib/crypto/exchange-labels'
+import { lookupRussianEntity, scanForRussianEntities } from '@/lib/crypto/russian-entities'
 import { createClient } from '@supabase/supabase-js'
 
 const SUPABASE_URL     = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -254,8 +256,9 @@ export async function POST(req: NextRequest) {
 
     const addr = address.trim()
 
-    // Check if the address itself is a known entity
-    const selfLabel = lookupAddress(addr)
+    // Check if the address itself is a known entity (exchanges + Russian entities)
+    const selfLabel        = lookupAddress(addr)
+    const selfRuEntity     = lookupRussianEntity(addr)
 
     // Run all lookups in parallel
     const [
@@ -268,8 +271,11 @@ export async function POST(req: NextRequest) {
       searchODBPersons(addr),
     ])
 
-    // Label all counterparties
+    // Label all counterparties (exchanges)
     const labeledCounterparties = labelCounterparties(counterparties)
+
+    // Scan counterparties for Russian sanctioned entities
+    const ruEntityHits = scanForRussianEntities([addr, ...counterparties])
 
     // Drop detection (run after we have counterparties context)
     const dropAnalysis = await analyzeDropPattern(addr, chain)
@@ -280,9 +286,13 @@ export async function POST(req: NextRequest) {
     const sanctioned  = labeledCounterparties.filter(c => c.label.type === 'sanctioned')
     const darknet     = labeledCounterparties.filter(c => c.label.type === 'darknet')
 
-    // Build entity profile
+    // Build entity profile (exchange labels take priority, then Russian entity, then Blockchair)
     const entityLabel = selfLabel
       ? { name: selfLabel.name, type: selfLabel.type, kyc: selfLabel.kyc, source: 'known_db' }
+      : selfRuEntity
+      ? { name: selfRuEntity.name, type: selfRuEntity.type, kyc: false, source: 'ru_entities_db',
+          sanctioned: selfRuEntity.sanctioned_by.length > 0,
+          description: selfRuEntity.description }
       : blockchairLabel
       ? { name: blockchairLabel, type: 'unknown', kyc: false, source: 'blockchair' }
       : null
@@ -311,6 +321,22 @@ export async function POST(req: NextRequest) {
       deanonScore += 30
       deanonClues.push({ type: 'self_entity', value: entityLabel.name, confidence: 'high' })
     }
+    if (selfRuEntity) {
+      deanonScore += 70
+      deanonClues.push({
+        type:       'ru_sanctioned_entity',
+        value:      `${selfRuEntity.name} (${selfRuEntity.type.toUpperCase()}) — санкції: ${selfRuEntity.sanctioned_by.join(', ') || 'моніторинг'}`,
+        confidence: 'high',
+      })
+    }
+    if (ruEntityHits.filter(h => h.address !== addr).length > 0) {
+      deanonScore += 50
+      ruEntityHits.filter(h => h.address !== addr).forEach(h => deanonClues.push({
+        type:       'ru_entity_counterparty',
+        value:      `Взаємодія з ${h.entity.name} (${h.address.slice(0, 12)}…)`,
+        confidence: 'high',
+      }))
+    }
     if (dropAnalysis.is_drop) {
       deanonClues.push({ type: 'drop_wallet', value: `Drop score: ${dropAnalysis.drop_score}/100`, confidence: 'medium' })
     }
@@ -334,10 +360,12 @@ export async function POST(req: NextRequest) {
     // Risk assessment
     const riskFlags: string[] = [
       ...dropAnalysis.flags,
-      mixers.length > 0      ? 'mixer_contact'    : null,
-      sanctioned.length > 0  ? 'sanctioned_contact': null,
-      darknet.length > 0     ? 'darknet_contact'   : null,
-      odbPersons.length > 0  ? 'found_in_odb'      : null,
+      mixers.length > 0                                      ? 'mixer_contact'        : null,
+      sanctioned.length > 0                                  ? 'sanctioned_contact'   : null,
+      darknet.length > 0                                     ? 'darknet_contact'      : null,
+      odbPersons.length > 0                                  ? 'found_in_odb'         : null,
+      selfRuEntity !== null                                  ? 'ru_sanctioned_entity' : null,
+      ruEntityHits.filter(h => h.address !== addr).length   ? 'ru_entity_contact'    : null,
     ].filter(Boolean) as string[]
 
     return NextResponse.json({
@@ -367,6 +395,10 @@ export async function POST(req: NextRequest) {
 
       // ODB database hits
       odb_persons: odbPersons,
+
+      // Russian/sanctioned entity hits
+      russian_entities: ruEntityHits,
+      self_ru_entity:   selfRuEntity,
 
       // Risk
       risk_flags: riskFlags,
