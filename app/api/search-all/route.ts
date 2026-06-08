@@ -5,7 +5,10 @@
 
 import { NextRequest } from 'next/server'
 
-const VPS = `http://${process.env.VPS_HOST || '161.35.86.145'}:${process.env.TELEGRAM_SEARCH_PORT || '8001'}`
+// VPS access through nginx HTTPS proxy — direct ports blocked by UFW
+const VPS_URL = process.env.VPS_URL || 'https://evidencebases.com/odb-api'
+// Fallback direct (local dev only — не працює на Vercel після UFW)
+const VPS_DIRECT = `http://${process.env.VPS_HOST || '161.35.86.145'}:${process.env.TELEGRAM_SEARCH_PORT || '8001'}`
 
 // На Vercel немає localhost — використовуємо VERCEL_URL (авто-інжектується) або APP_URL
 function getBaseUrl(): string {
@@ -156,7 +159,7 @@ export async function POST(req: NextRequest) {
             body: JSON.stringify({ phone: q }),
           }, 7000)
         } else {
-          d = await safeFetch(`${VPS}/search/tg-user`, {
+          d = await safeFetch(`${VPS_URL}/telethon/search/tg-user`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name: q, limit: 5 }),
@@ -351,9 +354,8 @@ export async function POST(req: NextRequest) {
     if (['name', 'username', 'phone', 'vk_url'].includes(type)) {
       tasks.push((async () => {
         send('vk', 'loading')
-        // Спочатку через VPS проксі напряму (8008), fallback через наш API
-        const VPS_VK = `http://${process.env.VPS_HOST || '161.35.86.145'}:8008`
-        let d = await safeFetch(`${VPS_VK}/vk/search`, {
+        // VPS через nginx HTTPS proxy → :8008 (прямий порт заблокований UFW)
+        let d = await safeFetch(`${VPS_URL}/telethon/vk/search`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ query: q, type }),
@@ -400,7 +402,7 @@ export async function POST(req: NextRequest) {
     if (type === 'username') {
       tasks.push((async () => {
         send('social', 'loading')
-        const d = await safeFetch(`http://${process.env.VPS_HOST || '161.35.86.145'}:8005/social/username`, {
+        const d = await safeFetch(`${VPS_URL}/social-vps/social/username`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username: q }),
