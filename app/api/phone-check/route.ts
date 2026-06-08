@@ -102,26 +102,29 @@ async function checkTelegram(phone: string) {
   }, null)
 }
 
-// ─── WhatsApp via Green-API (free tier, real check) ──────────────────────────
-// Register at green-api.com → get instanceId + apiTokenInstance
-// Set env: GREEN_API_INSTANCE_ID, GREEN_API_TOKEN
+// ─── WhatsApp via UltraMsg (cloud API, works from Vercel) ────────────────────
+// Register at ultramsg.com → New Instance → scan QR → get instanceId + token
+// Set env: ULTRAMSG_INSTANCE_ID, ULTRAMSG_TOKEN
 async function checkWhatsApp(phone: string) {
   return safe(async () => {
-    const instanceId = process.env.GREEN_API_INSTANCE_ID
-    const apiToken   = process.env.GREEN_API_TOKEN
-    if (!instanceId || !apiToken) return null  // not configured
+    const instanceId = process.env.ULTRAMSG_INSTANCE_ID
+    const token      = process.env.ULTRAMSG_TOKEN
+    if (!instanceId || !token) return null
 
     const cleanPhone = phone.replace(/\D/g, '')
-    const res = await fetch(
-      `https://api.green-api.com/waInstance${instanceId}/checkWhatsapp/${cleanPhone}`,
-      {
-        headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(8000),
-      }
-    )
+    const body = new URLSearchParams({ token, id: `${cleanPhone}@c.us` })
+
+    const res = await fetch(`https://api.ultramsg.com/${instanceId}/contacts/check`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString(),
+      signal: AbortSignal.timeout(8000),
+    })
     if (!res.ok) return null
     const data = await res.json()
-    return { found: data.existsWhatsapp === true }
+    // UltraMsg returns: { id, numberExists, isBusiness, isEnterprise }
+    if (data.error) return null
+    return { found: data.numberExists === true, is_business: data.isBusiness }
   }, null)
 }
 
@@ -254,7 +257,7 @@ export async function POST(request: NextRequest) {
     },
     links,
     config: {
-      whatsapp_enabled:  !!(process.env.GREEN_API_INSTANCE_ID && process.env.GREEN_API_TOKEN),
+      whatsapp_enabled:  !!(process.env.ULTRAMSG_INSTANCE_ID && process.env.ULTRAMSG_TOKEN),
       vk_enabled:        !!process.env.VK_ACCESS_TOKEN,
     },
   })
