@@ -309,7 +309,9 @@ function countHits(key: string, data: any): number {
     case 'social':         return data.found?.filter((f: any) => f.found).length || data.total || 0
     case 'phone_presence': {
       const m = data.messengers || {}
-      return Object.values(m).filter((v: any) => v?.found).length
+      const hits = Object.values(m).filter((v: any) => v?.found).length
+      // carrier_info always available for any valid phone number
+      return hits || (data.carrier_info ? 1 : 0)
     }
     default:               return 0
   }
@@ -418,11 +420,12 @@ function PersonsResults({ data }: { data: any }) {
   )
 }
 
-// ─── Phone Presence (Telegram/WhatsApp/Viber/Signal) ─────────────────────────
+// ─── Phone Presence (carrier + Telegram/WhatsApp/Viber/Signal) ───────────────
 function PhonePresenceResults({ data }: { data: any }) {
   if (!data) return null
   const m = data.messengers || {}
   const c = data.caller_id || {}
+  const ci = data.carrier_info
 
   const APPS = [
     { key: 'telegram', label: 'Telegram', icon: '✈️', color: 'sky' },
@@ -433,6 +436,41 @@ function PhonePresenceResults({ data }: { data: any }) {
 
   return (
     <div className="space-y-3 text-sm">
+      {/* Carrier info block */}
+      {ci && (
+        <div className="rounded-lg bg-gray-800/70 border border-gray-600/50 px-3 py-2">
+          <p className="text-xs text-gray-500 uppercase tracking-wide mb-1.5">📡 Оператор / HLR</p>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+            <div>
+              <span className="text-gray-500">Оператор: </span>
+              <span className="text-white font-semibold">{ci.operator}</span>
+            </div>
+            <div>
+              <span className="text-gray-500">Країна: </span>
+              <span className="text-white">{ci.country}</span>
+              {ci.country_code && <span className="text-gray-500 ml-1">({ci.country_code})</span>}
+            </div>
+            <div>
+              <span className="text-gray-500">Тип: </span>
+              <span className="text-gray-300">
+                {ci.number_type === 'mobile' ? '📱 Мобільний'
+                  : ci.number_type === 'landline' ? '☎️ Стаціонарний'
+                  : ci.number_type === 'voip' ? '🌐 VoIP'
+                  : '❓ Невідомо'}
+              </span>
+            </div>
+            {ci.mnp !== null && (
+              <div>
+                <span className="text-gray-500">MNP: </span>
+                <span className={ci.mnp ? 'text-yellow-400' : 'text-gray-400'}>
+                  {ci.mnp ? '⚠️ Перенесений' : 'Оригінальний'}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Messenger presence grid */}
       <div className="grid grid-cols-2 gap-2">
         {APPS.map(({ key, label, icon, color }) => {
