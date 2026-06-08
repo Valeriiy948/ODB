@@ -1,15 +1,12 @@
 // app/api/phone-check/route.ts
-// Phone enrichment: carrier detection + messenger presence + caller ID
-// VPS access goes through nginx HTTPS proxy (direct ports blocked by UFW)
+// Comprehensive phone intelligence: carrier + messengers + social networks
 // POST { phone: "+380991234567" }
 
 import { NextRequest, NextResponse } from 'next/server'
 
-// All VPS calls go through nginx HTTPS proxy → evidencebases.com/odb-api
-// Nginx routes: /odb-api/telethon/ → :8008, /odb-api/presence/ → :8001, /odb-api/regs/ → :8006
 const VPS_URL = process.env.VPS_URL || 'https://evidencebases.com/odb-api'
 
-// ─── Carrier detection by number prefix (no API, no cost) ────────────────────
+// ─── Carrier detection by prefix (no API, instant) ───────────────────────────
 interface CarrierInfo {
   operator: string
   country: string
@@ -19,112 +16,181 @@ interface CarrierInfo {
 }
 
 const UA_MOBILE: Record<string, string> = {
-  // Kyivstar
   '067': 'Kyivstar', '096': 'Kyivstar', '097': 'Kyivstar', '098': 'Kyivstar', '068': 'Kyivstar',
-  // Vodafone Ukraine
   '050': 'Vodafone Ukraine', '066': 'Vodafone Ukraine', '095': 'Vodafone Ukraine', '099': 'Vodafone Ukraine',
-  // lifecell
   '063': 'lifecell', '073': 'lifecell', '093': 'lifecell',
-  // Інші UA
   '091': 'Ukrtelecom Mobile', '092': 'PEOPLEnet', '094': 'Intertelecom', '039': '3Mob',
 }
 const UA_LANDLINE: Record<string, string> = {
-  '044': 'Київ (стаціонарний)', '045': 'Київська обл.', '048': 'Одеса',
-  '057': 'Харків', '032': 'Львів', '062': 'Донецьк', '061': 'Запоріжжя',
-  '0800': 'Безкоштовний (0800)',
+  '044': 'Київ', '048': 'Одеса', '057': 'Харків', '032': 'Львів',
+  '062': 'Донецьк', '061': 'Запоріжжя', '056': 'Дніпро',
 }
-
 const RU_MOBILE: Record<string, string> = {
   '916': 'МТС', '917': 'МТС', '909': 'МТС', '910': 'МТС', '915': 'МТС',
   '919': 'МТС', '980': 'МТС', '985': 'МТС', '926': 'МТС',
   '921': 'МегаФон', '922': 'МегаФон', '931': 'МегаФон', '932': 'МегаФон',
   '933': 'МегаФон', '999': 'МегаФон', '928': 'МегаФон', '927': 'МегаФон',
-  '903': 'Beeline', '905': 'Beeline', '906': 'Beeline', '929': 'Beeline', '936': 'Beeline',
-  '977': 'МТС', '978': 'Beeline', '989': 'МегаФон',
-  '900': 'Tele2', '902': 'Tele2', '904': 'Tele2', '908': 'Tele2', '950': 'Tele2',
-  '951': 'Tele2', '952': 'Tele2', '953': 'Tele2', '958': 'Tele2',
+  '903': 'Beeline', '905': 'Beeline', '906': 'Beeline', '929': 'Beeline',
+  '900': 'Tele2', '902': 'Tele2', '904': 'Tele2', '908': 'Tele2',
+  '950': 'Tele2', '951': 'Tele2', '952': 'Tele2', '953': 'Tele2',
 }
-
 const BY_MOBILE: Record<string, string> = {
   '29': 'МТС Беларусь', '33': 'МТС Беларусь',
   '44': 'A1 (Velcom)', '25': 'A1 (Velcom)',
   '17': 'life:)', '41': 'life:)',
 }
 
-const COUNTRY_CODES: Array<[string, string, string]> = [
-  ['380', 'Україна', 'UA'],
-  ['7',   'Росія',   'RU'],
-  ['375', 'Білорусь','BY'],
-  ['374', 'Вірменія','AM'],
-  ['994', 'Азербайджан','AZ'],
-  ['995', 'Грузія',  'GE'],
-  ['996', 'Киргизстан','KG'],
-  ['998', 'Узбекистан','UZ'],
-  ['992', 'Таджикистан','TJ'],
-  ['44',  'Велика Британія','GB'],
-  ['49',  'Німеччина','DE'],
-  ['33',  'Франція', 'FR'],
-  ['48',  'Польща',  'PL'],
-  ['1',   'США/Канада','US'],
-]
-
 function detectCarrier(phone: string): CarrierInfo {
   const clean = phone.replace(/\D/g, '')
 
-  // Ukraine +380
   if (clean.startsWith('380') && clean.length === 12) {
-    const prefix3 = clean.substring(2, 5)
-    if (UA_MOBILE[prefix3]) {
-      return { operator: UA_MOBILE[prefix3], country: 'Україна', country_code: 'UA', number_type: 'mobile', mnp: null }
-    }
-    // Landline: first 3–4 digits after 380
-    const prefix4 = clean.substring(2, 6)
-    if (UA_LANDLINE[prefix3]) {
-      return { operator: UA_LANDLINE[prefix3], country: 'Україна', country_code: 'UA', number_type: 'landline', mnp: null }
-    }
-    if (prefix4 === '0800') {
-      return { operator: 'Безкоштовний (0800)', country: 'Україна', country_code: 'UA', number_type: 'voip', mnp: null }
-    }
-    return { operator: 'Невідомий UA оператор', country: 'Україна', country_code: 'UA', number_type: 'mobile', mnp: null }
+    const p3 = clean.substring(2, 5)
+    if (UA_MOBILE[p3]) return { operator: UA_MOBILE[p3], country: 'Україна', country_code: 'UA', number_type: 'mobile', mnp: null }
+    if (UA_LANDLINE[p3]) return { operator: UA_LANDLINE[p3], country: 'Україна', country_code: 'UA', number_type: 'landline', mnp: null }
+    return { operator: 'Невідомий UA', country: 'Україна', country_code: 'UA', number_type: 'mobile', mnp: null }
   }
-
-  // Russia +7
   if ((clean.startsWith('7') || clean.startsWith('8')) && clean.length === 11) {
-    const prefix3 = clean.substring(1, 4)
-    const operator = RU_MOBILE[prefix3] || 'Оператор РФ'
-    return { operator, country: 'Росія', country_code: 'RU', number_type: 'mobile', mnp: null }
+    const p3 = clean.substring(1, 4)
+    return { operator: RU_MOBILE[p3] || 'Оператор РФ', country: 'Росія', country_code: 'RU', number_type: 'mobile', mnp: null }
   }
-
-  // Belarus +375
   if (clean.startsWith('375') && clean.length === 12) {
-    const prefix2 = clean.substring(3, 5)
-    const operator = BY_MOBILE[prefix2] || 'Оператор BY'
-    return { operator, country: 'Білорусь', country_code: 'BY', number_type: 'mobile', mnp: null }
+    const p2 = clean.substring(3, 5)
+    return { operator: BY_MOBILE[p2] || 'Оператор BY', country: 'Білорусь', country_code: 'BY', number_type: 'mobile', mnp: null }
   }
-
-  // Generic country detection
-  for (const [code, country, cc] of COUNTRY_CODES) {
+  const countries: Array<[string, string, string]> = [
+    ['374','Вірменія','AM'],['994','Азербайджан','AZ'],['995','Грузія','GE'],
+    ['996','Киргизстан','KG'],['998','Узбекистан','UZ'],['992','Таджикистан','TJ'],
+    ['44','Велика Британія','GB'],['49','Німеччина','DE'],['33','Франція','FR'],
+    ['48','Польща','PL'],['1','США/Канада','US'],
+  ]
+  for (const [code, country, cc] of countries) {
     if (clean.startsWith(code)) {
       return { operator: 'Невідомо', country, country_code: cc, number_type: 'unknown', mnp: null }
     }
   }
-
   return { operator: 'Невідомо', country: 'Невідома країна', country_code: '??', number_type: 'unknown', mnp: null }
 }
 
-// ─── Normalize phone ──────────────────────────────────────────────────────────
 function normalizePhone(phone: string): string {
-  const digits = phone.replace(/\D/g, '')
-  if (digits.startsWith('380') && digits.length === 12) return `+${digits}`
-  if (digits.startsWith('7')   && digits.length === 11) return `+${digits}`
-  if (digits.startsWith('375') && digits.length === 12) return `+${digits}`
-  if (digits.length === 10 && digits.startsWith('0'))   return `+38${digits}`
-  if (digits.length === 10)                             return `+38${digits}`
-  return `+${digits}`
+  const d = phone.replace(/\D/g, '')
+  if (d.startsWith('380') && d.length === 12) return `+${d}`
+  if (d.startsWith('7') && d.length === 11)   return `+${d}`
+  if (d.startsWith('375') && d.length === 12) return `+${d}`
+  if (d.length === 10 && d.startsWith('0'))   return `+38${d}`
+  if (d.length === 10)                        return `+38${d}`
+  return `+${d}`
 }
 
 async function safe<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
   try { return await fn() } catch { return fallback }
+}
+
+// ─── Telegram via Telethon :8008 (nginx proxy) ───────────────────────────────
+async function checkTelegram(phone: string) {
+  return safe(async () => {
+    const res = await fetch(`${VPS_URL}/telethon/search/phone`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone }),
+      signal: AbortSignal.timeout(15000),
+    })
+    if (!res.ok) return null
+    const d = await res.json()
+    return d.found
+      ? { found: true, name: d.name || d.first_name, username: d.username, tg_id: d.user_id || d.tg_id }
+      : { found: false }
+  }, null)
+}
+
+// ─── WhatsApp via Green-API (free tier, real check) ──────────────────────────
+// Register at green-api.com → get instanceId + apiTokenInstance
+// Set env: GREEN_API_INSTANCE_ID, GREEN_API_TOKEN
+async function checkWhatsApp(phone: string) {
+  return safe(async () => {
+    const instanceId = process.env.GREEN_API_INSTANCE_ID
+    const apiToken   = process.env.GREEN_API_TOKEN
+    if (!instanceId || !apiToken) return null  // not configured
+
+    const cleanPhone = phone.replace(/\D/g, '')
+    const res = await fetch(
+      `https://api.green-api.com/waInstance${instanceId}/checkWhatsapp/${cleanPhone}`,
+      {
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(8000),
+      }
+    )
+    if (!res.ok) return null
+    const data = await res.json()
+    return { found: data.existsWhatsapp === true }
+  }, null)
+}
+
+// ─── VKontakte phone lookup via VK API ───────────────────────────────────────
+async function checkVK(phone: string) {
+  return safe(async () => {
+    const token = process.env.VK_ACCESS_TOKEN
+    if (!token) return null
+
+    const cleanPhone = phone.replace(/\D/g, '')
+    const url = `https://api.vk.com/method/account.lookupContacts?contacts=${encodeURIComponent(cleanPhone)}&service=phone&fields=photo_50,screen_name&access_token=${token}&v=5.131`
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) })
+    if (!res.ok) return null
+    const data = await res.json()
+    const found = data.response?.found?.[0]
+    if (!found) return { found: false }
+    return {
+      found: true,
+      name: [found.first_name, found.last_name].filter(Boolean).join(' '),
+      url: `https://vk.com/${found.screen_name || `id${found.id}`}`,
+      photo: found.photo_50 || null,
+    }
+  }, null)
+}
+
+// ─── NumBuster via nginx → :8006 ─────────────────────────────────────────────
+async function checkNumBuster(phone: string) {
+  return safe(async () => {
+    const res = await fetch(`${VPS_URL}/regs/registry/numbuster`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone }),
+      signal: AbortSignal.timeout(10000),
+    })
+    if (!res.ok) return null
+    return await res.json()
+  }, null)
+}
+
+// ─── Truecaller direct API ────────────────────────────────────────────────────
+async function checkTruecaller(phone: string) {
+  return safe(async () => {
+    const key = process.env.TRUECALLER_API_KEY
+    if (!key) return null
+    const res = await fetch(
+      `https://api4.truecaller.com/v1/search?q=${encodeURIComponent(phone)}&countryCode=UA&type=4&locAddr=&placement=SEARCHRESULTS,HISTORY,DETAILS&encoding=json`,
+      { headers: { Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(8000) }
+    )
+    if (!res.ok) return null
+    const data = await res.json()
+    const r = data?.data?.[0]
+    return r ? { name: r.name, carrier: r.phones?.[0]?.carrier, country: r.phones?.[0]?.countryCode } : null
+  }, null)
+}
+
+// ─── GetContact via nginx → :8005 ────────────────────────────────────────────
+async function checkGetContact(phone: string) {
+  return safe(async () => {
+    const res = await fetch(`${VPS_URL}/social-vps/social/getcontact`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone }),
+      signal: AbortSignal.timeout(10000),
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    if (!data.found && !data.total) return null
+    return data
+  }, null)
 }
 
 export async function POST(request: NextRequest) {
@@ -133,70 +199,38 @@ export async function POST(request: NextRequest) {
   if (!rawPhone) return NextResponse.json({ error: 'phone required' }, { status: 400 })
 
   const phone = normalizePhone(rawPhone)
+  const cleanPhone = phone.replace(/\D/g, '')
   const carrier_info = detectCarrier(phone)
 
-  const [telegram, vpsPresence, numbuster, truecaller] = await Promise.all([
-    // Telegram — Telethon MTProto via nginx → :8008
-    safe(async () => {
-      const res = await fetch(`${VPS_URL}/telethon/search/phone`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone }),
-        signal: AbortSignal.timeout(15000),
-      })
-      if (!res.ok) return null
-      const d = await res.json()
-      return d.found
-        ? { found: true, name: d.name || d.first_name, username: d.username, tg_id: d.user_id || d.tg_id, photo: d.photo }
-        : { found: false }
-    }, null),
-
-    // WhatsApp + Viber + Signal via nginx → :8001
-    safe(async () => {
-      const res = await fetch(`${VPS_URL}/presence/check/phone-presence`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone }),
-        signal: AbortSignal.timeout(20000),
-      })
-      if (!res.ok) return null
-      return await res.json()
-    }, null),
-
-    // NumBuster (caller ID) via nginx → :8006
-    safe(async () => {
-      const res = await fetch(`${VPS_URL}/regs/registry/numbuster`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone }),
-        signal: AbortSignal.timeout(10000),
-      })
-      if (!res.ok) return null
-      return await res.json()
-    }, null),
-
-    // Truecaller (direct API)
-    safe(async () => {
-      const key = process.env.TRUECALLER_API_KEY
-      if (!key) return null
-      const res = await fetch(
-        `https://api4.truecaller.com/v1/search?q=${encodeURIComponent(phone)}&countryCode=UA&type=4&locAddr=&placement=SEARCHRESULTS,HISTORY,DETAILS&encoding=json`,
-        {
-          headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-          signal: AbortSignal.timeout(8000),
-        }
-      )
-      if (!res.ok) return null
-      const data = await res.json()
-      const r = data?.data?.[0]
-      return r ? { name: r.name, carrier: r.phones?.[0]?.carrier, country: r.phones?.[0]?.countryCode } : null
-    }, null),
+  const [telegram, whatsapp, vk, numbuster, truecaller, getcontact] = await Promise.all([
+    checkTelegram(phone),
+    checkWhatsApp(phone),
+    checkVK(phone),
+    checkNumBuster(phone),
+    checkTruecaller(phone),
+    checkGetContact(phone),
   ])
 
-  // Merge truecaller carrier name into carrier_info if available
-  if (truecaller?.carrier) {
+  // Merge truecaller carrier into carrier_info if better data available
+  if (truecaller?.carrier && carrier_info.operator.includes('Невідом')) {
     carrier_info.operator = truecaller.carrier
-    carrier_info.mnp = false
+  }
+
+  // Quick-access links for manual verification (pre-filled with phone)
+  const links = {
+    whatsapp:  `https://wa.me/${cleanPhone}`,
+    viber:     `viber://chat?number=%2B${cleanPhone}`,
+    telegram:  telegram?.username ? `https://t.me/${telegram.username}` : `https://t.me/+${cleanPhone}`,
+    signal:    `https://signal.me/#p/%2B${cleanPhone}`,
+    vk:        `https://vk.com/search?c%5Bq%5D=${cleanPhone}&c%5Bsection%5D=people`,
+    facebook:  `https://www.facebook.com/search/people/?q=%2B${cleanPhone}`,
+    instagram: `https://www.instagram.com`,
+    tiktok:    `https://www.tiktok.com/search/user?q=${cleanPhone}`,
+    ok:        `https://ok.ru/search?query=${cleanPhone}&st.cmd=peopleSearch`,
+    linkedin:  `https://www.linkedin.com/search/results/people/?keywords=${cleanPhone}`,
+    getcontact:`https://www.getcontact.com/en/number/${cleanPhone}`,
+    numbuster: `https://numbuster.com/number/${phone}`,
+    truecaller:`https://www.truecaller.com/search/ua/${cleanPhone}`,
   }
 
   return NextResponse.json({
@@ -204,13 +238,24 @@ export async function POST(request: NextRequest) {
     carrier_info,
     messengers: {
       telegram: telegram || { found: false },
-      whatsapp: vpsPresence?.whatsapp !== undefined ? { found: !!vpsPresence.whatsapp } : null,
-      viber:    vpsPresence?.viber    !== undefined ? { found: !!vpsPresence.viber }    : null,
-      signal:   vpsPresence?.signal   !== undefined ? { found: !!vpsPresence.signal }   : null,
+      whatsapp: whatsapp,  // null = not configured (needs Green-API), false/true = checked
+      viber:    null,      // no free API — use links.viber for manual check
+      signal:   null,      // no API exists
+    },
+    social: {
+      vk:        vk,       // null = no VK_ACCESS_TOKEN
+      instagram: null,
+      facebook:  null,
     },
     caller_id: {
       numbuster:  numbuster?.success ? { name: numbuster.name, rating: numbuster.rating } : null,
       truecaller: truecaller,
+      getcontact: getcontact,
+    },
+    links,
+    config: {
+      whatsapp_enabled:  !!(process.env.GREEN_API_INSTANCE_ID && process.env.GREEN_API_TOKEN),
+      vk_enabled:        !!process.env.VK_ACCESS_TOKEN,
     },
   })
 }

@@ -420,31 +420,76 @@ function PersonsResults({ data }: { data: any }) {
   )
 }
 
-// ─── Phone Presence (carrier + Telegram/WhatsApp/Viber/Signal) ───────────────
+// ─── Phone Presence: carrier + messengers + social networks ──────────────────
 function PhonePresenceResults({ data }: { data: any }) {
   if (!data) return null
-  const m = data.messengers || {}
-  const c = data.caller_id || {}
-  const ci = data.carrier_info
+  const m   = data.messengers || {}
+  const soc = data.social     || {}
+  const c   = data.caller_id  || {}
+  const ci  = data.carrier_info
+  const lnk = data.links      || {}
 
-  const APPS = [
-    { key: 'telegram', label: 'Telegram', icon: '✈️', color: 'sky' },
-    { key: 'whatsapp', label: 'WhatsApp', icon: '💬', color: 'green' },
-    { key: 'viber',    label: 'Viber',    icon: '📲', color: 'purple' },
-    { key: 'signal',   label: 'Signal',   icon: '🔒', color: 'blue' },
+  // null = not configured / no API   false = checked, not found   true/object = found
+  const MESSENGERS: Array<{ key: string; label: string; icon: string; linkKey: string }> = [
+    { key: 'telegram', label: 'Telegram', icon: '✈️', linkKey: 'telegram' },
+    { key: 'whatsapp', label: 'WhatsApp', icon: '💬', linkKey: 'whatsapp' },
+    { key: 'viber',    label: 'Viber',    icon: '📲', linkKey: 'viber'    },
+    { key: 'signal',   label: 'Signal',   icon: '🔒', linkKey: 'signal'   },
   ]
+
+  const SOCIAL: Array<{ key: string; label: string; icon: string; linkKey: string }> = [
+    { key: 'vk',        label: 'ВКонтакте', icon: '💙', linkKey: 'vk'        },
+    { key: 'instagram', label: 'Instagram',  icon: '📸', linkKey: 'instagram' },
+    { key: 'facebook',  label: 'Facebook',   icon: '👥', linkKey: 'facebook'  },
+  ]
+
+  const QUICK_LINKS = [
+    { key: 'getcontact', label: 'GetContact', icon: '📖' },
+    { key: 'numbuster',  label: 'NumBuster',  icon: '📞' },
+    { key: 'truecaller', label: 'TrueCaller',  icon: '✅' },
+    { key: 'tiktok',     label: 'TikTok',     icon: '🎵' },
+    { key: 'ok',         label: 'Однокласники',icon: '🔶' },
+    { key: 'linkedin',   label: 'LinkedIn',   icon: '💼' },
+  ]
+
+  function MessengerChip({ info, label, icon, link }: { info: any; label: string; icon: string; link?: string }) {
+    const found  = info?.found === true || (typeof info === 'boolean' && info)
+    const checked = info !== null && info !== undefined
+
+    const inner = (
+      <div className={`flex items-center gap-2 rounded-lg px-3 py-2 border transition-colors ${
+        found    ? 'bg-green-900/20 border-green-700/40' :
+        !checked ? 'bg-gray-800/30 border-gray-700/20 opacity-60' :
+                   'bg-gray-800/40 border-gray-700/30'
+      }`}>
+        <span className="text-base">{icon}</span>
+        <div className="flex-1 min-w-0">
+          <p className={`text-xs font-medium truncate ${found ? 'text-white' : checked ? 'text-gray-400' : 'text-gray-600'}`}>{label}</p>
+          {found && info.name     && <p className="text-xs text-gray-300 truncate">{info.name}</p>}
+          {found && info.username && <p className="text-xs text-sky-400 truncate">@{info.username}</p>}
+          {!checked && <p className="text-xs text-gray-600">не перевірено</p>}
+        </div>
+        <span className={`text-xs shrink-0 font-bold ${found ? 'text-green-400' : checked ? 'text-red-500/70' : 'text-gray-700'}`}>
+          {found ? '✓' : checked ? '✗' : '?'}
+        </span>
+      </div>
+    )
+
+    if (link && found && info.username) {
+      return <a href={`https://t.me/${info.username}`} target="_blank" rel="noopener noreferrer">{inner}</a>
+    }
+    return inner
+  }
 
   return (
     <div className="space-y-3 text-sm">
-      {/* Carrier info block */}
+
+      {/* Carrier info */}
       {ci && (
-        <div className="rounded-lg bg-gray-800/70 border border-gray-600/50 px-3 py-2">
+        <div className="rounded-lg bg-gray-800/60 border border-gray-600/40 px-3 py-2">
           <p className="text-xs text-gray-500 uppercase tracking-wide mb-1.5">📡 Оператор / HLR</p>
           <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-            <div>
-              <span className="text-gray-500">Оператор: </span>
-              <span className="text-white font-semibold">{ci.operator}</span>
-            </div>
+            <div><span className="text-gray-500">Оператор: </span><span className="text-white font-semibold">{ci.operator}</span></div>
             <div>
               <span className="text-gray-500">Країна: </span>
               <span className="text-white">{ci.country}</span>
@@ -455,67 +500,84 @@ function PhonePresenceResults({ data }: { data: any }) {
               <span className="text-gray-300">
                 {ci.number_type === 'mobile' ? '📱 Мобільний'
                   : ci.number_type === 'landline' ? '☎️ Стаціонарний'
-                  : ci.number_type === 'voip' ? '🌐 VoIP'
-                  : '❓ Невідомо'}
+                  : ci.number_type === 'voip' ? '🌐 VoIP' : '❓'}
               </span>
             </div>
-            {ci.mnp !== null && (
-              <div>
-                <span className="text-gray-500">MNP: </span>
-                <span className={ci.mnp ? 'text-yellow-400' : 'text-gray-400'}>
-                  {ci.mnp ? '⚠️ Перенесений' : 'Оригінальний'}
-                </span>
-              </div>
-            )}
           </div>
         </div>
       )}
 
-      {/* Messenger presence grid */}
-      <div className="grid grid-cols-2 gap-2">
-        {APPS.map(({ key, label, icon, color }) => {
-          const info = m[key]
-          if (info === null || info === undefined) return (
-            <div key={key} className="flex items-center gap-2 rounded-lg px-3 py-2 bg-gray-800/50 border border-gray-700/40 text-gray-600">
-              <span>{icon}</span>
-              <span className="text-xs">{label}</span>
-              <span className="ml-auto text-xs">—</span>
-            </div>
-          )
-          const found = info?.found
-          return (
-            <div key={key} className={`flex items-center gap-2 rounded-lg px-3 py-2 border ${
-              found
-                ? `bg-${color}-900/20 border-${color}-700/40`
-                : 'bg-gray-800/30 border-gray-700/30'
-            }`}>
-              <span>{icon}</span>
-              <div className="flex-1 min-w-0">
-                <span className={`text-xs font-medium ${found ? 'text-white' : 'text-gray-500'}`}>{label}</span>
-                {found && info.name && <p className="text-xs text-gray-400 truncate">{info.name}</p>}
-                {found && info.username && (
-                  <a href={`https://t.me/${info.username}`} target="_blank" rel="noopener noreferrer"
-                    className="text-xs text-sky-400 hover:underline">@{info.username}</a>
-                )}
-              </div>
-              <span className={`text-xs ml-auto ${found ? 'text-green-400' : 'text-gray-600'}`}>
-                {found ? '✓' : '✗'}
-              </span>
-            </div>
-          )
-        })}
+      {/* Messenger presence */}
+      <div>
+        <p className="text-xs text-gray-500 uppercase tracking-wide mb-1.5">💬 Месенджери</p>
+        <div className="grid grid-cols-2 gap-2">
+          {MESSENGERS.map(({ key, label, icon, linkKey }) => (
+            <MessengerChip
+              key={key}
+              info={m[key]}
+              label={label}
+              icon={icon}
+              link={lnk[linkKey]}
+            />
+          ))}
+        </div>
       </div>
 
+      {/* Social networks */}
+      <div>
+        <p className="text-xs text-gray-500 uppercase tracking-wide mb-1.5">🌐 Соцмережі</p>
+        <div className="grid grid-cols-3 gap-2">
+          {SOCIAL.map(({ key, label, icon, linkKey }) => {
+            const info = soc[key]
+            const found = info?.found === true
+            const link  = lnk[linkKey]
+            return (
+              <a key={key} href={link} target="_blank" rel="noopener noreferrer"
+                className={`flex flex-col items-center gap-1 rounded-lg px-2 py-2.5 border text-center transition-colors hover:border-gray-500 ${
+                  found ? 'bg-blue-900/20 border-blue-700/40' : 'bg-gray-800/30 border-gray-700/20'
+                }`}>
+                <span className="text-lg">{icon}</span>
+                <span className={`text-xs font-medium ${found ? 'text-white' : 'text-gray-500'}`}>{label}</span>
+                {found && info.name
+                  ? <span className="text-xs text-gray-300 truncate w-full text-center">{info.name}</span>
+                  : <span className="text-xs text-gray-600">🔗 перевірити</span>
+                }
+              </a>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Quick check links row */}
+      {Object.keys(lnk).length > 0 && (
+        <div>
+          <p className="text-xs text-gray-500 uppercase tracking-wide mb-1.5">🔗 Швидка перевірка</p>
+          <div className="flex flex-wrap gap-1.5">
+            {QUICK_LINKS.map(({ key, label, icon }) => lnk[key] && (
+              <a key={key} href={lnk[key]} target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-1.5 text-xs bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg px-2.5 py-1.5 text-gray-300 transition-colors">
+                <span>{icon}</span>{label}
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Caller ID */}
-      {(c.numbuster?.name || c.truecaller?.name) && (
-        <div className="rounded-lg bg-yellow-900/10 border border-yellow-700/30 p-3">
+      {(c.numbuster?.name || c.truecaller?.name || c.getcontact?.total > 0) && (
+        <div className="rounded-lg bg-yellow-900/10 border border-yellow-700/30 p-3 space-y-1">
           <p className="text-xs text-yellow-600 font-semibold mb-1">📞 Caller ID</p>
           {c.numbuster?.name && (
             <p className="text-sm text-gray-300">NumBuster: <span className="text-white">{c.numbuster.name}</span></p>
           )}
           {c.truecaller?.name && (
-            <p className="text-sm text-gray-300">Truecaller: <span className="text-white">{c.truecaller.name}</span>
+            <p className="text-sm text-gray-300">TrueCaller: <span className="text-white">{c.truecaller.name}</span>
               {c.truecaller.carrier && <span className="text-gray-500 text-xs ml-1">({c.truecaller.carrier})</span>}
+            </p>
+          )}
+          {c.getcontact?.total > 0 && (
+            <p className="text-sm text-gray-300">GetContact: збережений у <span className="text-white">{c.getcontact.total}</span> людей
+              {c.getcontact.entries?.[0]?.name && <span className="text-yellow-300 ml-1">«{c.getcontact.entries[0].name}»</span>}
             </p>
           )}
         </div>
