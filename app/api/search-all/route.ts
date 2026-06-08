@@ -176,7 +176,7 @@ export async function POST(req: NextRequest) {
     if (['name', 'phone'].includes(type)) {
       send('tg_bots', 'done', {
         async: true,
-        vps_url: VPS,
+        vps_url: VPS_URL,
         query: toRussian(q),
         query_original: q,
         message: 'Пошук через Telegram боти виконується окремо (30-60с)',
