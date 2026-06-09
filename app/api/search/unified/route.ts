@@ -120,8 +120,39 @@ async function searchSherlockBot(full_name: string, dob: string) {
   return { source: 'sherlock_bot', label: 'Sherlock Bot (~$0.28)', ...res }
 }
 
+// ── Rate limiting ─────────────────────────────────────────────────────────
+const RL_WINDOW = 60_000
+const RL_MAX    = 10  // 10 запитів/хв — unified важчий за search-all
+const rlMap     = new Map<string, { count: number; resetAt: number }>()
+
+function checkRateLimit(ip: string): { allowed: boolean; retryAfter: number } {
+  const now    = Date.now()
+  const bucket = rlMap.get(ip)
+  if (!bucket || now >= bucket.resetAt) {
+    rlMap.set(ip, { count: 1, resetAt: now + RL_WINDOW })
+    return { allowed: true, retryAfter: 0 }
+  }
+  if (bucket.count >= RL_MAX) {
+    return { allowed: false, retryAfter: Math.ceil((bucket.resetAt - now) / 1000) }
+  }
+  bucket.count++
+  return { allowed: true, retryAfter: 0 }
+}
+
 // ── Main handler ────────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+            || req.headers.get('x-real-ip') || 'unknown'
+  if (ip !== 'unknown') {
+    const { allowed, retryAfter } = checkRateLimit(ip)
+    if (!allowed) {
+      return NextResponse.json(
+        { error: `Занадто багато запитів. Спробуйте через ${retryAfter}с.` },
+        { status: 429, headers: { 'Retry-After': String(retryAfter) } }
+      )
+    }
+  }
+
   try {
     const body = await req.json()
     const {
