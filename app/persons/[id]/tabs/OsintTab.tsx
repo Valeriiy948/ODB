@@ -193,6 +193,104 @@ export function OsintTab({ state: s }: OsintTabProps) {
         )}
       </div>
 
+      {/* ── Sherlock Bot ── */}
+      <div className="mt-4 bg-gray-800 rounded-xl border border-violet-900/50 overflow-hidden">
+        <div className="bg-violet-950/40 border-b border-violet-900/40 px-5 py-3 flex items-center justify-between">
+          <div>
+            <h3 className="text-violet-300 font-semibold flex items-center gap-2">
+              🕵️ Sherlock Bot — Бази РФ/СНД
+              {s.sherlockBotData?.matches > 0 && (
+                <span className="bg-violet-700 text-violet-100 text-xs px-2 py-0.5 rounded-full">
+                  {s.sherlockBotData.matches} збігів
+                </span>
+              )}
+            </h3>
+            <p className="text-violet-900 text-xs mt-0.5">
+              54-72 збіги · ПІБ + ДН · ~$0.28/запит · 60 запитів залишилось
+            </p>
+          </div>
+          <button
+            onClick={s.runSherlockBot}
+            disabled={s.sherlockBotLoading}
+            className="px-3 py-1.5 bg-violet-700 hover:bg-violet-600 disabled:opacity-50 rounded-lg text-xs font-medium transition flex items-center gap-1 whitespace-nowrap"
+          >
+            {s.sherlockBotLoading
+              ? <><span className="animate-spin inline-block">⟳</span> Пошук (~35с)...</>
+              : s.sherlockBotData ? '🔄 Оновити' : '🕵️ Перевірити (~$0.28)'}
+          </button>
+        </div>
+
+        {s.sherlockBotError && (
+          <div className="px-5 py-3 text-sm text-red-400 bg-red-950/30">❌ {s.sherlockBotError}</div>
+        )}
+        {s.sherlockBotLoading && (
+          <div className="px-5 py-8 text-center text-violet-400 text-sm">
+            <span className="animate-spin inline-block mr-2 text-xl">⟳</span>
+            Запит до @SHERLOCK_626jqxevxx_bot... (~35 секунд)
+          </div>
+        )}
+        {!s.sherlockBotLoading && !s.sherlockBotData && !s.sherlockBotError && (
+          <div className="px-5 py-6 text-center text-gray-600 text-sm">
+            Натисніть для пошуку по базах РФ/СНД через Sherlock Bot
+          </div>
+        )}
+        {!s.sherlockBotLoading && s.sherlockBotData && (
+          <div className="p-4 space-y-3">
+            {/* Summary */}
+            <div className={`px-4 py-3 rounded-lg border ${
+              s.sherlockBotData.matches > 0
+                ? 'bg-green-950/20 border-green-800'
+                : 'bg-gray-900 border-gray-700'
+            }`}>
+              <p className={`font-bold text-base ${s.sherlockBotData.matches > 0 ? 'text-green-400' : 'text-gray-400'}`}>
+                {s.sherlockBotData.matches > 0
+                  ? `✅ ${s.sherlockBotData.matches} збігів знайдено`
+                  : '❌ Збігів не знайдено'}
+              </p>
+              <p className="text-gray-500 text-xs mt-0.5">
+                Запит: <span className="text-gray-300 font-mono">{s.sherlockBotData.query}</span>
+              </p>
+            </div>
+
+            {/* Raw results */}
+            {s.sherlockBotData.results?.map((r: any, i: number) => (
+              <div key={i} className="bg-gray-900/70 rounded-lg border border-gray-700 px-4 py-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-violet-300 text-xs font-medium bg-violet-900/40 px-2 py-0.5 rounded">
+                    {r.source_label || r.source}
+                  </span>
+                  {r.date && <span className="text-gray-600 text-xs">{r.date}</span>}
+                  {r.url && (
+                    <a href={r.url} target="_blank" rel="noopener noreferrer"
+                      className="ml-auto text-xs text-blue-400 hover:text-blue-300">
+                      ↗ Відкрити
+                    </a>
+                  )}
+                </div>
+                {r.snippet && (
+                  <p className="text-gray-300 text-xs leading-relaxed whitespace-pre-wrap">
+                    {r.snippet.slice(0, 1000)}
+                    {r.snippet.length > 1000 && <span className="text-gray-600">... (скорочено)</span>}
+                  </p>
+                )}
+              </div>
+            ))}
+
+            {/* Links */}
+            {s.sherlockBotData.links?.length > 0 && (
+              <div className="flex flex-wrap gap-2 pt-1">
+                {s.sherlockBotData.links.map((link: string, i: number) => (
+                  <a key={i} href={link} target="_blank" rel="noopener noreferrer"
+                    className="text-xs px-3 py-1.5 bg-violet-900/30 hover:bg-violet-900/50 text-violet-300 border border-violet-800/50 rounded-lg transition">
+                    ↗ Посилання {i + 1}
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* ── Telegram пошук ── */}
       <div className="mt-4 bg-gray-800 rounded-xl border border-blue-900/50 overflow-hidden">
         <div className="bg-blue-950/40 border-b border-blue-900/40 px-5 py-3">
