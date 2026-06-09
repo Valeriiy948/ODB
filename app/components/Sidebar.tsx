@@ -71,11 +71,8 @@ export default function Sidebar() {
     {
       title: t('ПОШУК', 'SEARCH', 'ПОИСК'),
       items: [
-        {
-          icon: '🔍',
-          label: t('Пошук по всіх джерелах', 'Universal Search', 'Универсальный поиск'),
-          href: '/search-all',
-        },
+        { icon: '🔎', label: t('Єдиний пошук',          'Unified Search',  'Единый поиск'),     href: '/breach-intel' },
+        { icon: '🔍', label: t('Пошук по всіх джерелах','Web Search',      'Поиск по источникам'), href: '/search-all' },
       ],
     },
     {
@@ -85,7 +82,6 @@ export default function Sidebar() {
         { icon: '👥', label: t('Картотека осіб',    'Persons DB',      'Картотека лиц'),    href: '/persons' },
         { icon: '⚖️', label: t('Справи',            'Cases',           'Дела'),             href: '/incidents' },
         { icon: '📞', label: t('Телефон / ІПН',     'Phone / ID',      'Телефон / ИНН'),    href: '/phone-search' },
-        { icon: '🔓', label: t('Витоки даних',       'Data Leaks',      'Утечки данных'),    href: '/breach-intel' },
         { icon: '🏢', label: t('Бізнес-розвідка',    'Business Intel',  'Бизнес-разведка'),  href: '/company-search' },
         { icon: '🌐', label: t('Мережева розвідка',  'Network Intel',   'Сетевая разведка'), href: '/network-intel' },
         { icon: '₿',  label: t('Крипто-розвідка',   'Crypto Intel',    'Крипто-разведка'),  href: '/crypto-intel' },

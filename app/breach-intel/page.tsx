@@ -202,6 +202,34 @@ function EntryCard({ entry, source }: { entry: any; source: string }) {
 }
 
 // ─── Source block ─────────────────────────────────────────────────────────────
+function UnifiedEntryCard({ entry, sourceKey }: { entry: any; sourceKey: string }) {
+  const isTg = sourceKey === 'telegram_bots' || sourceKey === 'sherlock_bot'
+  return (
+    <div className="bg-gray-900/80 border border-gray-700/60 rounded-lg px-4 py-3">
+      {entry.database && (
+        <p className="text-xs font-medium text-gray-400 mb-2">📂 {entry.database}</p>
+      )}
+      {isTg && entry.snippet && (
+        <p className="text-gray-300 text-xs leading-relaxed mb-2 whitespace-pre-wrap">
+          {entry.snippet.slice(0, 500)}{entry.snippet.length > 500 && <span className="text-gray-600">…</span>}
+        </p>
+      )}
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+        {entry.name     && <div className="col-span-2 flex gap-2"><span className="text-gray-500 w-20 shrink-0">Ім'я</span><span className="text-gray-200">{entry.name}</span></div>}
+        {entry.phone    && <div className="flex gap-2"><span className="text-gray-500 w-20 shrink-0">Тел.</span><a href={`/phone-search?q=${entry.phone}`} className="text-green-400 font-mono hover:underline">📱 {entry.phone}</a></div>}
+        {entry.email    && <div className="flex gap-2"><span className="text-gray-500 w-20 shrink-0">Email</span><a href={`/breach-intel?q=${encodeURIComponent(entry.email)}`} className="text-blue-400 font-mono hover:underline">✉️ {entry.email}</a></div>}
+        {entry.dob      && <div className="flex gap-2"><span className="text-gray-500 w-20 shrink-0">ДН</span><span className="text-gray-300">📅 {entry.dob}</span></div>}
+        {entry.inn      && <div className="flex gap-2"><span className="text-gray-500 w-20 shrink-0">ІПН</span><span className="text-yellow-300 font-mono">{entry.inn}</span></div>}
+        {entry.passport && <div className="flex gap-2"><span className="text-gray-500 w-20 shrink-0">Паспорт</span><span className="text-green-300 font-mono">🪪 {entry.passport}</span></div>}
+        {entry.address  && <div className="col-span-2 flex gap-2"><span className="text-gray-500 w-20 shrink-0">Адреса</span><span className="text-gray-300">📍 {typeof entry.address === 'string' ? entry.address : JSON.stringify(entry.address)}</span></div>}
+        {entry.extra_phones && <div className="col-span-2 flex gap-2"><span className="text-gray-500 w-20 shrink-0">Ще тел.</span><span className="text-green-400 font-mono">{entry.extra_phones}</span></div>}
+        {entry.as_of    && <div className="flex gap-2"><span className="text-gray-500 w-20 shrink-0">Рік</span><span className="text-gray-500">{entry.as_of}</span></div>}
+      </div>
+      {entry.url && <a href={entry.url} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block text-xs text-blue-400 hover:underline">↗ Джерело</a>}
+    </div>
+  )
+}
+
 function SourceBlock({ sourceKey, data }: { sourceKey: string; data: any }) {
   const meta     = SOURCE_META[sourceKey]
   const [open, setOpen] = useState(false)
@@ -881,24 +909,32 @@ function BreachIntelContent() {
     finally { setPivotLoading(false) }
   }
 
-  // ── Smart Enrich state ──
-  const [enrichLoading, setEnrichLoading] = useState(false)
-  const [enrichResult,  setEnrichResult]  = useState<any>(null)
-  const [enrichFields,  setEnrichFields]  = useState({ name:'', phone:'', email:'', dob:'', inn:'', passport:'' })
+  // ── Unified Search state ──
+  const [enrichLoading,  setEnrichLoading]  = useState(false)
+  const [enrichResult,   setEnrichResult]   = useState<any>(null)
+  const [enrichFields,   setEnrichFields]   = useState({ name:'', phone:'', email:'', dob:'', inn:'', passport:'' })
+  const [sherlockOpt,    setSherlockOpt]    = useState(false)
+  const [expandedSrc,    setExpandedSrc]    = useState<string | null>(null)
   function setEF(k: string, v: string) { setEnrichFields(f => ({...f, [k]: v})) }
 
-  async function runEnrich(forceRefresh = false) {
+  async function runEnrich(_forceRefresh = false) {
     const hasAny = Object.values(enrichFields).some(v => v.trim())
     if (!hasAny) return
     setEnrichLoading(true); setEnrichResult(null); setError('')
     try {
-      const body = { ...Object.fromEntries(Object.entries(enrichFields).filter(([,v]) => v.trim())), force_refresh: forceRefresh }
-      const res  = await fetch('/api/persons/enrich', {
+      const body = {
+        ...Object.fromEntries(Object.entries(enrichFields).filter(([,v]) => v.trim())),
+        sherlock: sherlockOpt,
+      }
+      const res = await fetch('/api/search/unified', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       })
       const data = await res.json()
       if (data.error) { setError(data.error); return }
       setEnrichResult(data)
+      // auto-expand first source with results
+      const firstSrc = Object.entries(data.sources || {}).find(([, s]: any) => (s.total || 0) > 0)
+      if (firstSrc) setExpandedSrc(firstSrc[0])
     } catch (e: any) { setError(e.message) }
     finally { setEnrichLoading(false) }
   }
@@ -919,9 +955,9 @@ function BreachIntelContent() {
         {/* Header */}
         <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between shrink-0">
           <div>
-            <h1 className="text-lg font-bold text-white">🔓 Breach Intelligence</h1>
+            <h1 className="text-lg font-bold text-white">🔎 Єдиний пошук</h1>
             <p className="text-gray-500 text-xs mt-0.5">
-              LeakCheck · HaveIBeenPwned · DeHashed · SnusBase · 181k витоків у каталозі
+              OsintKit · LeakOsint · Telegram LEAK_BOTS · DeHashed · SnusBase · LeakCheck
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -966,13 +1002,20 @@ function BreachIntelContent() {
             <div className="max-w-2xl">
               {/* Header */}
               <div className="mb-5 bg-indigo-950/30 border border-indigo-800/40 rounded-xl p-4">
-                <h2 className="text-indigo-300 font-bold text-sm mb-1">🧠 Smart Search — самонаповнювана база</h2>
-                <p className="text-xs text-gray-400">
-                  Шукає у <strong className="text-white">всіх підключених базах</strong> одночасно →
-                  автоматично шукає по знайдених телефонах/email/паспортах →
-                  AI збирає єдиний профіль → <strong className="text-indigo-300">зберігає у вашу базу на 167k осіб</strong>.
-                  Наступний пошук — миттєво з кешу.
-                </p>
+                <h2 className="text-indigo-300 font-bold text-sm mb-1">🔎 Єдиний пошук по всіх базах</h2>
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {[
+                    { label: '🇷🇺 OsintKit', desc: '731 RU DB' },
+                    { label: '🔴 LeakOsint', desc: '800+ RU DB' },
+                    { label: '🤖 Telegram', desc: '10 LEAK_BOTS' },
+                    { label: '💀 DeHashed', desc: '12B+ records' },
+                    { label: '💾 SnusBase', desc: '10B records' },
+                  ].map(s => (
+                    <span key={s.label} className="text-xs px-2 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-300">
+                      {s.label} <span className="text-gray-600">{s.desc}</span>
+                    </span>
+                  ))}
+                </div>
               </div>
 
               {/* Search form */}
@@ -1023,18 +1066,28 @@ function BreachIntelContent() {
                                  focus:border-indigo-500 focus:outline-none placeholder-gray-600 font-mono" />
                   </div>
                 </div>
+                {/* Sherlock Bot toggle */}
+                <div className="mt-3 flex items-center gap-3 p-3 bg-gray-800/50 border border-violet-900/30 rounded-lg">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input type="checkbox" checked={sherlockOpt} onChange={e => setSherlockOpt(e.target.checked)}
+                      className="w-4 h-4 accent-violet-500" />
+                    <span className="text-xs text-violet-300 font-medium">🕵️ + Sherlock Bot</span>
+                  </label>
+                  <span className="text-xs text-gray-600">~$0.28/запит · потребує ПІБ+ДН · 60 запитів залишилось</span>
+                </div>
+
                 <div className="flex gap-2 mt-4">
                   <button onClick={() => runEnrich(false)}
                     disabled={enrichLoading || !Object.values(enrichFields).some(v => v.trim())}
                     className="flex-1 py-3 bg-indigo-700 hover:bg-indigo-600 disabled:opacity-50 rounded-xl font-bold text-sm transition flex items-center justify-center gap-2">
                     {enrichLoading
-                      ? <><span className="animate-spin">⟳</span> Шукаю + збагачую + зберігаю...</>
-                      : <>🧠 Smart Search + Зберегти в базу</>}
+                      ? <><span className="animate-spin">⟳</span> Шукаю по всіх базах{sherlockOpt ? ' + Sherlock...' : '...'}</>
+                      : <>🔎 Шукати по всіх базах{sherlockOpt ? ' + Sherlock' : ''}</>}
                   </button>
                   {enrichResult && (
                     <button onClick={() => runEnrich(true)}
                       className="px-4 py-3 bg-gray-800 hover:bg-gray-700 rounded-xl text-xs text-gray-400 transition">
-                      🔄 Оновити
+                      🔄
                     </button>
                   )}
                 </div>
@@ -1047,61 +1100,71 @@ function BreachIntelContent() {
               {/* Results */}
               {enrichResult && (
                 <div className="space-y-3">
-                  {/* Status bar */}
+                  {/* Summary bar */}
                   <div className={`rounded-xl border px-4 py-3 flex items-center gap-3 ${
-                    enrichResult.source === 'cache'
-                      ? 'bg-green-950/30 border-green-800'
-                      : 'bg-indigo-950/30 border-indigo-800'
+                    enrichResult.total > 0 ? 'bg-green-950/20 border-green-800' : 'bg-gray-900 border-gray-700'
                   }`}>
-                    <span className="text-2xl">{enrichResult.source === 'cache' ? '⚡' : '🔍'}</span>
+                    <span className="text-2xl">{enrichResult.total > 0 ? '✅' : '❌'}</span>
                     <div className="flex-1">
                       <div className="font-bold text-sm text-white">
-                        {enrichResult.source === 'cache' ? 'Знайдено в локальній базі' : `Пошук завершено`}
+                        {enrichResult.total > 0 ? `${enrichResult.total} записів знайдено` : 'Нічого не знайдено'}
                       </div>
-                      <div className="text-xs text-gray-400">
-                        {enrichResult.source === 'cache'
-                          ? `Остання розвідка: ${enrichResult.cached_at ? new Date(enrichResult.cached_at).toLocaleString('uk') : '?'}`
-                          : `${enrichResult.direct_hits || 0} прямих + ${enrichResult.pivot_hits || 0} через пів'от = ${enrichResult.total_records || 0} записів`
-                        }
+                      <div className="text-xs text-gray-400 flex flex-wrap gap-2 mt-0.5">
+                        {Object.entries(enrichResult.sources || {}).map(([key, src]: any) => (
+                          <span key={key} className={`${(src.total || 0) > 0 ? 'text-green-400' : 'text-gray-600'}`}>
+                            {src.label || key}: {src.total || 0}
+                            {src.error && ' ⚠️'}
+                          </span>
+                        ))}
                       </div>
                     </div>
-                    {enrichResult.saved_to_db && (
-                      <span className="text-xs bg-green-900/40 text-green-400 border border-green-800 px-2 py-1 rounded-lg">
-                        ✅ Збережено в базу
-                      </span>
-                    )}
-                    {enrichResult.person_id && (
-                      <a href={`/persons/${enrichResult.person_id}`}
-                        className="text-xs bg-indigo-900/40 text-indigo-400 border border-indigo-800 px-2 py-1 rounded-lg hover:bg-indigo-900/60">
-                        👤 Відкрити картку →
-                      </a>
-                    )}
                   </div>
 
-                  {/* AI Profile */}
-                  {enrichResult.ai_profile && !enrichResult.ai_profile?.parse_error && (
-                    <AIProfileView
-                      profile={enrichResult.ai_profile}
-                      query={enrichResult.query}
-                      total={enrichResult.total_records || 0}
-                    />
-                  )}
+                  {/* Source blocks */}
+                  {Object.entries(enrichResult.sources || {}).map(([key, src]: any) => {
+                    const hasData = (src.total || 0) > 0
+                    const isExpanded = expandedSrc === key
+                    const srcColors: Record<string, string> = {
+                      osintkit:      'border-orange-900/50 bg-orange-950/10',
+                      leakosint:     'border-red-900/50 bg-red-950/10',
+                      telegram_bots: 'border-blue-900/50 bg-blue-950/10',
+                      sherlock_bot:  'border-violet-900/50 bg-violet-950/10',
+                    }
+                    const color = srcColors[key] || 'border-gray-700 bg-gray-900/50'
 
-                  {/* Source breakdown (collapsed) */}
-                  {enrichResult.search_result?.sources && (
-                    <details className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-                      <summary className="px-4 py-3 cursor-pointer text-sm text-gray-400 hover:text-white select-none">
-                        📦 Сирі дані по джерелах ({enrichResult.total_records} записів)
-                      </summary>
-                      <div className="p-4 space-y-2 border-t border-gray-800">
-                        {sourceOrder
-                          .filter(key => enrichResult.search_result.sources?.[key])
-                          .map(key => (
-                            <SourceBlock key={key} sourceKey={key} data={enrichResult.search_result.sources[key]} />
-                          ))}
+                    return (
+                      <div key={key} className={`rounded-xl border overflow-hidden ${color}`}>
+                        <button
+                          onClick={() => setExpandedSrc(isExpanded ? null : key)}
+                          className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-white/5 transition"
+                        >
+                          <div className="flex items-center gap-3">
+                            <span className="font-semibold text-sm text-white">{src.label || key}</span>
+                            {hasData
+                              ? <span className="text-xs bg-green-900/40 text-green-400 px-2 py-0.5 rounded-full">{src.total} записів</span>
+                              : src.error
+                                ? <span className="text-xs text-red-400">⚠️ {src.error}</span>
+                                : <span className="text-xs text-gray-600">нічого не знайдено</span>
+                            }
+                          </div>
+                          {hasData && <span className="text-gray-500 text-xs">{isExpanded ? '▲ згорнути' : '▼ розгорнути'}</span>}
+                        </button>
+
+                        {isExpanded && hasData && (
+                          <div className="border-t border-gray-800 p-3 space-y-2">
+                            {(src.entries || []).slice(0, 50).map((entry: any, i: number) => (
+                              <UnifiedEntryCard key={i} entry={entry} sourceKey={key} />
+                            ))}
+                            {(src.entries || []).length > 50 && (
+                              <p className="text-xs text-gray-600 text-center pt-2">
+                                ... ще {src.entries.length - 50} записів
+                              </p>
+                            )}
+                          </div>
+                        )}
                       </div>
-                    </details>
-                  )}
+                    )
+                  })}
                 </div>
               )}
             </div>
