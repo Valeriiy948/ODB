@@ -229,7 +229,7 @@ export async function POST(
   const context = buildContext(person, incidentList, evidence || [], connections || [])
   const personName = person.name_rus || person.name_ukr || person.name || 'Невідомо'
 
-  const prompt = `Ти — старший аналітик відділу воєнних злочинів. Проаналізуй зібрані дані про підозрювану особу та склади структурований аналітичний профіль для слідчих та прокурорів.
+  const prompt = `Проаналізуй зібрані дані про підозрювану особу та склади структурований аналітичний профіль для слідчих та прокурорів.
 
 ЗІБРАНІ ДАНІ:
 ${context}
@@ -287,11 +287,13 @@ ${context}
       headers: {
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'prompt-caching-2024-07-31',
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'claude-opus-4-5',
+        model: 'claude-sonnet-4-6',
         max_tokens: 4096,
+        system: [{ type: 'text', text: 'Ти — старший аналітик відділу воєнних злочинів. Відповідай ТІЛЬКИ валідним JSON.', cache_control: { type: 'ephemeral' } }],
         messages: [{ role: 'user', content: prompt }],
       }),
       signal: AbortSignal.timeout(60000),
