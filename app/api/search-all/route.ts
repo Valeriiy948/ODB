@@ -94,7 +94,53 @@ function makeSafeFetch(cookieHeader: string) {
   }
 }
 
+// ── Rate limiting (in-memory, per Vercel lambda instance) ────────────────────
+// 20 запитів/хв на IP — захист від abuse
+const RL_WINDOW = 60_000  // 1 хвилина
+const RL_MAX    = 20
+const rlMap     = new Map<string, { count: number; resetAt: number }>()
+
+function checkRateLimit(ip: string): { allowed: boolean; remaining: number; retryAfter: number } {
+  const now    = Date.now()
+  const bucket = rlMap.get(ip)
+
+  if (!bucket || now >= bucket.resetAt) {
+    rlMap.set(ip, { count: 1, resetAt: now + RL_WINDOW })
+    return { allowed: true, remaining: RL_MAX - 1, retryAfter: 0 }
+  }
+
+  if (bucket.count >= RL_MAX) {
+    return { allowed: false, remaining: 0, retryAfter: Math.ceil((bucket.resetAt - now) / 1000) }
+  }
+
+  bucket.count++
+  return { allowed: true, remaining: RL_MAX - bucket.count, retryAfter: 0 }
+}
+
 export async function POST(req: NextRequest) {
+  // ── Rate limit check ──────────────────────────────────────────────────────
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+            || req.headers.get('x-real-ip')
+            || 'unknown'
+
+  if (ip !== 'unknown') {
+    const { allowed, remaining, retryAfter } = checkRateLimit(ip)
+    if (!allowed) {
+      return new Response(
+        JSON.stringify({ error: `Занадто багато запитів. Спробуйте через ${retryAfter}с.` }),
+        {
+          status: 429,
+          headers: {
+            'Content-Type': 'application/json',
+            'Retry-After': String(retryAfter),
+            'X-RateLimit-Limit': String(RL_MAX),
+            'X-RateLimit-Remaining': '0',
+          },
+        }
+      )
+    }
+  }
+
   const body  = await req.json()
   const { query, user_id, user_email } = body
   if (!query?.trim()) {
