@@ -142,6 +142,11 @@ export function usePersonPage() {
   const [leakOsintSaving,  setLeakOsintSaving]  = useState(false)
   const [leakOsintSaved,   setLeakOsintSaved]   = useState(false)
 
+  // ── Sherlock Bot ──────────────────────────────────────────────────────────────
+  const [sherlockBotLoading, setSherlockBotLoading] = useState(false)
+  const [sherlockBotData,    setSherlockBotData]    = useState<any>(null)
+  const [sherlockBotError,   setSherlockBotError]   = useState('')
+
   // ── Медіа (videos + docs) ─────────────────────────────────────────────────────
   const [videos,    setVideos]    = useState<{ url: string; note: string }[]>([])
   const [videoUrl,  setVideoUrl]  = useState('')
@@ -478,6 +483,17 @@ export function usePersonPage() {
       setLeakOsintTotal(data.total || data.entries?.length || 0)
     } catch (e: any) { setLeakOsintError(e.message) }
     finally { setLeakOsintLoading(false) }
+  }
+
+  async function runSherlockBot() {
+    setSherlockBotLoading(true); setSherlockBotError(''); setSherlockBotData(null)
+    try {
+      const res = await fetch(`/api/osint/sherlock-bot/${personId}`, { method: 'POST' })
+      const data = await res.json()
+      if (data.error) { setSherlockBotError(data.error); return }
+      setSherlockBotData(data)
+    } catch (e: any) { setSherlockBotError(e.message) }
+    finally { setSherlockBotLoading(false) }
   }
 
   async function runAiProfile() {
@@ -942,6 +958,8 @@ export function usePersonPage() {
     leakOsintSaving, leakOsintSaved,
     runLeakOsint,
     saveLeakOsint: () => saveLeakDataToDb(leakOsintResults, 'LeakOsint', setLeakOsintSaving, setLeakOsintSaved),
+    // Sherlock Bot
+    sherlockBotLoading, sherlockBotData, sherlockBotError, runSherlockBot,
     // Media
     videos, setVideos, videoUrl, setVideoUrl, videoNote, setVideoNote,
     docs, setDocs, docUrl, setDocUrl, docTitle, setDocTitle,
