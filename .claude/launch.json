@@ -4,7 +4,7 @@
     {
       "name": "odb-dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": ["--prefix", "C:\\Users\\Valeriiy\\Documents\\odb-platform", "run", "dev"],
       "port": 3000
     }
   ]
