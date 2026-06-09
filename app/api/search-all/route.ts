@@ -4,11 +4,50 @@
 // Streams: data: {"source":"odb","status":"done","data":{...}}\n\n
 
 import { NextRequest } from 'next/server'
+import { parseSearchQuery }      from '../../../lib/search/query-parser'
+import { generateNameVariants }  from '../../../lib/search/name-normalizer'
+import { scoreResult }           from '../../../lib/search/relevance-scorer'
 
-// VPS access through nginx HTTPS proxy — direct ports blocked by UFW
-const VPS_URL = process.env.VPS_URL || 'https://evidencebases.com/odb-api'
-// Fallback direct (local dev only — не працює на Vercel після UFW)
-const VPS_DIRECT = `http://${process.env.VPS_HOST || '161.35.86.145'}:${process.env.TELEGRAM_SEARCH_PORT || '8001'}`
+// VPS access через nginx HTTPS proxy (UFW блокує прямі порти)
+const VPS_BASE = (process.env.VPS_URL ?? 'https://evidencebases.com/odb-api')
+  .replace(/\/+$/, '')  // strip trailing slash
+
+const VPS_ROUTES = {
+  presence:     `${VPS_BASE}/presence`,
+  telethon:     `${VPS_BASE}/telethon`,
+  social:       `${VPS_BASE}/social-vps`,
+  registries:   `${VPS_BASE}/regs`,
+  orchestrator: `${VPS_BASE}`,
+} as const
+
+// Таймаути (ms) — Vercel Hobby: 60s загалом, кожне джерело паралельно
+const SOURCE_TIMEOUTS: Record<string, number> = {
+  odb:           5_000,
+  telegram:      7_000,
+  sherlock:      7_000,
+  chimera:       7_000,
+  leaks:         7_000,
+  breach_catalog:5_000,
+  nazk:          8_000,
+  mvs:           8_000,
+  myrotvorets:   7_000,
+  erb:           8_000,
+  company:       7_000,
+  network:       7_000,
+  spiderfoot:    7_000,
+  web:           7_000,
+  sanctions:     8_000,
+  vk:            8_000,
+  getcontact:    7_000,
+  phone_presence:15_000,
+  yandex:        7_000,
+  vehicles:      7_000,
+}
+
+// Backward-compat alias (використовується у makeSafeFetch)
+const VPS_URL = VPS_BASE
+// Fallback direct (local dev only)
+const VPS_DIRECT = `http://${process.env.VPS_HOST ?? '161.35.86.145'}:${process.env.TELEGRAM_SEARCH_PORT ?? '8001'}`
 
 // На Vercel немає localhost — використовуємо VERCEL_URL (авто-інжектується) або APP_URL
 function getBaseUrl(): string {
@@ -151,19 +190,22 @@ export async function POST(req: NextRequest) {
   const type    = detectType(q)
   const startTs = Date.now()
 
-  // ── Extract DOB from name query ──────────────────────────────────────────────
-  // "Іванов Іван Іванович 10.10.1993" → cleanName="Іванов Іван Іванович", dob="10.10.1993"
-  let cleanName = q
-  let extractedDob = ''
-  if (type === 'name') {
-    const dobMatch = q.match(/\b(\d{2}[./]\d{2}[./]\d{4})\b/)
-    if (dobMatch) {
-      cleanName = q.replace(dobMatch[0], '').trim().replace(/\s+/g, ' ')
-      extractedDob = dobMatch[1]
-    }
+  // ── Парсинг запиту через lib/search/query-parser ─────────────────────────
+  const parsed       = parseSearchQuery(q)
+  const nameVariants = generateNameVariants(parsed)
+  const cleanName    = parsed.fullName || q        // ПІБ без дати народження
+  const extractedDob = parsed.dob ?? ''            // ISO або ''
+  const querySurname = parsed.lastName.toLowerCase()
+
+  // VPS body — передається всім VPS джерелам
+  const vpsNameBody = {
+    name:         parsed.fullName,
+    nameVariants: nameVariants.allVariants,
+    firstName:    parsed.firstName,
+    lastName:     parsed.lastName,
+    dob:          parsed.dob,
+    dobYear:      parsed.dobYear,
   }
-  // Surname = first word of name (for relevance filtering in sanctions)
-  const querySurname = cleanName.split(/\s+/)[0].toLowerCase()
 
   // Cookie forwarding — передаємо сесію для авторизації внутрішніх API викликів
   const cookieHeader = req.headers.get('cookie') || ''
@@ -177,12 +219,38 @@ export async function POST(req: NextRequest) {
     'unknown'
   const user_agent = req.headers.get('user-agent') || ''
 
-  const encoder = new TextEncoder()
-  const stream  = new TransformStream()
-  const writer  = stream.writable.getWriter()
+  const encoder     = new TextEncoder()
+  const stream      = new TransformStream()
+  const writer      = stream.writable.getWriter()
+  // AbortController per source — memory leak prevention on Vercel
+  const controllers = new Map<string, AbortController>()
 
-  function send(source: string, status: 'loading' | 'done' | 'error', data: any = null) {
-    const msg = JSON.stringify({ source, status, data, type })
+  function makeSignal(source: string): AbortSignal {
+    const ac = new AbortController()
+    controllers.set(source, ac)
+    return ac.signal
+  }
+
+  function clearController(source: string) {
+    controllers.get(source)?.abort()
+    controllers.delete(source)
+  }
+
+  function clearAllControllers() {
+    for (const ac of controllers.values()) ac.abort()
+    controllers.clear()
+  }
+
+  function send(
+    source: string,
+    status: 'loading' | 'done' | 'error',
+    data: Record<string, unknown> | null = null,
+    extra?: { count?: number; totalFound?: number; durationMs?: number },
+  ) {
+    const msg = JSON.stringify({
+      source, status, data, type,
+      ...(extra ?? {}),
+    })
     writer.write(encoder.encode(`data: ${msg}\n\n`))
   }
 
@@ -217,26 +285,27 @@ export async function POST(req: NextRequest) {
             body: JSON.stringify({ phone: q }),
           }, 7000)
         } else {
-          d = await safeFetch(`${VPS_URL}/telethon/search/tg-user`, {
+          d = await safeFetch(`${VPS_ROUTES.telethon}/search/tg-user`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: cleanName, limit: 5 }),
-          }, 7000)
+            body: JSON.stringify({ ...vpsNameBody, limit: 5 }),
+          }, SOURCE_TIMEOUTS.telegram)
         }
         send('telegram', d ? 'done' : 'error', d)
       })())
     }
 
-    // ── 2b. Telegram LEAK BOTS — окремий async пошук ─────────────────────────
-    // Займає 30-60с → фронтенд запускає окремо після SSE завершення
+    // ── 2b. Telegram LEAK BOTS — async, фронтенд запускає окремо ─────────────
     if (['name', 'phone'].includes(type)) {
       send('tg_bots', 'done', {
-        async: true,
-        endpoint: `${VPS_URL}/presence/search`,
-        query: toRussian(cleanName),
+        async:          true,
+        endpoint:       `${VPS_ROUTES.presence}/search`,
+        query:          toRussian(cleanName),
         query_original: cleanName,
-        dob: extractedDob,
-        message: 'Натисніть "Перевірити боти" для пошуку через Telegram боти (~40с)',
+        nameVariants:   nameVariants.allVariants,
+        dob:            parsed.dob,
+        dobYear:        parsed.dobYear,
+        message:        'Натисніть "Перевірити боти" для пошуку через Telegram боти (~40с)',
       })
     }
 
@@ -507,9 +576,19 @@ export async function POST(req: NextRequest) {
     }
 
     await Promise.allSettled(tasks)
+    clearAllControllers()
 
     // Done signal
-    writer.write(encoder.encode(`data: ${JSON.stringify({ source: '__done__', status: 'done', type })}\n\n`))
+    writer.write(encoder.encode(`data: ${JSON.stringify({
+      source: '__done__', status: 'done', type,
+      durationMs: Date.now() - startTs,
+      parsedQuery: {
+        fullName: parsed.fullName,
+        dob:      parsed.dob,
+        dobYear:  parsed.dobYear,
+        phones:   parsed.phones,
+      },
+    })}\n\n`))
     writer.close()
 
     // Log activity (fire-and-forget, non-blocking)
@@ -532,7 +611,7 @@ export async function POST(req: NextRequest) {
     }).catch(() => {})
   }
 
-  runAll().catch(() => writer.close())
+  runAll().catch(() => { clearAllControllers(); writer.close() })
 
   return new Response(stream.readable, {
     headers: {
