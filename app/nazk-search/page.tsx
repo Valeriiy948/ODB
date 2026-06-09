@@ -320,7 +320,23 @@ export default function NAZKSearchPage() {
 
           {/* Помилка */}
           {error && (
-            <div className="bg-red-950/40 border border-red-800 rounded-xl p-4 text-red-300 text-sm">❌ {error}</div>
+            <div className="bg-red-950/40 border border-red-800 rounded-xl p-4 text-sm space-y-2">
+              <p className="text-red-300">❌ {error}</p>
+              {(error.includes('403') || error.includes('блок') || error.includes('502')) && (
+                <div className="mt-2 pt-2 border-t border-red-900/50">
+                  <p className="text-gray-400 text-xs mb-2">
+                    НАЗК тимчасово блокує запити з нашого сервера. Пошукайте напряму:
+                  </p>
+                  <a
+                    href={`https://public.nazk.gov.ua/documents?q=${encodeURIComponent(query)}`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-900/40 hover:bg-blue-900/60 text-blue-300 border border-blue-800/50 rounded-lg text-xs transition"
+                  >
+                    🔗 Відкрити пошук на public.nazk.gov.ua →
+                  </a>
+                </div>
+              )}
+            </div>
           )}
 
           {/* Примітка */}
