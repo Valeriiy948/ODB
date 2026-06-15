@@ -1466,7 +1466,9 @@ function CategoryCard({
   if (!isRelevant) return null
 
   return (
-    <div className={`rounded-xl border overflow-hidden transition-all ${
+    <div className={`rounded-xl border overflow-hidden transition-all duration-300 ${
+      hasResults ? 'odb-card-hover' : ''
+    } ${
       isLoading    ? 'border-gray-700 bg-gray-900/50' :
       hasResults   ? `${cat.borderHit} ${cat.bgHit}` :
       hasFallbacks ? 'border-gray-700 bg-gray-900/40' :
@@ -1477,15 +1479,19 @@ function CategoryCard({
         onClick={() => canExpand && setExpanded(!expanded)}
       >
         <div className="flex items-center gap-3">
-          <span className={cat.color}><Icon name={CAT_ICON[cat.key] ?? 'search'} size={20} /></span>
+          <span className={`${cat.color} ${isLoading ? 'odb-animate-pulse rounded-full' : ''}`}>
+            <Icon name={CAT_ICON[cat.key] ?? 'search'} size={20} />
+          </span>
           <span className={`font-semibold text-sm ${cat.color}`}>{cat.label}</span>
         </div>
         <div className="flex items-center gap-2">
           {isLoading && (
-            <span className="text-gray-500 text-sm animate-spin">⟳</span>
+            <span className="text-[var(--odb-accent-hi)] animate-spin"><Icon name="spark" size={16} /></span>
           )}
           {!isLoading && (
-            <span className={`text-sm font-bold px-3 py-1 rounded-full ${
+            <span className={`text-sm font-bold px-3 py-1 rounded-full transition-all ${
+              hasResults   ? 'odb-animate-scale' : ''
+            } ${
               hasResults   ? 'bg-green-800/60 text-green-200' :
               hasFallbacks ? 'bg-gray-700/80 text-blue-400' :
               'bg-gray-800 text-gray-500'
@@ -1740,7 +1746,7 @@ function SearchAllPage() {
           {/* Category cards */}
           {searched && (
             <div className="max-w-5xl">
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 odb-stagger">
                 {CATEGORIES.map(cat => (
                   <CategoryCard
                     key={cat.key}

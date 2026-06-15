@@ -345,6 +345,23 @@ export async function POST(req: NextRequest) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ query: type === 'name' ? cleanName : q }),
         }, 7000)
+        // ── Relevance-фільтр: відсікаємо шлак за прізвищем (OsintKit/LeakOsint
+        //    повертають записи по фрагменту імені — «Макар» замість «Макарійчук»)
+        if (type === 'name' && parsed.lastName.length >= 4 && d?.sources) {
+          let kept = 0
+          for (const src of Object.values(d.sources as Record<string, any>)) {
+            if (Array.isArray(src?.entries)) {
+              src.entries = src.entries.filter((e: Record<string, unknown>) => {
+                const hasName = e.name || e.full_name || e.fio
+                if (!hasName) return true                 // знайдено по телефону/email — лишаємо
+                return scoreResult(e, parsed, 'leaks') > 0 // інакше — лише релевантні за прізвищем/ДН
+              })
+              src.total = src.entries.length
+              kept += src.entries.length
+            }
+          }
+          if (typeof d.total === 'number') d.total = kept
+        }
         send('leaks', d ? 'done' : 'error', d)
       })())
     }
