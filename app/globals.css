@@ -58,6 +58,26 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* ════════════════════════════════════════════════════════════════════
+   Глобальне перевизначення палітри Tailwind `gray` → холодні глибокі
+   відтінки ODB. Так УСІ існуючі bg-gray-*, border-gray-*, text-gray-*
+   на всіх сторінках миттєво набувають єдиного нового вигляду
+   без переписування кожного компонента.
+   ════════════════════════════════════════════════════════════════════ */
+@theme {
+  --color-gray-50:  #f4f7fb;
+  --color-gray-100: #e8edf4;  /* = odb-text */
+  --color-gray-200: #c6cfdb;
+  --color-gray-300: #9aa6b6;  /* = odb-text-dim */
+  --color-gray-400: #7b8799;
+  --color-gray-500: #5d6678;  /* = odb-text-faint */
+  --color-gray-600: #3a4456;
+  --color-gray-700: #232a36;  /* = odb-border */
+  --color-gray-800: #151a23;  /* = odb-surface-2 */
+  --color-gray-900: #0e1219;  /* = odb-surface */
+  --color-gray-950: #07090d;  /* = odb-bg */
+}
+
 /* Системний шрифт з кирилицею */
 html, body {
   background: var(--odb-bg);
