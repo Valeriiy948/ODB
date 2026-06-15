@@ -10,7 +10,7 @@ export type IconName =
   | 'download' | 'settings' | 'activity' | 'tools' | 'shield'
   | 'logout' | 'close' | 'copy' | 'check' | 'arrow-right'
   | 'chevron-right' | 'chevron-down' | 'spark' | 'database' | 'alert'
-  | 'car' | 'message'
+  | 'car' | 'message' | 'refresh' | 'filter' | 'upload' | 'monitor' | 'user'
 
 // Кожна іконка — масив <path>/<circle>… елементів у viewBox 24×24.
 const PATHS: Record<IconName, React.ReactNode> = {
@@ -42,6 +42,11 @@ const PATHS: Record<IconName, React.ReactNode> = {
   alert:     <><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" /></>,
   car:       <><path d="M5 13l1.5-4.5A2 2 0 0 1 8.4 7h7.2a2 2 0 0 1 1.9 1.5L19 13M5 13h14v4a1 1 0 0 1-1 1h-1a1 1 0 0 1-1-1v-1H8v1a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-4Z" /><path d="M7.5 16h.01M16.5 16h.01" /></>,
   message:   <><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-3.9-.9L3 21l1.9-5.1A8.4 8.4 0 0 1 12 3a8.4 8.4 0 0 1 9 8.5Z" /></>,
+  refresh:   <><path d="M21 12a9 9 0 0 1-9 9 9 9 0 0 1-9-9 9 9 0 0 1 9-9c2.4 0 4.6.9 6.3 2.4" /><path d="M21 3v6h-6" /></>,
+  filter:    <><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3Z" /></>,
+  upload:    <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" /></>,
+  monitor:   <><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" /></>,
+  user:      <><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></>,
 }
 
 interface IconProps extends Omit<SVGProps<SVGSVGElement>, 'name'> {
