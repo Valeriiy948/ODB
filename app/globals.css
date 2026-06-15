@@ -1,37 +1,182 @@
 @import "tailwindcss";
 
+/* ════════════════════════════════════════════════════════════════════
+   ODB Design System v2 — "iOS for OSINT"
+   Темна тема, освіжена: глибокі поверхні, скло, м'які тіні, анімації.
+   ════════════════════════════════════════════════════════════════════ */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* ── Поверхні (від найглибшої до піднятої) ── */
+  --odb-bg:          #07090d;   /* фон сторінки — майже чорний з синім підтоном */
+  --odb-surface:     #0e1219;   /* базова панель */
+  --odb-surface-2:   #151a23;   /* піднята картка */
+  --odb-surface-3:   #1c222d;   /* hover / активний стан */
+  --odb-border:      #232a36;   /* звичайна рамка */
+  --odb-border-soft: #1a2028;   /* ледь помітна рамка */
+
+  /* ── Текст ── */
+  --odb-text:        #e8edf4;   /* основний */
+  --odb-text-dim:    #9aa6b6;   /* вторинний */
+  --odb-text-faint:  #5d6678;   /* підказки, плейсхолдери */
+
+  /* ── Акцент (синій iOS) ── */
+  --odb-accent:      #3b82f6;
+  --odb-accent-hi:   #60a5fa;
+  --odb-accent-lo:   #1d4ed8;
+  --odb-accent-glow: rgba(59, 130, 246, 0.35);
+
+  /* ── Статуси ── */
+  --odb-ok:    #34d399;
+  --odb-warn:  #fbbf24;
+  --odb-danger:#f87171;
+  --odb-info:  #38bdf8;
+
+  /* ── Радіуси ── */
+  --odb-r-sm: 8px;
+  --odb-r:    12px;
+  --odb-r-lg: 16px;
+  --odb-r-xl: 22px;
+
+  /* ── Тіні ── */
+  --odb-shadow:    0 4px 20px rgba(0, 0, 0, 0.4);
+  --odb-shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.55);
+  --odb-shadow-accent: 0 8px 30px var(--odb-accent-glow);
+
+  /* ── Easing (iOS-подібні криві) ── */
+  --odb-ease:        cubic-bezier(0.22, 1, 0.36, 1);   /* плавний вихід */
+  --odb-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1); /* легкий «пружний» */
+
+  /* legacy (Next template) */
+  --background: var(--odb-bg);
+  --foreground: var(--odb-text);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-background: var(--odb-bg);
+  --color-foreground: var(--odb-text);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-/* Системний шрифт з підтримкою кирилиці — замінює Geist (який не має кирилиці) */
+/* Системний шрифт з кирилицею */
 html, body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--odb-bg);
+  color: var(--odb-text);
   font-family:
     -apple-system, BlinkMacSystemFont,
-    'Segoe UI', Arial,
-    'Helvetica Neue', Helvetica,
-    sans-serif;
+    'Segoe UI', Arial, 'Helvetica Neue', Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* Tailwind перевизначає --font-sans на Geist через @theme inline.
-   Явно перебиваємо шрифт для всіх текстових вузлів — кирилиця буде відображатись */
 :where(p, span, div, h1, h2, h3, h4, h5, h6, a, td, th, li, button, input, textarea, label) {
   font-family: inherit;
+}
+
+/* ── Кастомний скролбар (iOS-стиль) ── */
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--odb-surface-3);
+  border-radius: 99px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover { background: #2c3543; background-clip: content-box; }
+
+/* ════════════════════════════════════════════════════════════════════
+   Reusable утиліти (працюють поряд з Tailwind)
+   ════════════════════════════════════════════════════════════════════ */
+
+/* Скляна панель */
+.odb-glass {
+  background: rgba(14, 18, 25, 0.72);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  border: 1px solid var(--odb-border-soft);
+}
+
+/* Картка з підняттям */
+.odb-card {
+  background: var(--odb-surface-2);
+  border: 1px solid var(--odb-border);
+  border-radius: var(--odb-r-lg);
+  transition: transform 0.25s var(--odb-ease),
+              border-color 0.25s var(--odb-ease),
+              box-shadow 0.25s var(--odb-ease);
+}
+.odb-card-hover:hover {
+  transform: translateY(-3px);
+  border-color: var(--odb-accent-lo);
+  box-shadow: var(--odb-shadow-lg);
+}
+
+/* Акцентна кнопка зі світінням */
+.odb-btn-accent {
+  background: linear-gradient(135deg, var(--odb-accent-hi), var(--odb-accent-lo));
+  color: #fff;
+  border-radius: var(--odb-r);
+  transition: transform 0.18s var(--odb-ease-spring), box-shadow 0.25s var(--odb-ease);
+}
+.odb-btn-accent:hover { box-shadow: var(--odb-shadow-accent); transform: translateY(-1px); }
+.odb-btn-accent:active { transform: scale(0.97); }
+
+/* Світіння за елементом */
+.odb-glow { box-shadow: var(--odb-shadow-accent); }
+
+/* Градієнтний текст-акцент */
+.odb-gradient-text {
+  background: linear-gradient(135deg, var(--odb-accent-hi), #a78bfa);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   Анімації
+   ════════════════════════════════════════════════════════════════════ */
+
+@keyframes odb-fade-in    { from { opacity: 0 } to { opacity: 1 } }
+@keyframes odb-fade-up    { from { opacity: 0; transform: translateY(14px) } to { opacity: 1; transform: translateY(0) } }
+@keyframes odb-scale-in   { from { opacity: 0; transform: scale(0.96) } to { opacity: 1; transform: scale(1) } }
+@keyframes odb-slide-right{ from { opacity: 0; transform: translateX(-12px) } to { opacity: 1; transform: translateX(0) } }
+@keyframes odb-shimmer    { 0% { background-position: -200% 0 } 100% { background-position: 200% 0 } }
+@keyframes odb-pulse-glow { 0%,100% { box-shadow: 0 0 0 0 var(--odb-accent-glow) } 50% { box-shadow: 0 0 0 6px transparent } }
+@keyframes odb-spin       { to { transform: rotate(360deg) } }
+
+.odb-animate-fade    { animation: odb-fade-in 0.4s var(--odb-ease) both }
+.odb-animate-up      { animation: odb-fade-up 0.5s var(--odb-ease) both }
+.odb-animate-scale   { animation: odb-scale-in 0.35s var(--odb-ease-spring) both }
+.odb-animate-slide   { animation: odb-slide-right 0.4s var(--odb-ease) both }
+.odb-animate-pulse   { animation: odb-pulse-glow 2s ease-in-out infinite }
+
+/* Stagger — додавай .odb-stagger на контейнер, діти зʼявляються по черзі */
+.odb-stagger > * { animation: odb-fade-up 0.5s var(--odb-ease) both }
+.odb-stagger > *:nth-child(1) { animation-delay: 0.04s }
+.odb-stagger > *:nth-child(2) { animation-delay: 0.08s }
+.odb-stagger > *:nth-child(3) { animation-delay: 0.12s }
+.odb-stagger > *:nth-child(4) { animation-delay: 0.16s }
+.odb-stagger > *:nth-child(5) { animation-delay: 0.20s }
+.odb-stagger > *:nth-child(6) { animation-delay: 0.24s }
+.odb-stagger > *:nth-child(7) { animation-delay: 0.28s }
+.odb-stagger > *:nth-child(8) { animation-delay: 0.32s }
+.odb-stagger > *:nth-child(9) { animation-delay: 0.36s }
+.odb-stagger > *:nth-child(10){ animation-delay: 0.40s }
+
+/* Скелетон-shimmer для станів завантаження */
+.odb-skeleton {
+  background: linear-gradient(90deg,
+    var(--odb-surface-2) 25%, var(--odb-surface-3) 50%, var(--odb-surface-2) 75%);
+  background-size: 200% 100%;
+  animation: odb-shimmer 1.4s ease-in-out infinite;
+  border-radius: var(--odb-r-sm);
+}
+
+/* Повага до prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
