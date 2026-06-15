@@ -65,17 +65,30 @@
    без переписування кожного компонента.
    ════════════════════════════════════════════════════════════════════ */
 @theme {
+  /* gray */
   --color-gray-50:  #f4f7fb;
-  --color-gray-100: #e8edf4;  /* = odb-text */
+  --color-gray-100: #e8edf4;
   --color-gray-200: #c6cfdb;
-  --color-gray-300: #9aa6b6;  /* = odb-text-dim */
+  --color-gray-300: #9aa6b6;
   --color-gray-400: #7b8799;
-  --color-gray-500: #5d6678;  /* = odb-text-faint */
+  --color-gray-500: #5d6678;
   --color-gray-600: #3a4456;
-  --color-gray-700: #232a36;  /* = odb-border */
-  --color-gray-800: #151a23;  /* = odb-surface-2 */
-  --color-gray-900: #0e1219;  /* = odb-surface */
-  --color-gray-950: #07090d;  /* = odb-bg */
+  --color-gray-700: #232a36;
+  --color-gray-800: #151a23;
+  --color-gray-900: #0e1219;
+  --color-gray-950: #07090d;
+  /* slate — той самий ряд, бо сторінки змішують gray та slate */
+  --color-slate-50:  #f4f7fb;
+  --color-slate-100: #e8edf4;
+  --color-slate-200: #c6cfdb;
+  --color-slate-300: #9aa6b6;
+  --color-slate-400: #7b8799;
+  --color-slate-500: #5d6678;
+  --color-slate-600: #3a4456;
+  --color-slate-700: #232a36;
+  --color-slate-800: #151a23;
+  --color-slate-900: #0e1219;
+  --color-slate-950: #07090d;
 }
 
 /* Системний шрифт з кирилицею */

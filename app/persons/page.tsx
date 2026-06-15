@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import Icon, { type IconName } from '../components/Icon'
 
 // ─── Типи ─────────────────────────────────────────────────────────────────
 interface Person {
@@ -156,7 +157,12 @@ function PersonRow({
   onSelect: (id: string, checked: boolean) => void
 }) {
   return (
-    <div className={`flex items-center gap-3 px-4 py-3 border-b border-slate-700/30 hover:bg-slate-700/30 transition-colors group ${selected ? 'bg-blue-900/20' : ''}`}>
+    <div
+      className="flex items-center gap-3 px-4 py-3 border-b transition-all duration-200 group"
+      style={{ borderColor: 'var(--odb-border-soft)', background: selected ? 'var(--odb-accent-glow)' : 'transparent' }}
+      onMouseEnter={e => { if (!selected) e.currentTarget.style.background = 'var(--odb-surface-2)' }}
+      onMouseLeave={e => { if (!selected) e.currentTarget.style.background = 'transparent' }}
+    >
       {/* Checkbox */}
       <input
         type="checkbox"
@@ -167,7 +173,9 @@ function PersonRow({
       />
 
       {/* Аватар */}
-      <Link href={`/persons/${person.id}`} className="w-9 h-9 rounded-full overflow-hidden bg-slate-700 flex-shrink-0 flex items-center justify-center text-slate-400 text-sm font-medium">
+      <Link href={`/persons/${person.id}`}
+        className="w-9 h-9 rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center text-sm font-semibold transition-transform group-hover:scale-105"
+        style={{ background: 'var(--odb-surface-3)', color: 'var(--odb-text-dim)' }}>
         {person.photo_url
           ? <img src={person.photo_url} alt="" className="w-full h-full object-cover" />
           : displayName(person).charAt(0)
@@ -595,38 +603,45 @@ export default function PersonsPage() {
   const internetSearched = searchData?.internet.searched || false
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white">
+    <div className="min-h-screen text-white" style={{ background: 'var(--odb-bg)' }}>
       {/* ── Заголовок ── */}
-      <div className="px-6 py-4 border-b border-slate-700/50">
+      <div className="px-6 py-4 border-b odb-animate-fade" style={{ borderColor: 'var(--odb-border-soft)' }}>
         <div className="flex items-center justify-between mb-3">
-          <div>
-            <h1 className="text-xl font-bold flex items-center gap-2">
-              <span>👥</span> Реєстр осіб
-            </h1>
-            <p className="text-slate-400 text-sm mt-0.5">
-              Всього в базі: <span className="text-white font-medium">{allTotal.toLocaleString()}</span>
-            </p>
+          <div className="flex items-center gap-3">
+            <span className="inline-flex items-center justify-center w-11 h-11 rounded-2xl text-white shrink-0"
+                  style={{ background: 'linear-gradient(135deg, var(--odb-accent-hi), var(--odb-accent-lo))', boxShadow: 'var(--odb-shadow-accent)' }}>
+              <Icon name="users" size={22} strokeWidth={2} />
+            </span>
+            <div>
+              <h1 className="text-xl font-bold">Реєстр осіб</h1>
+              <p className="text-[var(--odb-text-dim)] text-sm mt-0.5">
+                Всього в базі: <span className="text-white font-semibold">{allTotal.toLocaleString()}</span>
+              </p>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             {selected.size > 0 && (
               <button
                 onClick={queueSelected}
                 disabled={batchQueuing}
-                className="flex items-center gap-2 px-4 py-2 bg-purple-700 hover:bg-purple-600 disabled:opacity-50 rounded-lg text-sm font-medium transition-colors">
-                {batchQueuing ? '⏳ Додаємо...' : `⚡ OSINT (${selected.size})`}
+                className="odb-animate-scale flex items-center gap-2 px-4 py-2 bg-purple-700 hover:bg-purple-600 disabled:opacity-50 rounded-xl text-sm font-medium transition-all">
+                <Icon name="spark" size={15} />
+                {batchQueuing ? 'Додаємо…' : `OSINT (${selected.size})`}
               </button>
             )}
             <Link href="/admin/batch"
-              className="flex items-center gap-2 px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm transition-colors text-slate-300">
-              ⚡ Batch
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm transition-all text-[var(--odb-text-dim)] hover:text-white"
+              style={{ background: 'var(--odb-surface-2)', border: '1px solid var(--odb-border)' }}>
+              <Icon name="activity" size={15} /> Batch
             </Link>
             <Link href="/admin/import"
-              className="flex items-center gap-2 px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm transition-colors text-slate-300">
-              📥 Імпорт CSV
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm transition-all text-[var(--odb-text-dim)] hover:text-white"
+              style={{ background: 'var(--odb-surface-2)', border: '1px solid var(--odb-border)' }}>
+              <Icon name="download" size={15} /> Імпорт CSV
             </Link>
             <Link href="/persons/new"
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium transition-colors">
-              + Додати
+              className="odb-btn-accent flex items-center gap-1.5 px-4 py-2 text-sm font-semibold">
+              <Icon name="arrow-right" size={15} /> Додати
             </Link>
           </div>
         </div>
@@ -634,26 +649,30 @@ export default function PersonsPage() {
         {/* Фільтри */}
         <div className="flex items-center gap-2 flex-wrap">
           {([
-            { key: 'all',         label: 'Всі',            icon: '👥' },
-            { key: 'myrotvorets', label: 'Myrotvorets',    icon: '⚠️' },
-            { key: 'no_osint',    label: 'Без OSINT',      icon: '🔎' },
-            { key: 'high_threat', label: 'Висока загроза', icon: '🔴' },
-          ] as { key: ListFilter; label: string; icon: string }[]).map(f => (
-            <button
-              key={f.key}
-              onClick={() => setListFilter(f.key)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                listFilter === f.key
-                  ? 'bg-blue-700 text-blue-100 border border-blue-500'
-                  : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white border border-transparent'
-              }`}
-            >
-              <span>{f.icon}</span>
-              <span>{f.label}</span>
-            </button>
-          ))}
+            { key: 'all',         label: 'Всі',            icon: 'users' },
+            { key: 'myrotvorets', label: 'Myrotvorets',    icon: 'alert' },
+            { key: 'no_osint',    label: 'Без OSINT',      icon: 'search' },
+            { key: 'high_threat', label: 'Висока загроза', icon: 'alert' },
+          ] as { key: ListFilter; label: string; icon: IconName }[]).map(f => {
+            const on = listFilter === f.key
+            return (
+              <button
+                key={f.key}
+                onClick={() => setListFilter(f.key)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all border"
+                style={on
+                  ? { background: 'var(--odb-accent-glow)', color: 'var(--odb-accent-hi)', borderColor: 'var(--odb-accent-lo)' }
+                  : { background: 'var(--odb-surface-2)', color: 'var(--odb-text-dim)', borderColor: 'transparent' }}
+              >
+                <Icon name={f.icon} size={14} />
+                <span>{f.label}</span>
+              </button>
+            )
+          })}
           {batchMsg && (
-            <span className="ml-2 text-xs text-green-400 font-medium">✅ {batchMsg}</span>
+            <span className="ml-2 text-xs text-[var(--odb-ok)] font-medium flex items-center gap-1">
+              <Icon name="check" size={13} /> {batchMsg}
+            </span>
           )}
         </div>
       </div>
@@ -678,7 +697,10 @@ export default function PersonsPage() {
             value={query}
             onChange={e => setQuery(e.target.value)}
             placeholder="Пошук за ПІБ, підрозділом, номером в/ч, посадою... (якщо немає в базі — шукає в мережі)"
-            className="w-full bg-slate-800 border border-slate-600 rounded-xl pl-11 pr-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
+            className="w-full rounded-xl pl-11 pr-4 py-3 text-white placeholder-[var(--odb-text-faint)] outline-none transition-all"
+            style={{ background: 'var(--odb-surface-2)', border: '1px solid var(--odb-border)' }}
+            onFocus={e => { e.currentTarget.style.borderColor = 'var(--odb-accent)'; e.currentTarget.style.boxShadow = 'var(--odb-shadow-accent)' }}
+            onBlur={e => { e.currentTarget.style.borderColor = 'var(--odb-border)'; e.currentTarget.style.boxShadow = 'none' }}
           />
           {query && (
             <button onClick={() => setQuery('')}
