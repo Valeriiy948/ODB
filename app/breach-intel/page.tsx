@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Sidebar from '../components/Sidebar'
+import { SmartSearchBar, type QueryDetection } from '../components/SmartSearchBar'
 
 // ─── Source metadata ──────────────────────────────────────────────────────────
 const SOURCE_META: Record<string, {
@@ -917,15 +918,18 @@ function BreachIntelContent() {
   const [enrichFields,   setEnrichFields]   = useState({ name:'', phone:'', email:'', dob:'', inn:'', passport:'' })
   const [sherlockOpt,    setSherlockOpt]    = useState(false)
   const [expandedSrc,    setExpandedSrc]    = useState<string | null>(null)
+  const [showAdvanced,   setShowAdvanced]   = useState(false)
+  const [smartQuery,     setSmartQuery]     = useState('')
   function setEF(k: string, v: string) { setEnrichFields(f => ({...f, [k]: v})) }
 
-  async function runEnrich(_forceRefresh = false) {
-    const hasAny = Object.values(enrichFields).some(v => v.trim())
+  async function runEnrich(overrideFields?: Record<string, string>) {
+    const fields = overrideFields || enrichFields
+    const hasAny = Object.values(fields).some(v => v.trim())
     if (!hasAny) return
     setEnrichLoading(true); setEnrichResult(null); setError('')
     try {
       const body = {
-        ...Object.fromEntries(Object.entries(enrichFields).filter(([,v]) => v.trim())),
+        ...Object.fromEntries(Object.entries(fields).filter(([,v]) => v.trim())),
         sherlock: sherlockOpt,
       }
       const res = await fetch('/api/search/unified', {
@@ -939,6 +943,15 @@ function BreachIntelContent() {
       if (firstSrc) setExpandedSrc(firstSrc[0])
     } catch (e: any) { setError(e.message) }
     finally { setEnrichLoading(false) }
+  }
+
+  function handleSmartSearch(query: string, detection: QueryDetection) {
+    const key = detection.fieldKey
+    const override = { name:'', phone:'', email:'', dob:'', inn:'', passport:'',
+      ...(key ? { [key]: query } : { name: query }),
+    }
+    setEnrichFields(override)
+    runEnrich(override)
   }
 
   const totalHits   = result?.total_hits || 0
@@ -1011,100 +1024,130 @@ function BreachIntelContent() {
 
         <div className="flex-1 overflow-y-auto p-6">
 
-          {/* ── Tab: Smart Search (self-populating DB) ── */}
+          {/* ── Tab: Smart Search ── */}
           {tab === 'smart' && (
             <div className="max-w-2xl">
-              {/* Header */}
-              <div className="mb-5 bg-indigo-950/30 border border-indigo-800/40 rounded-xl p-4">
-                <h2 className="text-indigo-300 font-bold text-sm mb-1">🔎 Єдиний пошук по всіх базах</h2>
-                <div className="flex flex-wrap gap-1.5 mt-2">
-                  {[
-                    { label: '🇷🇺 OsintKit', desc: '731 RU DB' },
-                    { label: '🔴 LeakOsint', desc: '800+ RU DB' },
-                    { label: '🤖 Telegram', desc: '10 LEAK_BOTS' },
-                    { label: '💀 DeHashed', desc: '12B+ records' },
-                    { label: '💾 SnusBase', desc: '10B records' },
-                  ].map(s => (
-                    <span key={s.label} className="text-xs px-2 py-0.5 bg-gray-800 border border-gray-700 rounded text-gray-300">
-                      {s.label} <span className="text-gray-600">{s.desc}</span>
-                    </span>
-                  ))}
-                </div>
+
+              {/* Source chips — compact */}
+              <div className="flex flex-wrap gap-1.5 mb-5">
+                {[
+                  { label: 'OsintKit',   sub: '731 RU DB',     c: '#f97316' },
+                  { label: 'LeakOsint',  sub: '800+ RU DB',    c: '#ef4444' },
+                  { label: 'Telegram',   sub: '10 BOTS',       c: '#3b82f6' },
+                  { label: 'DeHashed',   sub: '12B records',   c: '#ef4444' },
+                  { label: 'SnusBase',   sub: '10B records',   c: '#a855f7' },
+                ].map(s => (
+                  <span key={s.label} className="text-xs px-2 py-1 rounded-lg flex items-center gap-1.5"
+                    style={{ background: s.c + '15', border: `1px solid ${s.c}35`, color: s.c }}>
+                    {s.label}
+                    <span className="opacity-50 font-normal" style={{ color: 'var(--odb-text-faint)' }}>{s.sub}</span>
+                  </span>
+                ))}
               </div>
 
-              {/* Search form */}
-              <div className="rounded-xl p-4 mb-4" style={{ background: 'var(--odb-surface)', border: '1px solid var(--odb-border)' }}>
-                <p className="text-xs text-gray-500 mb-3">Заповни що знаєш — чим більше, тим точніший результат:</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="col-span-2">
-                    <label className="text-xs text-gray-500 mb-1 block">ПІБ *</label>
-                    <input value={enrichFields.name} onChange={e => setEF('name', e.target.value)}
-                      onKeyDown={e => e.key === 'Enter' && runEnrich()}
-                      placeholder="Романов Александр Викторович"
-                      className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
-                      style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)', color: 'var(--odb-text)' }} />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-500 mb-1 block">Дата народження</label>
-                    <input value={enrichFields.dob} onChange={e => setEF('dob', e.target.value)}
-                      placeholder="05.03.1989"
-                      className="w-full px-3 py-2 rounded-lg text-sm outline-none font-mono"
-                      style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)', color: 'var(--odb-text)' }} />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-500 mb-1 block">Телефон</label>
-                    <input value={enrichFields.phone} onChange={e => setEF('phone', e.target.value)}
-                      placeholder="79888385632"
-                      className="w-full px-3 py-2 rounded-lg text-sm outline-none font-mono"
-                      style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)', color: 'var(--odb-text)' }} />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-500 mb-1 block">Email</label>
-                    <input value={enrichFields.email} onChange={e => setEF('email', e.target.value)}
-                      placeholder="romanov@mail.ru"
-                      className="w-full px-3 py-2 rounded-lg text-sm outline-none font-mono"
-                      style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)', color: 'var(--odb-text)' }} />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-500 mb-1 block">ІПН</label>
-                    <input value={enrichFields.inn} onChange={e => setEF('inn', e.target.value)}
-                      placeholder="123456789012"
-                      className="w-full px-3 py-2 rounded-lg text-sm outline-none font-mono"
-                      style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)', color: 'var(--odb-text)' }} />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-500 mb-1 block">Паспорт</label>
-                    <input value={enrichFields.passport} onChange={e => setEF('passport', e.target.value)}
-                      placeholder="4516409823"
-                      className="w-full px-3 py-2 rounded-lg text-sm outline-none font-mono"
-                      style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)', color: 'var(--odb-text)' }} />
-                  </div>
-                </div>
-                {/* Sherlock Bot toggle */}
-                <div className="mt-3 flex items-center gap-3 p-3 bg-gray-800/50 border border-violet-900/30 rounded-lg">
-                  <label className="flex items-center gap-2 cursor-pointer select-none">
-                    <input type="checkbox" checked={sherlockOpt} onChange={e => setSherlockOpt(e.target.checked)}
-                      className="w-4 h-4 accent-violet-500" />
-                    <span className="text-xs text-violet-300 font-medium">🕵️ + Sherlock Bot</span>
-                  </label>
-                  <span className="text-xs text-gray-600">~$0.28/запит · потребує ПІБ+ДН · 60 запитів залишилось</span>
-                </div>
+              {/* ── Smart Search Bar ── */}
+              <SmartSearchBar
+                value={smartQuery}
+                onChange={setSmartQuery}
+                onSearch={handleSmartSearch}
+                loading={enrichLoading}
+                autoFocus
+              />
 
-                <div className="flex gap-2 mt-4">
-                  <button onClick={() => runEnrich(false)}
-                    disabled={enrichLoading || !Object.values(enrichFields).some(v => v.trim())}
-                    className="flex-1 py-3 bg-indigo-700 hover:bg-indigo-600 disabled:opacity-50 rounded-xl font-bold text-sm transition flex items-center justify-center gap-2">
-                    {enrichLoading
-                      ? <><span className="animate-spin">⟳</span> Шукаю по всіх базах{sherlockOpt ? ' + Sherlock...' : '...'}</>
-                      : <>🔎 Шукати по всіх базах{sherlockOpt ? ' + Sherlock' : ''}</>}
-                  </button>
-                  {enrichResult && (
-                    <button onClick={() => runEnrich(true)}
-                      className="px-4 py-3 bg-gray-800 hover:bg-gray-700 rounded-xl text-xs text-gray-400 transition">
-                      🔄
-                    </button>
-                  )}
-                </div>
+              {/* ── Advanced form toggle ── */}
+              <div className="mt-4">
+                <button
+                  onClick={() => setShowAdvanced(v => !v)}
+                  className="flex items-center gap-2 text-xs transition"
+                  style={{ color: showAdvanced ? 'var(--odb-text-dim)' : 'var(--odb-text-faint)' }}
+                >
+                  <span>{showAdvanced ? '▲' : '▼'}</span>
+                  <span>{showAdvanced ? 'Сховати розширений пошук' : 'Уточнити пошук (ПІБ + ДН + телефон...)'}</span>
+                </button>
+
+                {showAdvanced && (
+                  <div className="rounded-xl p-4 mt-3" style={{ background: 'var(--odb-surface)', border: '1px solid var(--odb-border)' }}>
+                    <p className="text-xs mb-3" style={{ color: 'var(--odb-text-faint)' }}>
+                      Заповни що знаєш — чим більше полів, тим точніший результат:
+                    </p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="col-span-2">
+                        <label className="text-xs mb-1 block" style={{ color: 'var(--odb-text-faint)' }}>ПІБ *</label>
+                        <input value={enrichFields.name} onChange={e => setEF('name', e.target.value)}
+                          onKeyDown={e => e.key === 'Enter' && runEnrich()}
+                          placeholder="Романов Александр Викторович"
+                          className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
+                          style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)', color: 'var(--odb-text)' }} />
+                      </div>
+                      <div>
+                        <label className="text-xs mb-1 block" style={{ color: 'var(--odb-text-faint)' }}>Дата народження</label>
+                        <input value={enrichFields.dob} onChange={e => setEF('dob', e.target.value)}
+                          placeholder="05.03.1989"
+                          className="w-full px-3 py-2 rounded-lg text-sm outline-none font-mono"
+                          style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)', color: 'var(--odb-text)' }} />
+                      </div>
+                      <div>
+                        <label className="text-xs mb-1 block" style={{ color: 'var(--odb-text-faint)' }}>Телефон</label>
+                        <input value={enrichFields.phone} onChange={e => setEF('phone', e.target.value)}
+                          placeholder="79888385632"
+                          className="w-full px-3 py-2 rounded-lg text-sm outline-none font-mono"
+                          style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)', color: 'var(--odb-text)' }} />
+                      </div>
+                      <div>
+                        <label className="text-xs mb-1 block" style={{ color: 'var(--odb-text-faint)' }}>Email</label>
+                        <input value={enrichFields.email} onChange={e => setEF('email', e.target.value)}
+                          placeholder="romanov@mail.ru"
+                          className="w-full px-3 py-2 rounded-lg text-sm outline-none font-mono"
+                          style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)', color: 'var(--odb-text)' }} />
+                      </div>
+                      <div>
+                        <label className="text-xs mb-1 block" style={{ color: 'var(--odb-text-faint)' }}>ІПН</label>
+                        <input value={enrichFields.inn} onChange={e => setEF('inn', e.target.value)}
+                          placeholder="123456789012"
+                          className="w-full px-3 py-2 rounded-lg text-sm outline-none font-mono"
+                          style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)', color: 'var(--odb-text)' }} />
+                      </div>
+                      <div>
+                        <label className="text-xs mb-1 block" style={{ color: 'var(--odb-text-faint)' }}>Паспорт</label>
+                        <input value={enrichFields.passport} onChange={e => setEF('passport', e.target.value)}
+                          placeholder="4516409823"
+                          className="w-full px-3 py-2 rounded-lg text-sm outline-none font-mono"
+                          style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)', color: 'var(--odb-text)' }} />
+                      </div>
+                    </div>
+
+                    {/* Sherlock toggle */}
+                    <div className="mt-3 flex items-center gap-3 p-3 rounded-lg"
+                      style={{ background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.2)' }}>
+                      <label className="flex items-center gap-2 cursor-pointer select-none">
+                        <input type="checkbox" checked={sherlockOpt} onChange={e => setSherlockOpt(e.target.checked)}
+                          className="w-4 h-4 accent-violet-500" />
+                        <span className="text-xs text-violet-300 font-medium">🕵️ + Sherlock Bot</span>
+                      </label>
+                      <span className="text-xs" style={{ color: 'var(--odb-text-faint)' }}>
+                        ~$0.28/запит · потребує ПІБ+ДН
+                      </span>
+                    </div>
+
+                    <div className="flex gap-2 mt-4">
+                      <button onClick={() => runEnrich()}
+                        disabled={enrichLoading || !Object.values(enrichFields).some(v => v.trim())}
+                        className="flex-1 py-3 rounded-xl font-bold text-sm transition flex items-center justify-center gap-2"
+                        style={{ background: 'var(--odb-accent)', color: '#fff', opacity: enrichLoading || !Object.values(enrichFields).some(v => v.trim()) ? 0.5 : 1 }}>
+                        {enrichLoading
+                          ? <><span className="animate-spin">⟳</span> Шукаю{sherlockOpt ? ' + Sherlock' : ''}...</>
+                          : <>🔎 Шукати по всіх базах{sherlockOpt ? ' + Sherlock' : ''}</>}
+                      </button>
+                      {enrichResult && (
+                        <button onClick={() => runEnrich()}
+                          className="px-4 py-3 rounded-xl text-xs transition"
+                          style={{ background: 'var(--odb-surface3)', color: 'var(--odb-text-faint)', border: '1px solid var(--odb-border)' }}>
+                          🔄
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {error && (
