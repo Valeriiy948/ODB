@@ -7,6 +7,7 @@ import { NextRequest } from 'next/server'
 import { parseSearchQuery }      from '../../../lib/search/query-parser'
 import { generateNameVariants }  from '../../../lib/search/name-normalizer'
 import { scoreResult }           from '../../../lib/search/relevance-scorer'
+import { canQuery, recordSuccess, recordFailure } from '../../../lib/circuit-breaker'
 
 // VPS access через nginx HTTPS proxy (UFW блокує прямі порти)
 const VPS_BASE = (process.env.VPS_URL ?? 'https://evidencebases.com/odb-api')
@@ -116,9 +117,40 @@ function detectType(q: string): string {
   return 'name'
 }
 
-// Helper factory — передає cookie користувача для авторизації внутрішніх викликів
+// Derives a short source key from a URL for circuit-breaker tracking
+function urlToSource(url: string): string {
+  if (url.includes('/telethon/'))   return 'vps_telethon'
+  if (url.includes('/regs/'))       return 'vps_registries'
+  if (url.includes('/social-vps/')) return 'vps_social'
+  if (url.includes('/presence/'))   return 'vps_presence'
+  if (url.startsWith(VPS_BASE))     return 'vps_orchestrator'
+  if (url.includes('/api/osint/leakosint'))    return 'leakosint'
+  if (url.includes('/api/osint/'))             return 'vps_osint'
+  if (url.includes('/api/breach/'))            return 'dehashed'
+  if (url.includes('/api/nazk/'))              return 'nazk'
+  if (url.includes('/api/mvs/'))               return 'mvs'
+  if (url.includes('/api/myrotvorets/'))        return 'myrotvorets'
+  if (url.includes('/api/erb/'))               return 'erb'
+  if (url.includes('/api/sanctions/'))         return 'sanctions'
+  if (url.includes('/api/shodan/'))            return 'shodan'
+  if (url.includes('/api/vk/'))                return 'vk'
+  if (url.includes('/api/company/'))           return 'company'
+  if (url.includes('/api/network/'))           return 'network'
+  if (url.includes('/api/web/'))               return 'web'
+  if (url.startsWith(LOCAL))                   return 'local'
+  return 'external'
+}
+
+// Helper factory — передає cookie користувача для авторизації внутрішніх викликів.
+// Інтегрований Circuit Breaker: якщо джерело OPEN — повертає null без запиту.
 function makeSafeFetch(cookieHeader: string) {
   return async function safeFetch(url: string, opts: RequestInit = {}, timeoutMs = 7000): Promise<any> {
+    const source = urlToSource(url)
+
+    // Circuit breaker check — skip OPEN sources immediately
+    if (!canQuery(source)) return null
+
+    const t0 = Date.now()
     try {
       const headers: Record<string, string> = {
         ...(opts.headers as Record<string, string> || {}),
@@ -128,8 +160,18 @@ function makeSafeFetch(cookieHeader: string) {
         headers['cookie'] = cookieHeader
       }
       const res = await fetch(url, { ...opts, headers, signal: AbortSignal.timeout(timeoutMs) })
-      return await res.json()
-    } catch { return null }
+      const data = await res.json()
+      // HTTP 5xx treated as failure
+      if (res.status >= 500) {
+        recordFailure(source)
+      } else {
+        recordSuccess(source, Date.now() - t0)
+      }
+      return data
+    } catch {
+      recordFailure(source)
+      return null
+    }
   }
 }
 
