@@ -10,6 +10,7 @@ export type IconName =
   | 'download' | 'settings' | 'activity' | 'tools' | 'shield'
   | 'logout' | 'close' | 'copy' | 'check' | 'arrow-right'
   | 'chevron-right' | 'chevron-down' | 'spark' | 'database' | 'alert'
+  | 'car' | 'message'
 
 // Кожна іконка — масив <path>/<circle>… елементів у viewBox 24×24.
 const PATHS: Record<IconName, React.ReactNode> = {
@@ -39,6 +40,8 @@ const PATHS: Record<IconName, React.ReactNode> = {
   spark:     <><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M18.4 5.6l-2.8 2.8M8.4 15.6l-2.8 2.8" /></>,
   database:  <><ellipse cx="12" cy="5" rx="8" ry="3" /><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6" /></>,
   alert:     <><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" /></>,
+  car:       <><path d="M5 13l1.5-4.5A2 2 0 0 1 8.4 7h7.2a2 2 0 0 1 1.9 1.5L19 13M5 13h14v4a1 1 0 0 1-1 1h-1a1 1 0 0 1-1-1v-1H8v1a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-4Z" /><path d="M7.5 16h.01M16.5 16h.01" /></>,
+  message:   <><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-3.9-.9L3 21l1.9-5.1A8.4 8.4 0 0 1 12 3a8.4 8.4 0 0 1 9 8.5Z" /></>,
 }
 
 interface IconProps extends Omit<SVGProps<SVGSVGElement>, 'name'> {

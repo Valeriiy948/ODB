@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Sidebar from '../components/Sidebar'
 import { createClient } from '../lib/supabase/client'
+import Icon from '../components/Icon'
 
 // ─── Internal source → user-facing category mapping ───────────────────────────
 // Technical tool names are NEVER shown to the end user.
@@ -121,6 +122,21 @@ const CATEGORIES = [
     types: ['name', 'email', 'phone', 'username', 'domain', 'ip', 'edrpou', 'inn'],
   },
 ]
+
+// Category key → SVG icon (нова система іконок замість емодзі)
+const CAT_ICON: Record<string, import('../components/Icon').IconName> = {
+  sanctions:  'alert',
+  vk:         'globe',
+  social:     'message',
+  persons:    'users',
+  messengers: 'message',
+  vehicles:   'car',
+  registries: 'clipboard',
+  leaks:      'database',
+  business:   'building',
+  network:    'network',
+  web:        'search',
+}
 
 // Which API sources are active for each query type
 const SOURCE_TYPES: Record<string, string[]> = {
@@ -1461,7 +1477,7 @@ function CategoryCard({
         onClick={() => canExpand && setExpanded(!expanded)}
       >
         <div className="flex items-center gap-3">
-          <span className="text-2xl">{cat.icon}</span>
+          <span className={cat.color}><Icon name={CAT_ICON[cat.key] ?? 'search'} size={20} /></span>
           <span className={`font-semibold text-sm ${cat.color}`}>{cat.label}</span>
         </div>
         <div className="flex items-center gap-2">
@@ -1621,29 +1637,32 @@ function SearchAllPage() {
   }
 
   return (
-    <div className="flex min-h-screen bg-gray-950 text-white">
+    <div className="flex min-h-screen text-white" style={{ background: 'var(--odb-bg)' }}>
       <Sidebar />
       <main className="flex-1 flex flex-col min-h-screen">
 
         {/* Search header */}
-        <div className="px-6 py-4 border-b border-gray-800 shrink-0">
+        <div className="px-6 py-4 border-b shrink-0" style={{ borderColor: 'var(--odb-border-soft)' }}>
           <div className="flex items-center gap-3">
             <div className="relative flex-1 max-w-2xl">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">🔍</span>
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--odb-text-faint)]">
+                <Icon name="search" size={18} />
+              </span>
               <input
                 value={query}
                 onChange={e => setQuery(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && startSearch()}
-                placeholder="Телефон, ПІБ, email, username, IP, домен, ЄДРПОУ..."
-                className="w-full pl-10 pr-36 py-3 bg-gray-800 border-2 border-gray-700 rounded-xl
-                           text-white font-mono text-sm focus:border-blue-500 focus:outline-none
-                           placeholder-gray-600 transition-colors"
+                placeholder="Телефон, ПІБ, email, username, IP, домен, ЄДРПОУ…"
+                className="w-full pl-11 pr-36 py-3 rounded-xl text-white font-mono text-sm outline-none placeholder-[var(--odb-text-faint)] transition-all"
+                style={{ background: 'var(--odb-surface-2)', border: '1px solid var(--odb-border)' }}
+                onFocus={e => { e.currentTarget.style.borderColor = 'var(--odb-accent)'; e.currentTarget.style.boxShadow = 'var(--odb-shadow-accent)' }}
+                onBlur={e => { e.currentTarget.style.borderColor = 'var(--odb-border)'; e.currentTarget.style.boxShadow = 'none' }}
               />
               {typeInfo && (
                 <div className={`absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1
-                  text-xs font-semibold px-2.5 py-1 rounded-full bg-gray-900 border border-gray-700
-                  ${typeInfo.color}`}>
-                  {typeInfo.icon} {typeInfo.label}
+                  text-xs font-semibold px-2.5 py-1 rounded-full ${typeInfo.color}`}
+                  style={{ background: 'var(--odb-surface-3)', border: '1px solid var(--odb-border)' }}>
+                  {typeInfo.label}
                 </div>
               )}
             </div>
@@ -1651,25 +1670,27 @@ function SearchAllPage() {
             <button
               onClick={() => startSearch()}
               disabled={!query.trim() || running}
-              className="px-6 py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-40
-                         rounded-xl font-semibold text-sm transition-colors shrink-0"
+              className="odb-btn-accent px-6 py-3 font-semibold text-sm shrink-0 disabled:opacity-40 flex items-center gap-2"
             >
-              {running ? <span className="animate-spin inline-block">⟳</span> : 'Шукати'}
+              {running
+                ? <span className="animate-spin inline-block"><Icon name="spark" size={16} /></span>
+                : <><Icon name="search" size={16} /> Шукати</>}
             </button>
 
             {running && (
               <button
                 onClick={() => { abortRef.current?.abort(); setRunning(false) }}
-                className="px-4 py-3 bg-red-800 hover:bg-red-700 rounded-xl text-sm shrink-0 transition"
+                className="px-4 py-3 rounded-xl text-sm shrink-0 transition text-[var(--odb-danger)]"
+                style={{ background: 'rgba(248,113,113,0.12)', border: '1px solid rgba(248,113,113,0.25)' }}
               >
-                ✕
+                <Icon name="close" size={16} />
               </button>
             )}
 
             {searched && !running && (
               <button onClick={newSearch}
-                className="px-4 py-3 bg-gray-800 hover:bg-gray-700 rounded-xl text-sm
-                           text-gray-400 hover:text-white shrink-0 transition">
+                className="px-4 py-3 rounded-xl text-sm text-[var(--odb-text-dim)] hover:text-white shrink-0 transition"
+                style={{ background: 'var(--odb-surface-2)', border: '1px solid var(--odb-border)' }}>
                 Очистити
               </button>
             )}
@@ -1752,7 +1773,7 @@ function SearchAllPage() {
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 text-left">
                 {CATEGORIES.map(cat => (
                   <div key={cat.key} className="flex items-center gap-2.5 p-3 bg-gray-900 rounded-xl border border-gray-800">
-                    <span className="text-2xl">{cat.icon}</span>
+                    <span className={cat.color}><Icon name={CAT_ICON[cat.key] ?? 'search'} size={20} /></span>
                     <span className={`text-xs font-semibold ${cat.color}`}>{cat.label}</span>
                   </div>
                 ))}
