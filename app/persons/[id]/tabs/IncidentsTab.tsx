@@ -42,7 +42,7 @@ export function IncidentsTab({
       </div>
 
       {showForm && (
-        <div className="bg-gray-800 border border-red-800 rounded-xl p-5 space-y-4">
+        <div className="rounded-xl p-5 space-y-4" style={{ background: 'var(--odb-surface)', border: '1px solid rgba(153,27,27,0.6)' }}>
           <h4 className="text-red-400 font-semibold text-sm">Новий інцидент</h4>
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
@@ -52,7 +52,10 @@ export function IncidentsTab({
                 value={form.title}
                 onChange={e => form.setTitle(e.target.value)}
                 placeholder="Короткий опис події"
-                className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white text-sm focus:border-red-500 focus:outline-none"
+                className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)', color: 'var(--odb-text)' }}
+                onFocus={e => (e.target.style.borderColor = '#dc2626')}
+                onBlur={e => (e.target.style.borderColor = 'var(--odb-border)')}
               />
             </div>
             <div>
@@ -61,7 +64,10 @@ export function IncidentsTab({
                 type="date"
                 value={form.date}
                 onChange={e => form.setDate(e.target.value)}
-                className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white text-sm focus:border-red-500 focus:outline-none"
+                className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)', color: 'var(--odb-text)' }}
+                onFocus={e => (e.target.style.borderColor = '#dc2626')}
+                onBlur={e => (e.target.style.borderColor = 'var(--odb-border)')}
               />
             </div>
             <div>
@@ -69,7 +75,10 @@ export function IncidentsTab({
               <select
                 value={form.type}
                 onChange={e => form.setType(e.target.value)}
-                className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white text-sm focus:border-red-500 focus:outline-none"
+                className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)', color: 'var(--odb-text)' }}
+                onFocus={e => (e.target.style.borderColor = '#dc2626')}
+                onBlur={e => (e.target.style.borderColor = 'var(--odb-border)')}
               >
                 {INCIDENT_TYPES.map(t => (
                   <option key={t} value={t}>{t === 'unknown' ? 'Інше' : t.charAt(0).toUpperCase() + t.slice(1)}</option>
@@ -83,7 +92,10 @@ export function IncidentsTab({
                 value={form.location}
                 onChange={e => form.setLocation(e.target.value)}
                 placeholder="Місто, координати"
-                className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white text-sm focus:border-red-500 focus:outline-none"
+                className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)', color: 'var(--odb-text)' }}
+                onFocus={e => (e.target.style.borderColor = '#dc2626')}
+                onBlur={e => (e.target.style.borderColor = 'var(--odb-border)')}
               />
             </div>
             <div>
@@ -91,7 +103,10 @@ export function IncidentsTab({
               <select
                 value={form.role}
                 onChange={e => form.setRole(e.target.value)}
-                className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white text-sm focus:border-red-500 focus:outline-none"
+                className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)', color: 'var(--odb-text)' }}
+                onFocus={e => (e.target.style.borderColor = '#dc2626')}
+                onBlur={e => (e.target.style.borderColor = 'var(--odb-border)')}
               >
                 {['виконавець', 'командир', 'організатор', 'свідок'].map(r => (
                   <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>
@@ -103,7 +118,10 @@ export function IncidentsTab({
               <select
                 value={form.severity}
                 onChange={e => form.setSeverity(e.target.value)}
-                className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white text-sm focus:border-red-500 focus:outline-none"
+                className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)', color: 'var(--odb-text)' }}
+                onFocus={e => (e.target.style.borderColor = '#dc2626')}
+                onBlur={e => (e.target.style.borderColor = 'var(--odb-border)')}
               >
                 {[['low','Низька'],['medium','Середня'],['high','Висока'],['critical','Критична']].map(([v, l]) => (
                   <option key={v} value={v}>{l}</option>
@@ -117,7 +135,10 @@ export function IncidentsTab({
                 value={form.icc}
                 onChange={e => form.setIcc(e.target.value)}
                 placeholder="Ст. 8(2)(a)(i)"
-                className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white text-sm focus:border-red-500 focus:outline-none"
+                className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)', color: 'var(--odb-text)' }}
+                onFocus={e => (e.target.style.borderColor = '#dc2626')}
+                onBlur={e => (e.target.style.borderColor = 'var(--odb-border)')}
               />
             </div>
             <div className="col-span-2">
@@ -127,7 +148,10 @@ export function IncidentsTab({
                 onChange={e => form.setDesc(e.target.value)}
                 rows={3}
                 placeholder="Детальний опис події..."
-                className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white text-sm focus:border-red-500 focus:outline-none resize-none"
+                className="w-full px-3 py-2 rounded-lg text-sm outline-none resize-none"
+                style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)', color: 'var(--odb-text)' }}
+                onFocus={e => (e.target.style.borderColor = '#dc2626')}
+                onBlur={e => (e.target.style.borderColor = 'var(--odb-border)')}
               />
             </div>
           </div>
@@ -162,10 +186,10 @@ export function IncidentsTab({
 
       <div className="space-y-3">
         {incidents.map((inc: any) => (
-          <div key={inc.id} className="bg-gray-800 border border-gray-700 rounded-xl p-5">
+          <div key={inc.id} className="rounded-xl p-5" style={{ background: 'var(--odb-surface)', border: '1px solid var(--odb-border)' }}>
             <div className="flex items-start justify-between gap-3">
               <div className="flex-1">
-                <h4 className="text-white font-semibold">{inc.title}</h4>
+                <h4 className="font-semibold" style={{ color: 'var(--odb-text)' }}>{inc.title}</h4>
                 <div className="flex items-center gap-3 mt-1 flex-wrap">
                   {inc.inc_type && (
                     <span className="text-xs bg-red-900/50 text-red-300 px-2 py-0.5 rounded">{inc.inc_type}</span>

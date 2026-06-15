@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import Sidebar from '../components/Sidebar'
 import RiskScore from '../components/crypto/RiskScore'
+import Icon from '../components/Icon'
+import CryptoPriceTicker from '../components/CryptoPriceTicker'
 
 const TransactionGraph = dynamic(
   () => import('../components/crypto/TransactionGraph'),
@@ -1542,22 +1544,27 @@ export default function CryptoIntelPage() {
   ]
 
   return (
-    <div className="flex min-h-screen bg-gray-950">
+    <div className="flex min-h-screen" style={{ background: 'var(--odb-bg)' }}>
       <Sidebar />
       <main className="flex-1 p-6 overflow-auto">
         {/* ── Header ── */}
-        <div className="mb-6">
-          <div className="flex items-center gap-3 mb-1">
-            <span className="text-3xl">₿</span>
-            <div>
-              <h1 className="text-white text-2xl font-bold">Крипто-розвідка</h1>
-              <p className="text-gray-500 text-sm">Блокчейн форензика · Ідентифікація шахраїв · OSINT по гаманцях</p>
-            </div>
+        <div className="mb-5 flex items-center gap-3 odb-animate-fade">
+          <span className="inline-flex items-center justify-center w-12 h-12 rounded-2xl text-white shrink-0"
+                style={{ background: 'linear-gradient(135deg, #f7931a, #b45309)', boxShadow: '0 8px 30px rgba(247,147,26,0.35)' }}>
+            <Icon name="bitcoin" size={24} strokeWidth={2} />
+          </span>
+          <div>
+            <h1 className="text-white text-2xl font-bold">Крипто-розвідка</h1>
+            <p className="text-[var(--odb-text-faint)] text-sm">Блокчейн форензика · Ідентифікація шахраїв · OSINT по гаманцях</p>
           </div>
         </div>
 
+        {/* ── Живі курси крипти ── */}
+        <CryptoPriceTicker />
+
         {/* ── Search panel ── */}
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 mb-6 space-y-4">
+        <div className="rounded-2xl p-5 mb-6 space-y-4 odb-animate-up"
+             style={{ background: 'var(--odb-surface)', border: '1px solid var(--odb-border)' }}>
           {/* Address input row */}
           <div className="flex gap-3">
             <div className="relative flex-1">
@@ -1567,7 +1574,10 @@ export default function CryptoIntelPage() {
                 onChange={e => setAddress(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && runAnalysis()}
                 placeholder="Bitcoin, Ethereum, TRON, BSC адреса... (0x..., T..., 1/3/bc1...)"
-                className="w-full bg-gray-800 border border-gray-700 text-white font-mono rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-orange-500/60 placeholder-gray-600"
+                className="w-full text-white font-mono rounded-xl px-4 py-3 text-sm outline-none placeholder-[var(--odb-text-faint)] transition-all"
+                style={{ background: 'var(--odb-surface-2)', border: '1px solid var(--odb-border)' }}
+                onFocus={e => { e.currentTarget.style.borderColor = '#f7931a'; e.currentTarget.style.boxShadow = '0 8px 30px rgba(247,147,26,0.25)' }}
+                onBlur={e => { e.currentTarget.style.borderColor = 'var(--odb-border)'; e.currentTarget.style.boxShadow = 'none' }}
                 disabled={loading}
               />
               {address && detectedChain !== 'auto' && (
@@ -1618,11 +1628,12 @@ export default function CryptoIntelPage() {
           <button
             onClick={runAnalysis}
             disabled={!address.trim() || loading}
-            className="w-full py-3.5 bg-orange-600 hover:bg-orange-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition flex items-center justify-center gap-2"
+            className="w-full py-3.5 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-all flex items-center justify-center gap-2 hover:-translate-y-0.5"
+            style={{ background: 'linear-gradient(135deg, #f7931a, #b45309)', boxShadow: '0 8px 30px rgba(247,147,26,0.3)' }}
           >
             {loading
-              ? <><span className="animate-spin">⏳</span> Аналіз...</>
-              : <><span>🔍</span> Розслідувати гаманець</>}
+              ? <><span className="animate-spin"><Icon name="spark" size={17} /></span> Аналіз…</>
+              : <><Icon name="search" size={17} /> Розслідувати гаманець</>}
           </button>
 
           {/* Quick examples */}

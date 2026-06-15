@@ -23,8 +23,8 @@ export function RegistriesTab({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-white font-semibold">🏛️ Перевірка по реєстрах</h3>
-          <p className="text-gray-500 text-xs mt-0.5">НАЗК · Миротворець · ЄРБ · МВС Розшук · OpenSanctions · ЄДР/ФОП</p>
+          <h3 className="font-semibold" style={{ color: 'var(--odb-text)' }}>🏛️ Перевірка по реєстрах</h3>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--odb-text-faint)' }}>НАЗК · Миротворець · ЄРБ · МВС Розшук · OpenSanctions · ЄДР/ФОП</p>
         </div>
         <button
           onClick={onRefresh}
@@ -46,26 +46,24 @@ export function RegistriesTab({
             { icon: '🌍', label: 'Санкції',      value: regSanctions?.total || 0,                         color: regSanctions?.total > 0 ? 'red' : 'gray' },
             { icon: '🏢', label: 'ЄДР/ФОП',     value: regCompany?.total || 0,                           color: regCompany?.total > 0 ? 'blue' : 'gray' },
           ].map(({ icon, label, value, total, color }) => (
-            <div key={label} className={`rounded-xl p-4 border text-center ${
-              color === 'red'    ? 'bg-red-950/50 border-red-700'      :
-              color === 'orange' ? 'bg-orange-950/50 border-orange-700' :
-              color === 'yellow' ? 'bg-yellow-950/50 border-yellow-700' :
-              color === 'blue'   ? 'bg-blue-950/50 border-blue-700'    :
-              'bg-gray-800 border-gray-700'
-            }`}>
+            <div key={label} className="rounded-xl p-4 text-center"
+              style={{
+                background: color === 'red' ? 'rgba(127,29,29,0.3)' : color === 'orange' ? 'rgba(124,45,18,0.3)' : color === 'yellow' ? 'rgba(113,63,18,0.3)' : color === 'blue' ? 'rgba(23,37,84,0.3)' : 'var(--odb-surface)',
+                border: `1px solid ${color === 'red' ? 'rgba(185,28,28,0.5)' : color === 'orange' ? 'rgba(194,65,12,0.5)' : color === 'yellow' ? 'rgba(161,98,7,0.5)' : color === 'blue' ? 'rgba(29,78,216,0.5)' : 'var(--odb-border)'}`,
+              }}>
               <div className="text-2xl mb-1">{icon}</div>
-              <div className={`text-2xl font-bold ${color === 'gray' ? 'text-gray-400' : 'text-white'}`}>
-                {value}{total && total > value ? <span className="text-sm text-gray-400">/{total}</span> : ''}
+              <div className="text-2xl font-bold" style={{ color: color === 'gray' ? 'var(--odb-text-dim)' : 'var(--odb-text)' }}>
+                {value}{total && total > value ? <span className="text-sm" style={{ color: 'var(--odb-text-faint)' }}>/{total}</span> : ''}
               </div>
-              <div className="text-gray-400 text-xs mt-0.5">{label}</div>
+              <div className="text-xs mt-0.5" style={{ color: 'var(--odb-text-dim)' }}>{label}</div>
             </div>
           ))}
         </div>
       )}
 
       {/* НАЗК */}
-      <div className="bg-gray-800 rounded-xl p-5 border border-gray-700">
-        <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-700">
+      <div className="rounded-xl p-5" style={{ background: 'var(--odb-surface)', border: '1px solid var(--odb-border)' }}>
+        <div className="flex items-center justify-between mb-3 pb-2" style={{ borderBottom: '1px solid var(--odb-border)' }}>
           <h4 className="text-yellow-400 font-semibold text-sm">📜 НАЗК — Декларації держслужбовців</h4>
           {regNazk?.total > 0 && (
             <a href={`https://public.nazk.gov.ua/search?query=${encodeURIComponent(personName)}`}
@@ -85,7 +83,7 @@ export function RegistriesTab({
                   <div key={i} className="p-3 rounded-lg bg-yellow-950/20 border border-yellow-800/30">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1">
-                        <p className="text-white text-sm font-medium">{d.full_name || d.last_name}</p>
+                        <p className="text-sm font-medium" style={{ color: 'var(--odb-text)' }}>{d.full_name || d.last_name}</p>
                         <p className="text-yellow-300/70 text-xs mt-0.5">{d.position} · {d.organization}</p>
                         <p className="text-gray-500 text-xs">{d.declaration_type} · {d.declaration_year}</p>
                       </div>
@@ -109,8 +107,8 @@ export function RegistriesTab({
       </div>
 
       {/* Миротворець */}
-      <div className="bg-gray-800 rounded-xl p-5 border border-gray-700">
-        <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-700">
+      <div className="rounded-xl p-5" style={{ background: 'var(--odb-surface)', border: '1px solid var(--odb-border)' }}>
+        <div className="flex items-center justify-between mb-3 pb-2" style={{ borderBottom: '1px solid var(--odb-border)' }}>
           <h4 className="text-red-400 font-semibold text-sm">🚨 Миротворець</h4>
           {regMyrotvorets?.found > 0 && (
             <a href={`https://myrotvorets.center/?s=${encodeURIComponent(personName)}`}
@@ -129,7 +127,7 @@ export function RegistriesTab({
                   <div key={i} className="p-3 rounded-lg bg-red-950/20 border border-red-800/30">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1">
-                        <p className="text-white text-sm font-medium">{r.title}</p>
+                        <p className="text-sm font-medium" style={{ color: 'var(--odb-text)' }}>{r.title}</p>
                         {r.excerpt && <p className="text-gray-400 text-xs mt-1 line-clamp-2">{r.excerpt}</p>}
                         <p className="text-gray-600 text-xs mt-1">{r.date}</p>
                       </div>
@@ -145,8 +143,8 @@ export function RegistriesTab({
       </div>
 
       {/* ЄРБ */}
-      <div className="bg-gray-800 rounded-xl p-5 border border-gray-700">
-        <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-700">
+      <div className="rounded-xl p-5" style={{ background: 'var(--odb-surface)', border: '1px solid var(--odb-border)' }}>
+        <div className="flex items-center justify-between mb-3 pb-2" style={{ borderBottom: '1px solid var(--odb-border)' }}>
           <h4 className="text-orange-400 font-semibold text-sm">💳 ЄРБ — Реєстр боржників</h4>
           {regErb?.fallback_url && (
             <a href={regErb.fallback_url} target="_blank" rel="noopener noreferrer" className="text-orange-500 hover:text-orange-300 text-xs">
@@ -162,7 +160,7 @@ export function RegistriesTab({
                 <p className="text-orange-400/80 text-xs mb-2">Знайдено {regErb.found} записів про борги</p>
                 {regErb.debtors?.map((d: any, i: number) => (
                   <div key={i} className="p-3 rounded-lg bg-orange-950/20 border border-orange-800/30 text-sm">
-                    <p className="text-white font-medium">{d.lastName} {d.firstName} {d.middleName}</p>
+                    <p className="font-medium" style={{ color: 'var(--odb-text)' }}>{d.lastName} {d.firstName} {d.middleName}</p>
                     {d.birthDate && <p className="text-gray-400 text-xs">ДН: {d.birthDate}</p>}
                     {d.debtSum && <p className="text-orange-300 text-xs">Борг: {d.debtSum?.toLocaleString()} грн</p>}
                     {d.creditorName && <p className="text-gray-400 text-xs">Стягувач: {d.creditorName}</p>}
@@ -173,8 +171,8 @@ export function RegistriesTab({
       </div>
 
       {/* МВС */}
-      <div className="bg-gray-800 rounded-xl p-5 border border-gray-700">
-        <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-700">
+      <div className="rounded-xl p-5" style={{ background: 'var(--odb-surface)', border: '1px solid var(--odb-border)' }}>
+        <div className="flex items-center justify-between mb-3 pb-2" style={{ borderBottom: '1px solid var(--odb-border)' }}>
           <h4 className="text-blue-400 font-semibold text-sm">🚔 МВС — Розшук</h4>
           {regMvs?.fallback_url && (
             <a href={regMvs.fallback_url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-300 text-xs">
@@ -198,7 +196,7 @@ export function RegistriesTab({
                   <p className="text-red-400/80 text-xs mb-2">⚠️ Знайдено {regMvs.total} записів у розшуку</p>
                   {regMvs.records?.map((r: any, i: number) => (
                     <div key={i} className="p-3 rounded-lg bg-blue-950/20 border border-blue-800/30 text-sm">
-                      <p className="text-white font-medium">{r.LAST_NAME_U || r.lastname} {r.FIRST_NAME_U || r.firstname}</p>
+                      <p className="font-medium" style={{ color: 'var(--odb-text)' }}>{r.LAST_NAME_U || r.lastname} {r.FIRST_NAME_U || r.firstname}</p>
                       {(r.BORN_DATE || r.dob) && <p className="text-gray-400 text-xs">ДН: {r.BORN_DATE || r.dob}</p>}
                       {(r.ARTICLE_CRIM || r.article) && <p className="text-red-400 text-xs">Стаття: {r.ARTICLE_CRIM || r.article}</p>}
                     </div>
@@ -208,8 +206,8 @@ export function RegistriesTab({
       </div>
 
       {/* OpenSanctions */}
-      <div className="bg-gray-800 rounded-xl p-5 border border-gray-700">
-        <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-700">
+      <div className="rounded-xl p-5" style={{ background: 'var(--odb-surface)', border: '1px solid var(--odb-border)' }}>
+        <div className="flex items-center justify-between mb-3 pb-2" style={{ borderBottom: '1px solid var(--odb-border)' }}>
           <div>
             <h4 className="text-red-400 font-semibold text-sm">🌍 Міжнародні санкційні списки</h4>
             <p className="text-gray-600 text-xs mt-0.5">OFAC (США) · EU · ООН РБ · UK HMT · РНБО України · Інтерпол · Panama Papers</p>
@@ -271,8 +269,8 @@ export function RegistriesTab({
       </div>
 
       {/* ЄДР / Бізнес */}
-      <div className="bg-gray-800 rounded-xl p-5 border border-gray-700">
-        <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-700">
+      <div className="rounded-xl p-5" style={{ background: 'var(--odb-surface)', border: '1px solid var(--odb-border)' }}>
+        <div className="flex items-center justify-between mb-3 pb-2" style={{ borderBottom: '1px solid var(--odb-border)' }}>
           <div>
             <h4 className="text-blue-400 font-semibold text-sm">🏢 Бізнес-реєстри (ЄДР · ФОП · YouControl)</h4>
             <p className="text-gray-600 text-xs mt-0.5">Компанії, ФОП, де особа є директором або засновником</p>
@@ -314,7 +312,7 @@ export function RegistriesTab({
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <p className="text-white font-medium">{c.name}</p>
+                            <p className="font-medium" style={{ color: 'var(--odb-text)' }}>{c.name}</p>
                             {c.type === 'fop' && <span className="text-xs bg-gray-700 text-gray-400 px-1.5 py-0.5 rounded">ФОП</span>}
                             <span className={`text-xs px-1.5 py-0.5 rounded ${
                               c.status?.toLowerCase().includes('зареєстр') ? 'bg-green-900 text-green-400' :

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { createClient } from '../lib/supabase/client'
 import { useRouter } from 'next/navigation'
+import Icon from '../components/Icon'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -27,44 +28,86 @@ export default function LoginPage() {
     }
   }
 
+  function fieldFocus(e: React.FocusEvent<HTMLInputElement>) {
+    e.currentTarget.style.borderColor = 'var(--odb-accent)'
+    e.currentTarget.style.boxShadow = 'var(--odb-shadow-accent)'
+  }
+  function fieldBlur(e: React.FocusEvent<HTMLInputElement>) {
+    e.currentTarget.style.borderColor = 'var(--odb-border)'
+    e.currentTarget.style.boxShadow = 'none'
+  }
+
   return (
-    <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-      <div className="bg-gray-800 p-8 rounded-lg shadow-xl w-full max-w-md">
-        <h1 className="text-2xl font-bold text-white mb-2">🔐 ODB Platform</h1>
-        <p className="text-gray-400 mb-6">Оперативна База Даних</p>
+    <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden"
+         style={{ background: 'var(--odb-bg)' }}>
+
+      {/* Фонове світіння */}
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[560px] h-[560px] rounded-full blur-[130px] opacity-[0.14]"
+             style={{ background: 'radial-gradient(circle, var(--odb-accent), transparent 70%)' }} />
+      </div>
+
+      {/* Картка входу */}
+      <div className="relative z-10 w-full max-w-md odb-glass rounded-3xl p-8 odb-animate-scale"
+           style={{ boxShadow: 'var(--odb-shadow-lg)' }}>
+
+        {/* Логотип */}
+        <div className="flex flex-col items-center text-center mb-7">
+          <span className="inline-flex items-center justify-center w-16 h-16 rounded-2xl text-white mb-4 odb-glow"
+                style={{ background: 'linear-gradient(135deg, var(--odb-accent-hi), var(--odb-accent-lo))' }}>
+            <Icon name="shield" size={32} strokeWidth={2} />
+          </span>
+          <h1 className="text-2xl font-bold">
+            <span className="text-white">ODB </span>
+            <span className="odb-gradient-text">Platform</span>
+          </h1>
+          <p className="text-[var(--odb-text-faint)] text-sm mt-1">Розвідувальна система відкритих джерел</p>
+        </div>
 
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
-            <label className="text-gray-300 text-sm">Email</label>
+            <label className="text-[var(--odb-text-dim)] text-xs font-medium uppercase tracking-wider">Email</label>
             <input
               type="email"
               value={email}
               onChange={e => setEmail(e.target.value)}
-              className="w-full mt-1 p-3 bg-gray-700 text-white rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
+              onFocus={fieldFocus}
+              onBlur={fieldBlur}
+              className="w-full mt-1.5 px-4 py-3 text-white rounded-xl outline-none transition-all placeholder-[var(--odb-text-faint)]"
+              style={{ background: 'var(--odb-surface-2)', border: '1px solid var(--odb-border)' }}
               placeholder="your@email.com"
               required
             />
           </div>
           <div>
-            <label className="text-gray-300 text-sm">Пароль</label>
+            <label className="text-[var(--odb-text-dim)] text-xs font-medium uppercase tracking-wider">Пароль</label>
             <input
               type="password"
               value={password}
               onChange={e => setPassword(e.target.value)}
-              className="w-full mt-1 p-3 bg-gray-700 text-white rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
+              onFocus={fieldFocus}
+              onBlur={fieldBlur}
+              className="w-full mt-1.5 px-4 py-3 text-white rounded-xl outline-none transition-all placeholder-[var(--odb-text-faint)]"
+              style={{ background: 'var(--odb-surface-2)', border: '1px solid var(--odb-border)' }}
               placeholder="••••••••"
               required
             />
           </div>
 
-          {error && <p className="text-red-400 text-sm">{error}</p>}
+          {error && (
+            <div className="flex items-center gap-2 text-[var(--odb-danger)] text-sm odb-animate-fade">
+              <Icon name="alert" size={15} /> {error}
+            </div>
+          )}
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full p-3 bg-blue-600 hover:bg-blue-700 text-white rounded font-semibold transition disabled:opacity-50"
+            className="odb-btn-accent w-full py-3 font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
           >
-            {loading ? 'Вхід...' : 'Увійти'}
+            {loading
+              ? <><span className="inline-block animate-spin"><Icon name="spark" size={16} /></span> Вхід…</>
+              : <><Icon name="logout" size={16} /> Увійти</>}
           </button>
         </form>
       </div>

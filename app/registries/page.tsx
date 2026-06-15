@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Sidebar from '../components/Sidebar'
+import Icon from '../components/Icon'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -169,7 +170,7 @@ const ALL_MODULES: Module[] = [
   // ══ Соцмережі ═══════════════════════════════════════════════════════════════
   { id: 'telegram', icon: '✈️', title: 'Telegram', category: 'Соцмережі',
     status: 'active', description: 'Пошук по базі Telegram: Username, ID, phone',
-    href: '/social-search', price: 'free', count: '167k' },
+    href: '/search-all', price: 'free', count: '167k' },
 
   { id: 'vk', icon: '🔵', title: 'ВКонтакте', category: 'Соцмережі',
     status: 'active', description: 'Пошук VK профілів через Google/Yandex дорки',
@@ -178,15 +179,15 @@ const ALL_MODULES: Module[] = [
 
   { id: 'instagram', icon: '📸', title: 'Instagram', category: 'Соцмережі',
     status: 'active', description: 'Пошук профілів та постів Instagram',
-    href: '/social-search', price: 'free' },
+    href: '/search-all', price: 'free' },
 
   { id: 'tiktok', icon: '🎵', title: 'TikTok', category: 'Соцмережі',
     status: 'active', description: 'Профілі та статистика TikTok',
-    href: '/social-search', price: 'free' },
+    href: '/search-all', price: 'free' },
 
   { id: 'username-search', icon: '🌐', title: 'Username Search', category: 'Соцмережі',
     status: 'active', description: 'Пошук нікнейму на 500+ платформах (Sherlock + Maigret)',
-    href: '/sherlock', price: 'free' },
+    href: '/search-all', price: 'free' },
 
   { id: 'facebook', icon: '📘', title: 'Facebook', category: 'Соцмережі',
     status: 'coming_soon', description: 'Пошук профілів Facebook', price: 'free' },
@@ -203,7 +204,7 @@ const ALL_MODULES: Module[] = [
   // ══ OSINT / Витоки ══════════════════════════════════════════════════════════
   { id: 'fragment-search', icon: '🔍', title: 'Фрагментний пошук', category: 'OSINT / Витоки',
     status: 'active', description: 'Пошук по 167k записах локальної Telegram-бази',
-    href: '/fragment-search', price: 'free', count: '167k' },
+    href: '/search-all', price: 'free', count: '167k' },
 
   { id: 'breach-intel', icon: '🔓', title: 'Витоки (DeHashed + LeakCheck)', category: 'OSINT / Витоки',
     status: 'active', description: 'Пошук по злитих базах: email, пароль, IP, телефон',
@@ -585,23 +586,20 @@ function ModuleCard({ mod, onSelect }: { mod: Module; onSelect: (m: Module) => v
   return (
     <div
       onClick={() => isClickable && onSelect(mod)}
-      className={`bg-gray-900 border rounded-xl p-4 flex flex-col gap-2.5 transition
-        ${isClickable ? 'cursor-pointer' : 'cursor-default'}
-        ${mod.status === 'active'
-          ? 'border-gray-700 hover:border-blue-600 hover:bg-gray-800/50'
-          : mod.status === 'needs_token'
-          ? 'border-gray-800 hover:border-orange-700/60 hover:opacity-100 opacity-80'
-          : 'border-gray-800 opacity-60'}`}
+      className={`rounded-xl p-4 flex flex-col gap-2.5 transition-all
+        ${isClickable ? 'cursor-pointer odb-card-hover' : 'cursor-default'}
+        ${mod.status !== 'active' ? 'opacity-70' : ''}`}
+      style={{ background: 'var(--odb-surface)', border: `1px solid ${mod.status === 'active' ? 'var(--odb-border)' : 'var(--odb-border-soft)'}` }}
     >
       <div className="flex items-start justify-between">
         <span className="text-2xl">{mod.icon}</span>
         <span className={`w-2 h-2 rounded-full mt-1 ${STATUS_DOT[mod.status]}`} />
       </div>
       <div className="flex-1">
-        <p className="text-white text-sm font-semibold leading-tight">{mod.title}</p>
-        <p className="text-gray-500 text-xs mt-0.5 line-clamp-2">{mod.description}</p>
+        <p className="text-sm font-semibold leading-tight" style={{ color: 'var(--odb-text)' }}>{mod.title}</p>
+        <p className="text-xs mt-0.5 line-clamp-2" style={{ color: 'var(--odb-text-dim)' }}>{mod.description}</p>
       </div>
-      <div className="flex items-center justify-between pt-1 border-t border-gray-800/60">
+      <div className="flex items-center justify-between pt-1" style={{ borderTop: '1px solid var(--odb-border-soft)' }}>
         {mod.count
           ? <span className="text-green-400 text-xs font-medium">{mod.count}</span>
           : <span className="text-gray-600 text-xs">{STATUS_LABEL[mod.status]}</span>
@@ -644,21 +642,27 @@ function SearchPanel({ mod, onClose }: { mod: Module; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex">
       <div className="flex-1 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="w-full max-w-lg bg-gray-950 border-l border-gray-700 flex flex-col h-full shadow-2xl overflow-hidden">
+      <div className="w-full max-w-lg flex flex-col h-full shadow-2xl overflow-hidden"
+        style={{ background: 'var(--odb-surface)', borderLeft: '1px solid var(--odb-border)' }}>
 
         {/* Header */}
-        <div className="px-5 py-4 border-b border-gray-800 flex items-center justify-between shrink-0">
+        <div className="px-5 py-4 flex items-center justify-between shrink-0"
+          style={{ borderBottom: '1px solid var(--odb-border)' }}>
           <div className="flex items-center gap-3">
             <span className="text-3xl">{mod.icon}</span>
             <div>
-              <p className="text-white font-bold">{mod.title}</p>
+              <p className="font-bold" style={{ color: 'var(--odb-text)' }}>{mod.title}</p>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <span className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[mod.status]}`} />
-                <span className="text-gray-500 text-xs">{mod.category}</span>
+                <span className="text-xs" style={{ color: 'var(--odb-text-faint)' }}>{mod.category}</span>
               </div>
             </div>
           </div>
-          <button onClick={onClose} className="text-gray-600 hover:text-white text-xl transition w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-800">✕</button>
+          <button onClick={onClose}
+            className="text-xl transition w-8 h-8 flex items-center justify-center rounded-lg"
+            style={{ color: 'var(--odb-text-dim)' }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'var(--odb-surface3)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>✕</button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
@@ -707,7 +711,10 @@ function SearchPanel({ mod, onClose }: { mod: Module; onClose: () => void }) {
                 onChange={e => setValues(prev => ({ ...prev, [f.key]: e.target.value }))}
                 onKeyDown={e => e.key === 'Enter' && requiredFilled && runSearch()}
                 placeholder={f.placeholder}
-                className="w-full bg-gray-800 border border-gray-700 focus:border-blue-500 rounded-xl px-4 py-2.5 text-white placeholder-gray-600 outline-none transition text-sm"
+                className="w-full rounded-xl px-4 py-2.5 outline-none transition text-sm"
+                style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)', color: 'var(--odb-text)' }}
+                onFocus={e => (e.target.style.borderColor = 'var(--odb-accent)')}
+                onBlur={e => (e.target.style.borderColor = 'var(--odb-border)')}
               />
             </div>
           ))}
@@ -767,19 +774,26 @@ export default function RegistriesPage() {
   const tokenCount   = ALL_MODULES.filter(m => m.status === 'needs_token').length
 
   return (
-    <div className="flex h-screen bg-gray-950 text-white overflow-hidden">
+    <div className="flex h-screen overflow-hidden" style={{ background: 'var(--odb-bg)', color: 'var(--odb-text)' }}>
       <Sidebar />
       <div className="flex-1 overflow-y-auto">
 
         {/* Sticky header */}
-        <div className="sticky top-0 z-10 bg-gray-950/98 backdrop-blur border-b border-gray-800 px-6 py-4">
+        <div className="sticky top-0 z-10 backdrop-blur px-6 py-4"
+          style={{ background: 'var(--odb-surface)', borderBottom: '1px solid var(--odb-border)' }}>
           <div className="max-w-7xl mx-auto">
             <div className="flex items-center justify-between mb-4">
-              <div>
-                <h1 className="text-xl font-bold">⚙️ Модулі платформи</h1>
-                <p className="text-gray-500 text-xs mt-0.5">
-                  {ALL_MODULES.length} модулів · {activeCount} активних · {comingCount} в розробці · {tokenCount} потребують токен
-                </p>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                  style={{ background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)', boxShadow: '0 0 16px rgba(59,130,246,0.3)' }}>
+                  <Icon name="clipboard" size={20} strokeWidth={1.8} />
+                </div>
+                <div>
+                  <h1 className="text-base font-bold tracking-tight">Модулі платформи</h1>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--odb-text-dim)' }}>
+                    {ALL_MODULES.length} модулів · {activeCount} активних · {comingCount} в розробці · {tokenCount} потребують токен
+                  </p>
+                </div>
               </div>
               <div className="flex gap-2">
                 <StatBadge count={activeCount}  label="Активних" color="green" />
@@ -793,13 +807,18 @@ export default function RegistriesPage() {
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder="Пошук модуля..."
-                className="bg-gray-800 border border-gray-700 focus:border-blue-500 rounded-lg px-3 py-1.5 text-sm text-white placeholder-gray-600 outline-none transition w-48"
+                className="rounded-lg px-3 py-1.5 text-sm outline-none transition w-48"
+                style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)', color: 'var(--odb-text)' }}
+                onFocus={e => (e.target.style.borderColor = 'var(--odb-accent)')}
+                onBlur={e => (e.target.style.borderColor = 'var(--odb-border)')}
               />
               <div className="flex gap-1">
                 {(['all', 'active', 'coming_soon', 'needs_token'] as const).map(s => (
                   <button key={s} onClick={() => setStatusFilter(s)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition
-                      ${statusFilter === s ? 'bg-blue-700 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium transition"
+                    style={statusFilter === s
+                      ? { background: 'var(--odb-accent)', color: '#fff' }
+                      : { background: 'var(--odb-surface3)', color: 'var(--odb-text-dim)' }}>
                     {s === 'all' ? 'Всі' : s === 'active' ? '● Активні' : s === 'coming_soon' ? '◐ Скоро' : '🔑 Токен'}
                   </button>
                 ))}
@@ -811,17 +830,19 @@ export default function RegistriesPage() {
         <div className="max-w-7xl mx-auto px-6 py-6">
 
           {/* Category tabs */}
-          <div className="flex flex-wrap gap-1.5 mb-6 pb-4 border-b border-gray-800">
+          <div className="flex flex-wrap gap-1.5 mb-6 pb-4" style={{ borderBottom: '1px solid var(--odb-border)' }}>
             {CATEGORIES.map(cat => (
               <button key={cat} onClick={() => setCategory(cat)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition
-                  ${category === cat ? 'bg-blue-700 text-white' : 'bg-gray-800/60 text-gray-400 hover:text-white hover:bg-gray-700'}`}>
+                className="px-3 py-1.5 rounded-lg text-xs font-medium transition"
+                style={category === cat
+                  ? { background: 'var(--odb-accent)', color: '#fff' }
+                  : { background: 'var(--odb-surface3)', color: 'var(--odb-text-dim)' }}>
                 {cat}
               </button>
             ))}
           </div>
 
-          <p className="text-gray-600 text-xs mb-4">Показано: {filtered.length} з {ALL_MODULES.length}</p>
+          <p className="text-xs mb-4" style={{ color: 'var(--odb-text-faint)' }}>Показано: {filtered.length} з {ALL_MODULES.length}</p>
 
           {/* Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">

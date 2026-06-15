@@ -35,18 +35,18 @@ export default function PersonDetailPage() {
 
   // ── Loading / not found ───────────────────────────────────────────────────
   if (s.loading) return (
-    <div className="min-h-screen bg-gray-900 flex">
+    <div className="min-h-screen flex" style={{ background: 'var(--odb-bg)' }}>
       <Sidebar />
       <div className="flex-1 flex items-center justify-center">
-        <p className="text-white">Завантаження...</p>
+        <p style={{ color: 'var(--odb-text-dim)' }}>Завантаження...</p>
       </div>
     </div>
   )
   if (!s.person || s.person.error) return (
-    <div className="min-h-screen bg-gray-900 flex">
+    <div className="min-h-screen flex" style={{ background: 'var(--odb-bg)' }}>
       <Sidebar />
       <div className="flex-1 flex items-center justify-center">
-        <p className="text-red-400">Особу не знайдено</p>
+        <p style={{ color: 'var(--odb-danger)' }}>Особу не знайдено</p>
       </div>
     </div>
   )
@@ -57,23 +57,30 @@ export default function PersonDetailPage() {
   const regHits = (s.regNazk?.found || 0) + (s.regMyrotvorets?.found || 0) + (s.regErb?.found || 0) + (s.regMvs?.total || 0) + (s.regSanctions?.total || 0)
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white flex">
+    <div className="min-h-screen flex" style={{ background: 'var(--odb-bg)', color: 'var(--odb-text)' }}>
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0">
 
         {/* ── Top header ──────────────────────────────────────────────────── */}
-        <header className="bg-gray-800 border-b border-gray-700 px-6 py-3 flex justify-between items-center shrink-0">
+        <header className="px-6 py-3 flex justify-between items-center shrink-0"
+          style={{ background: 'var(--odb-surface)', borderBottom: '1px solid var(--odb-border)' }}>
           <div className="flex items-center gap-3">
-            <button onClick={() => history.back()} className="text-gray-400 hover:text-white text-sm">← Назад</button>
+            <button onClick={() => history.back()}
+              className="text-sm transition"
+              style={{ color: 'var(--odb-text-dim)' }}
+              onMouseEnter={e => (e.currentTarget.style.color = 'var(--odb-text)')}
+              onMouseLeave={e => (e.currentTarget.style.color = 'var(--odb-text-dim)')}>
+              ← Назад
+            </button>
             <div>
-              <h1 className="text-base font-bold">{s.personName}</h1>
-              <p className="text-gray-600 text-xs">ID: {s.personId}</p>
+              <h1 className="text-base font-bold" style={{ color: 'var(--odb-text)' }}>{s.personName}</h1>
+              <p className="text-xs" style={{ color: 'var(--odb-text-faint)' }}>ID: {s.personId}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             {p.threat_score !== undefined && p.threat_score !== null && (
               <div className="flex items-center gap-1.5" title={`Threat Score: ${p.threat_score}/100`}>
-                <div className="h-1.5 w-20 bg-gray-700 rounded-full overflow-hidden">
+                <div className="h-1.5 w-20 rounded-full overflow-hidden" style={{ background: 'var(--odb-surface3)' }}>
                   <div className={`h-full rounded-full transition-all ${p.threat_score >= 70 ? 'bg-red-500' : p.threat_score >= 40 ? 'bg-yellow-500' : 'bg-green-500'}`}
                     style={{ width: `${p.threat_score}%` }} />
                 </div>
@@ -93,18 +100,21 @@ export default function PersonDetailPage() {
               </span>
             )}
             <a href={`/api/persons/${s.personId}/report`} target="_blank" rel="noopener noreferrer"
-              className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm font-medium transition flex items-center gap-1.5 text-gray-300">
+              className="px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1.5"
+              style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)', color: 'var(--odb-text-dim)' }}>
               📄 Звіт PDF
             </a>
             <button onClick={() => s.runOsint()} disabled={s.osintLoading}
-              className="px-4 py-2 bg-purple-700 hover:bg-purple-600 disabled:opacity-60 rounded-lg text-sm font-medium transition flex items-center gap-2">
+              className="px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 disabled:opacity-60"
+              style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)', color: '#fff', boxShadow: '0 0 12px rgba(124,58,237,0.25)' }}>
               {s.osintLoading ? <><span className="animate-spin">⟳</span> Пошук...</> : <>🔍 OSINT</>}
             </button>
           </div>
         </header>
 
         {/* ── Photo banner ────────────────────────────────────────────────── */}
-        <div className="bg-gray-800/40 border-b border-gray-700 px-6 py-3 flex items-center gap-4">
+        <div className="px-6 py-3 flex items-center gap-4"
+          style={{ background: 'var(--odb-surface2)', borderBottom: '1px solid var(--odb-border)' }}>
           {/* Photo gallery */}
           <div className="relative shrink-0 flex gap-1.5 items-end pb-1">
             {s.allPersonPhotos.length > 0 ? (
@@ -118,13 +128,16 @@ export default function PersonDetailPage() {
                   </div>
                 ))}
                 {s.allPersonPhotos.length > 5 && (
-                  <div onClick={() => s.setPhotoLightboxIdx(5)} className="cursor-pointer w-11 h-11 rounded-lg bg-gray-700 border-2 border-gray-600 flex items-center justify-center text-xs text-gray-400 hover:bg-gray-600 transition shrink-0">
+                  <div onClick={() => s.setPhotoLightboxIdx(5)}
+                    className="cursor-pointer w-11 h-11 rounded-lg flex items-center justify-center text-xs transition shrink-0"
+                    style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)', color: 'var(--odb-text-dim)' }}>
                     +{s.allPersonPhotos.length - 5}
                   </div>
                 )}
               </>
             ) : (
-              <div className="w-16 h-16 rounded-lg bg-gray-700 border-2 border-gray-600 flex items-center justify-center text-2xl">
+              <div className="w-16 h-16 rounded-lg flex items-center justify-center text-2xl"
+                style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)' }}>
                 👤
               </div>
             )}
@@ -177,14 +190,14 @@ export default function PersonDetailPage() {
         )}
 
         {/* ── Tab navigation ──────────────────────────────────────────────── */}
-        <div className="flex border-b border-gray-700 bg-gray-800/20 px-6 shrink-0 overflow-x-auto">
+        <div className="flex px-6 shrink-0 overflow-x-auto"
+          style={{ background: 'var(--odb-surface)', borderBottom: '1px solid var(--odb-border)' }}>
           {TABS.map(tab => (
             <button key={tab.id} onClick={() => s.setActiveTab(tab.id)}
-              className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition whitespace-nowrap -mb-px ${
-                s.activeTab === tab.id
-                  ? 'border-blue-500 text-blue-400'
-                  : 'border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-500'
-              }`}>
+              className="flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition whitespace-nowrap -mb-px"
+              style={s.activeTab === tab.id
+                ? { borderBottomColor: 'var(--odb-accent)', color: 'var(--odb-accent)' }
+                : { borderBottomColor: 'transparent', color: 'var(--odb-text-faint)' }}>
               <span>{tab.icon}</span>
               <span>{tab.label}</span>
               {tab.id === 'registries' && s.regLoading && <span className="ml-1 animate-spin text-xs">⟳</span>}

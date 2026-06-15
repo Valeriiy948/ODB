@@ -85,7 +85,7 @@ export function CryptoWalletsTab({ personId, personName }: CryptoWalletsTabProps
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-white font-semibold text-lg">₿ Крипто-гаманці</h3>
+          <h3 className="font-semibold text-lg" style={{ color: 'var(--odb-text)' }}>₿ Крипто-гаманці</h3>
           <p className="text-gray-500 text-sm">{wallets.length} гаманець(ів) прив'язано до {personName}</p>
         </div>
         <button
@@ -97,20 +97,23 @@ export function CryptoWalletsTab({ personId, personName }: CryptoWalletsTabProps
       </div>
 
       {linkMode && (
-        <div className="bg-gray-800/60 border border-orange-800/40 rounded-xl p-4 space-y-3">
+        <div className="rounded-xl p-4 space-y-3" style={{ background: 'var(--odb-surface)', border: '1px solid rgba(194,65,12,0.4)' }}>
           <p className="text-orange-400 text-sm font-medium">Прив'язати новий гаманець</p>
           <div className="flex gap-2">
             <select value={newChain} onChange={e => setNewChain(e.target.value)}
-              className="bg-gray-900 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm w-32 shrink-0">
+              className="rounded-lg px-3 py-2 text-sm w-32 shrink-0 outline-none"
+              style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)', color: 'var(--odb-text)' }}>
               {CHAINS.map(c => <option key={c} value={c}>{CHAIN_ICONS[c]} {c.toUpperCase()}</option>)}
             </select>
             <input value={newAddr} onChange={e => setNewAddr(e.target.value)}
               placeholder="Адреса гаманця (0x... / 1... / T...)"
-              className="flex-1 bg-gray-900 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm font-mono" />
+              className="flex-1 rounded-lg px-3 py-2 text-sm font-mono outline-none"
+              style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)', color: 'var(--odb-text)' }} />
           </div>
           <input value={newNotes} onChange={e => setNewNotes(e.target.value)}
             placeholder="Нотатки (необов'язково)"
-            className="w-full bg-gray-900 border border-gray-700 text-gray-300 rounded-lg px-3 py-2 text-sm" />
+            className="w-full rounded-lg px-3 py-2 text-sm outline-none"
+            style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)', color: 'var(--odb-text-dim)' }} />
           <div className="flex gap-2">
             <button onClick={handleLink} disabled={saving || !newAddr.trim()}
               className="px-4 py-2 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white rounded-lg text-sm transition">
@@ -140,7 +143,7 @@ export function CryptoWalletsTab({ personId, personName }: CryptoWalletsTabProps
             const detail    = walletDetails[w.address]
             const riskColor = RISK_COLORS[w.risk_level || detail?.risk_level || 'low']
             return (
-              <div key={w.address} className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-4">
+              <div key={w.address} className="rounded-xl p-4" style={{ background: 'var(--odb-surface)', border: '1px solid var(--odb-border)' }}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="text-xl shrink-0">{CHAIN_ICONS[w.chain] || '🔗'}</span>
@@ -153,7 +156,7 @@ export function CryptoWalletsTab({ personId, personName }: CryptoWalletsTabProps
                           </span>
                         )}
                       </div>
-                      <p className="text-white font-mono text-sm truncate">{w.address}</p>
+                      <p className="font-mono text-sm truncate" style={{ color: 'var(--odb-text)' }}>{w.address}</p>
                       {w.notes && <p className="text-gray-500 text-xs mt-0.5">{w.notes}</p>}
                     </div>
                   </div>
@@ -174,7 +177,7 @@ export function CryptoWalletsTab({ personId, personName }: CryptoWalletsTabProps
                   </div>
                 </div>
                 {(detail || w.balance != null) && (
-                  <div className="mt-3 pt-3 border-t border-gray-700/50 grid grid-cols-4 gap-3">
+                  <div className="mt-3 pt-3 grid grid-cols-4 gap-3" style={{ borderTop: '1px solid var(--odb-border)' }}>
                     {[
                       { label: 'Баланс',      value: detail?.balance_native != null ? `${detail.balance_native} ${detail.symbol || ''}` : (w.balance != null ? `${w.balance}` : null) },
                       { label: 'Транзакцій',  value: detail?.tx_count ?? w.tx_count },

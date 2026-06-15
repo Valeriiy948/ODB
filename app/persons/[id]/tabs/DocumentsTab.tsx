@@ -12,13 +12,13 @@ export function DocumentsTab({ personId, osintPdfs }: DocumentsTabProps) {
   return (
     <div className="space-y-6">
       {osintPdfs.length > 0 && (
-        <div className="bg-gray-800 rounded-xl p-5 border border-purple-800">
+        <div className="rounded-xl p-5" style={{ background: 'var(--odb-surface)', border: '1px solid rgba(126,34,206,0.5)' }}>
           <h3 className="text-purple-400 font-semibold mb-4 text-sm">
             🔍 PDF знайдені через OSINT ({osintPdfs.length})
           </h3>
           <div className="space-y-3">
             {osintPdfs.map((pdf: any, i: number) => (
-              <div key={i} className="bg-gray-900 rounded-lg p-4 border border-gray-700">
+              <div key={i} className="rounded-lg p-4" style={{ background: 'var(--odb-surface2)', border: '1px solid var(--odb-border)' }}>
                 <p className="text-blue-400 font-medium text-sm">{pdf.title}</p>
                 <p className="text-gray-600 text-xs mt-1 truncate">{pdf.link}</p>
                 {pdf.snippet && <p className="text-gray-400 text-sm mt-2">{pdf.snippet}</p>}
@@ -39,7 +39,8 @@ export function DocumentsTab({ personId, osintPdfs }: DocumentsTabProps) {
                     href={pdf.link}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="px-3 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-xs transition"
+                    className="px-3 py-1 rounded text-xs transition"
+                    style={{ background: 'var(--odb-surface3)', color: 'var(--odb-text-dim)', border: '1px solid var(--odb-border)' }}
                   >
                     🔗 Оригінал
                   </a>

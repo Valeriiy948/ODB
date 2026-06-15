@@ -32,13 +32,14 @@ export function OsintTab({ state: s }: OsintTabProps) {
 
       {/* Web OSINT results (if ran) */}
       {s.osintData && s.osintData.total > 0 && (
-        <div className="mb-4 bg-gray-800 rounded-xl border border-purple-800 overflow-hidden">
-          <div className="flex gap-1 p-3 bg-gray-900 border-b border-gray-700 overflow-x-auto flex-wrap">
+        <div className="mb-4 rounded-xl overflow-hidden" style={{ background: 'var(--odb-surface)', border: '1px solid rgba(124,58,237,0.4)' }}>
+          <div className="flex gap-1 p-3 overflow-x-auto flex-wrap" style={{ background: 'var(--odb-surface2)', borderBottom: '1px solid var(--odb-border)' }}>
             {s.osintData?.vectors?.map((v: any) => (
               <button key={v.vector} onClick={() => s.setActiveVector(v.vector)}
-                className={`px-3 py-1.5 rounded text-xs font-medium whitespace-nowrap transition ${
-                  s.activeVector === v.vector ? 'bg-purple-700 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-                }`}>
+                className="px-3 py-1.5 rounded text-xs font-medium whitespace-nowrap transition"
+                style={s.activeVector === v.vector
+                  ? { background: 'rgba(124,58,237,0.8)', color: '#fff' }
+                  : { background: 'var(--odb-surface3)', color: 'var(--odb-text-dim)' }}>
                 {v.label} <span className="opacity-70">({v.count})</span>
               </button>
             ))}
@@ -63,7 +64,8 @@ export function OsintTab({ state: s }: OsintTabProps) {
                     Запит: <span className="text-gray-300 font-mono">{activeVectorData.query}</span>
                   </p>
                   {hiddenCount > 0 && (
-                    <span className="text-gray-600 text-xs bg-gray-800 px-2 py-0.5 rounded">
+                    <span className="text-xs px-2 py-0.5 rounded"
+                      style={{ background: 'var(--odb-surface3)', color: 'var(--odb-text-faint)' }}>
                       🔽 {hiddenCount} нерелевантних приховано
                     </span>
                   )}
@@ -76,11 +78,11 @@ export function OsintTab({ state: s }: OsintTabProps) {
                       const rel            = result.relevanceScore ?? 100
                       const relColor       = rel >= 70 ? 'bg-green-900 text-green-400' : rel >= 40 ? 'bg-yellow-900 text-yellow-500' : 'bg-gray-800 text-gray-500'
                       return (
-                        <div key={i} className={`rounded-lg p-4 border transition ${
-                          isMyrotvorets
-                            ? 'bg-yellow-950/40 border-yellow-700 hover:border-yellow-500'
-                            : 'bg-gray-900 border-gray-700 hover:border-gray-500'
-                        }`}>
+                        <div key={i} className="rounded-lg p-4 transition"
+                          style={isMyrotvorets
+                            ? { background: 'rgba(113,63,18,0.3)', border: '1px solid rgba(161,98,7,0.6)' }
+                            : { background: 'var(--odb-surface)', border: '1px solid var(--odb-border)' }}>
+
                           <div className="flex items-start justify-between gap-2">
                             <a href={result.link} target="_blank" rel="noopener noreferrer"
                               className={`font-medium text-sm leading-snug ${isMyrotvorets ? 'text-yellow-400 hover:text-yellow-300' : 'text-blue-400 hover:text-blue-300'}`}>
@@ -97,7 +99,7 @@ export function OsintTab({ state: s }: OsintTabProps) {
                           <p className={`text-xs mt-1 truncate ${isMyrotvorets ? 'text-yellow-800' : 'text-green-700'}`}>{result.link}</p>
                           {result.snippet && <p className="text-gray-400 text-sm mt-2 leading-relaxed line-clamp-3">{result.snippet}</p>}
                           <div className="flex items-center gap-2 mt-2 flex-wrap">
-                            <span className="text-xs px-2 py-0.5 rounded bg-gray-800 text-gray-500">{result.source}</span>
+                            <span className="text-xs px-2 py-0.5 rounded" style={{ background: 'var(--odb-surface3)', color: 'var(--odb-text-faint)' }}>{result.source}</span>
                             {result.relevanceScore !== undefined && (
                               <span className={`text-xs px-2 py-0.5 rounded font-mono ${relColor}`}>rel: {result.relevanceScore}</span>
                             )}
@@ -122,7 +124,7 @@ export function OsintTab({ state: s }: OsintTabProps) {
       )}
 
       {/* ── OsintKit ── */}
-      <div className="mt-4 bg-gray-800 rounded-xl border border-orange-900 overflow-hidden">
+      <div className="mt-4 rounded-xl overflow-hidden" style={{ background: 'var(--odb-surface)', border: '1px solid rgba(194,65,12,0.5)' }}>
         <div className="bg-orange-950/60 border-b border-orange-900 px-5 py-3 flex items-center justify-between">
           <div>
             <h3 className="text-orange-300 font-semibold flex items-center gap-2">
@@ -147,7 +149,7 @@ export function OsintTab({ state: s }: OsintTabProps) {
             {s.osintKitResults.map((entry: any, i: number) => (
               <LeakEntry key={i} entry={entry} color="orange" />
             ))}
-            <div className="mt-3 pt-3 border-t border-gray-700 flex justify-end">
+            <div className="mt-3 pt-3 flex justify-end" style={{ borderTop: '1px solid var(--odb-border)' }}>
               <button onClick={s.saveOsintKit} disabled={s.osintKitSaving || s.osintKitSaved}
                 className="px-4 py-2 bg-green-700 hover:bg-green-600 disabled:opacity-50 rounded-lg text-xs font-medium transition flex items-center gap-2">
                 {s.osintKitSaving ? <><span className="animate-spin inline-block">⟳</span> Зберігаємо...</> : s.osintKitSaved ? '✅ Збережено' : '💾 Зберегти в базу'}
@@ -158,7 +160,7 @@ export function OsintTab({ state: s }: OsintTabProps) {
       </div>
 
       {/* ── LeakOsint ── */}
-      <div className="mt-4 bg-gray-800 rounded-xl border border-red-900/50 overflow-hidden">
+      <div className="mt-4 rounded-xl overflow-hidden" style={{ background: 'var(--odb-surface)', border: '1px solid rgba(153,27,27,0.5)' }}>
         <div className="bg-red-950/50 border-b border-red-900/50 px-5 py-3 flex items-center justify-between">
           <div>
             <h3 className="text-red-300 font-semibold flex items-center gap-2">
@@ -183,7 +185,7 @@ export function OsintTab({ state: s }: OsintTabProps) {
             {s.leakOsintResults.map((entry: any, i: number) => (
               <LeakEntry key={i} entry={entry} color="red" />
             ))}
-            <div className="mt-3 pt-3 border-t border-gray-700 flex justify-end">
+            <div className="mt-3 pt-3 flex justify-end" style={{ borderTop: '1px solid var(--odb-border)' }}>
               <button onClick={s.saveLeakOsint} disabled={s.leakOsintSaving || s.leakOsintSaved}
                 className="px-4 py-2 bg-green-700 hover:bg-green-600 disabled:opacity-50 rounded-lg text-xs font-medium transition flex items-center gap-2">
                 {s.leakOsintSaving ? <><span className="animate-spin inline-block">⟳</span> Зберігаємо...</> : s.leakOsintSaved ? '✅ Збережено' : '💾 Зберегти в базу'}

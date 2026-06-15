@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Sidebar from '../components/Sidebar'
+import Icon from '../components/Icon'
 
 // ─── Визначення типу ідентифікатора ─────────────────────────────────────────
 type IdType = 'phone' | 'inn' | 'snils' | 'passport' | 'email' | 'vk' | 'unknown'
@@ -224,19 +225,25 @@ export default function PhoneSearchPage() {
 
   // ─── UI ─────────────────────────────────────────────────────────────────────
   return (
-    <div className="flex min-h-screen bg-gray-950 text-white">
+    <div className="flex min-h-screen text-white" style={{ background: 'var(--odb-bg)' }}>
       <Sidebar />
       <main className="flex-1 flex flex-col min-h-screen">
         {/* Шапка */}
-        <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between shrink-0">
-          <div>
-            <h1 className="text-lg font-bold text-white">🔍 Пошук за ідентифікатором</h1>
-            <p className="text-gray-500 text-xs mt-0.5">Телефон · ІПН · Паспорт · СНІЛС · Email — всі бази одночасно</p>
+        <div className="px-6 py-4 border-b flex items-center justify-between shrink-0" style={{ borderColor: 'var(--odb-border-soft)' }}>
+          <div className="flex items-center gap-3">
+            <span className="inline-flex items-center justify-center w-10 h-10 rounded-xl text-white shrink-0"
+                  style={{ background: 'linear-gradient(135deg, var(--odb-accent-hi), var(--odb-accent-lo))', boxShadow: 'var(--odb-shadow-accent)' }}>
+              <Icon name="phone" size={20} />
+            </span>
+            <div>
+              <h1 className="text-lg font-bold text-white">Пошук за ідентифікатором</h1>
+              <p className="text-[var(--odb-text-faint)] text-xs mt-0.5">Телефон · ІПН · Паспорт · СНІЛС · Email — всі бази одночасно</p>
+            </div>
           </div>
           <div className="flex gap-2">
-            <button onClick={() => router.push('/fragment-search')}
+            <button onClick={() => router.push('/search-all')}
               className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-lg text-xs transition">
-              📋 Пошук за крихтами
+              🔍 Пошук по всіх джерелах
             </button>
             <button onClick={() => router.push('/admin/leaks-import')}
               className="px-3 py-1.5 bg-amber-800 hover:bg-amber-700 text-amber-200 rounded-lg text-xs transition">
