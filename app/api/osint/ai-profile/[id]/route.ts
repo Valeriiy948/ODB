@@ -1,9 +1,12 @@
 // app/api/osint/ai-profile/[id]/route.ts
-// Блок 3: AI-картка особи через Claude
-// Генерує структурований аналітичний профіль для розслідування воєнних злочинів
+// AI-профіль особи через Claude — 6-step investigator reasoning chain (Architecture L2)
 
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import {
+  INVESTIGATOR_SYSTEM_PROMPT,
+  buildInvestigatorPrompt,
+} from '../../../../../lib/prompts/investigator-profile'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -229,57 +232,7 @@ export async function POST(
   const context = buildContext(person, incidentList, evidence || [], connections || [])
   const personName = person.name_rus || person.name_ukr || person.name || 'Невідомо'
 
-  const prompt = `Проаналізуй зібрані дані про підозрювану особу та склади структурований аналітичний профіль для слідчих та прокурорів.
-
-ЗІБРАНІ ДАНІ:
-${context}
-
----
-ЗАВДАННЯ: Поверни ТІЛЬКИ валідний JSON (без markdown, без пояснень поза JSON) у такому форматі:
-
-{
-  "threat_level": "критичний|високий|середній|низький|невідомий",
-  "role": "командир|виконавець|організатор|пособник|свідок|жертва|невідомо",
-  "summary": "2-3 речення загального резюме",
-  "identification": {
-    "full_name": "повне ПІБ",
-    "dob": "дата народження або null",
-    "nationality": "громадянство",
-    "documents": ["список документів"],
-    "addresses": ["адреси"]
-  },
-  "military": {
-    "unit": "підрозділ або null",
-    "rank": "звання або null",
-    "role_description": "опис ролі у збройних силах"
-  },
-  "crimes": [
-    {
-      "title": "назва злочину",
-      "date": "дата або null",
-      "location": "місце або null",
-      "type": "тип злочину",
-      "severity": "critical|high|medium|low",
-      "icc_article": "стаття МКС або null",
-      "role": "роль підозрюваного"
-    }
-  ],
-  "digital_footprint": {
-    "phones": ["телефони"],
-    "emails": ["emails"],
-    "social": ["соцмережі"],
-    "leaks_count": 0,
-    "leak_sources": ["джерела витоків"]
-  },
-  "connections": ["список зв'язків"],
-  "evidence_summary": "підсумок доказів або null",
-  "icc_articles": ["список статей МКС які потенційно застосовні"],
-  "ua_criminal_articles": ["статті КК України"],
-  "key_facts": ["3-7 ключових фактів для слідства"],
-  "recommendations": ["3-5 рекомендацій для слідчих"],
-  "information_gaps": ["що ще потрібно встановити"],
-  "analyst_note": "нотатка аналітика (обов'язкова оцінка достовірності даних)"
-}`
+  const prompt = buildInvestigatorPrompt(context, personName, threatScore)
 
   try {
     const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
@@ -292,8 +245,14 @@ ${context}
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 4096,
-        system: [{ type: 'text', text: 'Ти — старший аналітик відділу воєнних злочинів. Відповідай ТІЛЬКИ валідним JSON.', cache_control: { type: 'ephemeral' } }],
+        max_tokens: 6144,
+        system: [
+          {
+            type: 'text',
+            text: INVESTIGATOR_SYSTEM_PROMPT,
+            cache_control: { type: 'ephemeral' },
+          },
+        ],
         messages: [{ role: 'user', content: prompt }],
       }),
       signal: AbortSignal.timeout(60000),
@@ -387,7 +346,12 @@ ${context}
       detected_role: detectedRole,
       ai_profile: aiProfileToSave,
       structured,
+      // L2 fields — available when AI returned full reasoning chain
+      prosecution_viability: structured?.prosecution_viability ?? null,
+      confidence_score:      structured?.confidence_score      ?? null,
+      reasoning_chain:       structured?.reasoning_chain       ?? null,
       tokens_used: (claudeData.usage?.input_tokens || 0) + (claudeData.usage?.output_tokens || 0),
+      cache_read_tokens: claudeData.usage?.cache_read_input_tokens ?? 0,
     })
 
   } catch (err: any) {
