@@ -50,7 +50,7 @@ export function OverviewTab({ state: s }: OverviewTabProps) {
     <div className="space-y-4">
 
       {/* ── Hero: Threat Score + Quick Stats ── */}
-      <div className="bg-gradient-to-r from-gray-800 to-gray-900 rounded-xl p-4 border border-gray-700">
+      <div className="rounded-xl p-4" style={{ background: 'var(--odb-surface)', border: '1px solid var(--odb-border)' }}>
         <div className="flex items-center gap-4 flex-wrap">
           {/* Threat Score circle */}
           <div className="flex items-center gap-3">
@@ -61,7 +61,7 @@ export function OverviewTab({ state: s }: OverviewTabProps) {
               'border-gray-600 bg-gray-800 text-gray-400'
             }`}>{p.threat_score || '?'}</div>
             <div>
-              <p className="text-gray-400 text-xs uppercase tracking-wide">Threat Score</p>
+              <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--odb-text-faint)' }}>Threat Score</p>
               <p className={`text-sm font-semibold ${
                 (p.threat_score || 0) >= 80 ? 'text-red-400' :
                 (p.threat_score || 0) >= 50 ? 'text-orange-400' :
@@ -74,20 +74,20 @@ export function OverviewTab({ state: s }: OverviewTabProps) {
             </div>
           </div>
 
-          <div className="h-12 w-px bg-gray-700 hidden md:block" />
+          <div className="h-12 w-px hidden md:block" style={{ background: 'var(--odb-border)' }} />
 
           {/* Quick Stats */}
           <div className="flex gap-4 flex-wrap flex-1">
             {[
-              { icon: '⚖️', label: 'Злочинів',    value: s.incidents.length,               color: s.incidents.length > 0 ? 'text-red-400' : 'text-gray-500' },
+              { icon: '⚖️', label: 'Злочинів',    value: s.incidents.length,               color: s.incidents.length > 0 ? 'text-red-400' : '' },
               { icon: '🔗', label: "Зв'язків",     value: p.connections_count || 0,          color: 'text-blue-400' },
-              { icon: '📜', label: 'НАЗК декл.',   value: s.regNazk?.total || 0,             color: s.regNazk?.total > 0 ? 'text-yellow-400' : 'text-gray-500' },
+              { icon: '📜', label: 'НАЗК декл.',   value: s.regNazk?.total || 0,             color: s.regNazk?.total > 0 ? 'text-yellow-400' : '' },
               { icon: '🔍', label: 'OSINT хітів',  value: s.osintData?.total || s.personMentions.length, color: 'text-purple-400' },
               { icon: '💧', label: 'Витоки',       value: allLeaks.length,                   color: 'text-amber-400' },
             ].map(({ icon, label, value, color }) => (
               <div key={label} className="text-center">
-                <p className={`text-lg font-bold ${color}`}>{value}</p>
-                <p className="text-gray-500 text-xs">{icon} {label}</p>
+                <p className={`text-lg font-bold ${color}`} style={!color ? { color: 'var(--odb-text-dim)' } : {}}>{value}</p>
+                <p className="text-xs" style={{ color: 'var(--odb-text-faint)' }}>{icon} {label}</p>
               </div>
             ))}
           </div>
@@ -95,11 +95,13 @@ export function OverviewTab({ state: s }: OverviewTabProps) {
           {/* Quick actions */}
           <div className="flex gap-2 shrink-0">
             <button onClick={() => s.setActiveTab('registries')}
-              className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg text-xs transition">
+              className="px-3 py-1.5 rounded-lg text-xs transition"
+              style={{ background: 'var(--odb-surface3)', color: 'var(--odb-text-dim)', border: '1px solid var(--odb-border)' }}>
               🏛️ Реєстри
             </button>
             <button onClick={() => s.runOsint(true)} disabled={s.osintLoading}
-              className="px-3 py-1.5 bg-purple-800 hover:bg-purple-700 disabled:opacity-50 text-purple-200 rounded-lg text-xs transition">
+              className="px-3 py-1.5 rounded-lg text-xs transition disabled:opacity-50"
+              style={{ background: 'rgba(124,58,237,0.2)', color: '#c4b5fd', border: '1px solid rgba(124,58,237,0.4)' }}>
               {s.osintLoading ? '⟳' : '🔍 OSINT'}
             </button>
           </div>
@@ -111,9 +113,9 @@ export function OverviewTab({ state: s }: OverviewTabProps) {
           const summary = ap?.summary || ap?.persons?.[0]?.notes || ''
           if (!summary) return null
           return (
-            <div className="mt-3 pt-3 border-t border-gray-700">
-              <p className="text-gray-400 text-xs uppercase tracking-wide mb-1">🤖 AI Резюме</p>
-              <p className="text-gray-300 text-sm leading-relaxed line-clamp-3">{summary}</p>
+            <div className="mt-3 pt-3" style={{ borderTop: '1px solid var(--odb-border)' }}>
+              <p className="text-xs uppercase tracking-wide mb-1" style={{ color: 'var(--odb-text-faint)' }}>🤖 AI Резюме</p>
+              <p className="text-sm leading-relaxed line-clamp-3" style={{ color: 'var(--odb-text-dim)' }}>{summary}</p>
             </div>
           )
         })()}
@@ -155,9 +157,9 @@ export function OverviewTab({ state: s }: OverviewTabProps) {
         const evVideos = s.evidenceItems.filter(e => e.ev_type === 'video')
         const evDocs   = s.evidenceItems.filter(e => e.ev_type === 'document' || e.ev_type === 'audio')
         return (
-          <div className="bg-gray-800 rounded-xl border border-gray-700 p-4">
+          <div className="rounded-xl p-4" style={{ background: 'var(--odb-surface)', border: '1px solid var(--odb-border)' }}>
             <div className="flex items-center justify-between mb-3">
-              <p className="text-gray-300 font-semibold text-sm">📎 Файли та докази</p>
+              <p className="font-semibold text-sm" style={{ color: 'var(--odb-text)' }}>📎 Файли та докази</p>
               <button onClick={() => s.setActiveTab('documents')} className="text-blue-400 hover:text-blue-300 text-xs">
                 Всі {s.evidenceItems.length} →
               </button>
@@ -181,7 +183,8 @@ export function OverviewTab({ state: s }: OverviewTabProps) {
                 <div className="flex gap-2 flex-wrap">
                   {evVideos.map((item: any) => (
                     <a key={item.id} href={item.file_url} target="_blank" rel="noopener noreferrer"
-                      className="flex items-center gap-2 px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-xs text-gray-300 transition max-w-xs truncate">
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs transition max-w-xs truncate"
+                      style={{ background: 'var(--odb-surface3)', color: 'var(--odb-text-dim)', border: '1px solid var(--odb-border)' }}>
                       🎬 {item.original_name}
                     </a>
                   ))}
@@ -196,7 +199,8 @@ export function OverviewTab({ state: s }: OverviewTabProps) {
                     <a key={item.id}
                       href={item.mime_type === 'text/html' ? `/api/evidence/view/${item.id}` : item.file_url}
                       target="_blank" rel="noopener noreferrer"
-                      className="flex items-center gap-3 px-3 py-2 bg-gray-700/50 hover:bg-gray-700 rounded-lg transition group">
+                      className="flex items-center gap-3 px-3 py-2 rounded-lg transition group odb-card-hover"
+                      style={{ background: 'var(--odb-surface2)', border: '1px solid var(--odb-border)' }}>
                       <span className="text-lg">
                         {item.mime_type === 'application/pdf' ? '📄' : item.mime_type?.includes('word') ? '📝' : item.mime_type === 'text/html' ? '🌐' : '📁'}
                       </span>

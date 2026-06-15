@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Sidebar from '../components/Sidebar'
+import Icon from '../components/Icon'
 
 function CompanyCard({ company, onPersonClick }: { company: any; onPersonClick?: (name: string) => void }) {
   const [expanded, setExpanded] = useState(false)
@@ -145,15 +146,21 @@ export default function CompanySearchPage() {
   }
 
   return (
-    <div className="flex min-h-screen bg-gray-950 text-white">
+    <div className="flex min-h-screen text-white" style={{ background: 'var(--odb-bg)' }}>
       <Sidebar />
       <main className="flex-1 flex flex-col">
-        <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between shrink-0">
-          <div>
-            <h1 className="text-lg font-bold text-white">🏢 Бізнес-розвідка</h1>
-            <p className="text-gray-500 text-xs mt-0.5">
-              ЄДРПОУ · ФОП · YouControl · Opendatabot — перевірка контрагентів
-            </p>
+        <div className="px-6 py-4 border-b flex items-center justify-between shrink-0" style={{ borderColor: 'var(--odb-border-soft)' }}>
+          <div className="flex items-center gap-3">
+            <span className="inline-flex items-center justify-center w-10 h-10 rounded-xl text-white shrink-0"
+                  style={{ background: 'linear-gradient(135deg, var(--odb-accent-hi), var(--odb-accent-lo))', boxShadow: 'var(--odb-shadow-accent)' }}>
+              <Icon name="building" size={20} />
+            </span>
+            <div>
+              <h1 className="text-lg font-bold text-white">Бізнес-розвідка</h1>
+              <p className="text-[var(--odb-text-faint)] text-xs mt-0.5">
+                ЄДРПОУ · ФОП · YouControl · Opendatabot — перевірка контрагентів
+              </p>
+            </div>
           </div>
           <div className="flex items-center gap-2 text-xs text-gray-500">
             <span className="px-2 py-1 bg-green-900/30 text-green-400 border border-green-800 rounded">ЄДР free</span>

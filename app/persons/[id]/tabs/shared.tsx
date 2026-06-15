@@ -6,8 +6,8 @@ export function Field({ label, value }: { label: string; value: any }) {
   if (!value) return null
   return (
     <div className="mb-3">
-      <p className="text-gray-500 text-xs uppercase tracking-wide">{label}</p>
-      <p className="text-white mt-1 text-sm leading-relaxed break-words whitespace-pre-wrap">
+      <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--odb-text-faint)' }}>{label}</p>
+      <p className="mt-1 text-sm leading-relaxed break-words whitespace-pre-wrap" style={{ color: 'var(--odb-text)' }}>
         {typeof value === 'object' ? JSON.stringify(value) : String(value)}
       </p>
     </div>
@@ -16,8 +16,8 @@ export function Field({ label, value }: { label: string; value: any }) {
 
 export function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="bg-gray-800 rounded-xl p-5 border border-gray-700">
-      <h3 className="text-gray-300 font-semibold mb-4 pb-2 border-b border-gray-700 text-sm">{title}</h3>
+    <div className="rounded-xl p-5" style={{ background: 'var(--odb-surface)', border: '1px solid var(--odb-border)' }}>
+      <h3 className="font-semibold mb-4 pb-2 text-sm" style={{ color: 'var(--odb-text-dim)', borderBottom: '1px solid var(--odb-border)' }}>{title}</h3>
       {children}
     </div>
   )
@@ -50,7 +50,7 @@ export function SaveAllButton({
   const filtered  = results.length
 
   return (
-    <div className="px-4 py-3 border-t border-gray-700 bg-gray-800/50 flex items-center justify-between">
+    <div className="px-4 py-3 flex items-center justify-between" style={{ borderTop: '1px solid var(--odb-border)', background: 'var(--odb-surface2)' }}>
       <span className="text-gray-400 text-sm">
         {filtered} релевантних / {totalRaw} всього записів
       </span>

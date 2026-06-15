@@ -243,12 +243,8 @@ function SourceBlock({ sourceKey, data }: { sourceKey: string; data: any }) {
   if (data?.error && data.error !== 'no_key' && data.error !== 'email_only' && data.error !== 'need_subscription' && !hasData) return null
 
   return (
-    <div className={`bg-gray-900 rounded-xl border overflow-hidden transition-all ${
-      hasData    ? 'border-red-800/60' :
-      isNoKey    ? 'border-gray-800'   :
-      meta?.free ? 'border-gray-700'   :
-                   'border-gray-800'
-    }`}>
+    <div className="rounded-xl overflow-hidden transition-all"
+      style={{ background: 'var(--odb-surface)', border: `1px solid ${hasData ? 'rgba(239,68,68,0.4)' : 'var(--odb-border)'}` }}>
       <div
         className="flex items-center justify-between p-4 cursor-pointer select-none"
         onClick={() => hasData && setOpen(!open)}
@@ -359,18 +355,19 @@ function CatalogTab() {
         <div className="text-gray-500 text-sm mb-4">⟳ Завантаження статистики...</div>
       ) : stats && (
         <div className="flex flex-wrap gap-3 mb-6">
-          <div className="bg-gray-800 rounded-lg px-4 py-2 text-center">
-            <div className="text-xl font-bold text-white">{stats.catalog_total?.toLocaleString()}</div>
+          <div className="rounded-lg px-4 py-2 text-center" style={{ background: 'var(--odb-surface)' }}>
+            <div className="text-xl font-bold" style={{ color: 'var(--odb-text)' }}>{stats.catalog_total?.toLocaleString()}</div>
             <div className="text-xs text-gray-400">відомих витоків</div>
           </div>
-          <div className="bg-gray-800 rounded-lg px-4 py-2 text-center">
-            <div className="text-xl font-bold text-blue-400">{stats.leaks_total?.toLocaleString()}</div>
-            <div className="text-xs text-gray-400">особистих записів</div>
+          <div className="rounded-lg px-4 py-2 text-center" style={{ background: 'var(--odb-surface)' }}>
+            <div className="text-xl font-bold" style={{ color: 'var(--odb-accent)' }}>{stats.leaks_total?.toLocaleString()}</div>
+            <div className="text-xs" style={{ color: 'var(--odb-text-dim)' }}>особистих записів</div>
           </div>
           <div className="flex flex-wrap gap-2 items-center">
             {(stats.sources || []).slice(0, 6).map((s: any) => (
-              <span key={s.source} className="text-xs bg-gray-900 text-gray-400 px-2 py-1 rounded border border-gray-700">
-                {s.source}: <span className="text-white">{Number(s.cnt).toLocaleString()}</span>
+              <span key={s.source} className="text-xs px-2 py-1 rounded"
+                style={{ background: 'var(--odb-surface)', color: 'var(--odb-text-dim)', border: '1px solid var(--odb-border)' }}>
+                {s.source}: <span style={{ color: 'var(--odb-text)' }}>{Number(s.cnt).toLocaleString()}</span>
               </span>
             ))}
           </div>
@@ -384,7 +381,10 @@ function CatalogTab() {
             onChange={e => setQ(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && search()}
             placeholder="Назва сервісу: facebook, gmail, vk, linkedin..."
-            className="flex-1 px-4 py-3 bg-gray-800 border border-gray-600 rounded-xl text-white focus:border-orange-500 focus:outline-none placeholder-gray-500"
+            className="flex-1 px-4 py-3 rounded-xl text-sm outline-none transition-all"
+            style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)', color: 'var(--odb-text)' }}
+            onFocus={e => (e.target.style.borderColor = '#f97316')}
+            onBlur={e => (e.target.style.borderColor = 'var(--odb-border)')}
           />
           <button onClick={search} disabled={!q.trim() || loading}
             className="px-5 py-3 bg-orange-700 hover:bg-orange-600 disabled:opacity-50 rounded-xl font-semibold text-sm transition">
@@ -394,7 +394,8 @@ function CatalogTab() {
         <div className="flex flex-wrap gap-2 mt-2">
           {['facebook', 'gmail', 'vk.com', 'linkedin', 'adobe', 'twitter', 'telegram', 'mail.ru'].map(ex => (
             <button key={ex} onClick={() => { setQ(ex); setTimeout(search, 0) }}
-              className="text-xs px-2.5 py-1 bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-lg border border-gray-700 transition">
+              className="text-xs px-2.5 py-1 rounded-lg transition"
+              style={{ background: 'var(--odb-surface3)', color: 'var(--odb-text-dim)', border: '1px solid var(--odb-border)' }}>
               {ex}
             </button>
           ))}
@@ -408,7 +409,8 @@ function CatalogTab() {
           </p>
           <div className="space-y-2 max-w-3xl">
             {results.map((r: any) => (
-              <div key={r.id} className="bg-gray-900 rounded-lg border border-gray-700 p-3 flex items-start justify-between gap-4">
+              <div key={r.id} className="rounded-lg p-3 flex items-start justify-between gap-4"
+                style={{ background: 'var(--odb-surface)', border: '1px solid var(--odb-border)' }}>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-semibold text-white truncate">{r.dump_name}</span>
@@ -948,36 +950,49 @@ function BreachIntelContent() {
   const sourceOrder = ['osintkit', 'peoplefind_bot', 'leakcheck_public', 'hibp', 'leakcheck', 'dehashed', 'snusbase', 'shodan', 'censys', 'local_leaks']
 
   return (
-    <div className="flex min-h-screen bg-gray-950 text-white">
+    <div className="flex min-h-screen" style={{ background: 'var(--odb-bg)', color: 'var(--odb-text)' }}>
       <Sidebar />
       <main className="flex-1 flex flex-col">
 
         {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between shrink-0">
-          <div>
-            <h1 className="text-lg font-bold text-white">🔎 Єдиний пошук</h1>
-            <p className="text-gray-500 text-xs mt-0.5">
-              OsintKit · LeakOsint · Telegram LEAK_BOTS · DeHashed · SnusBase · LeakCheck
-            </p>
+        <div className="px-6 py-4 flex items-center justify-between shrink-0"
+          style={{ background: 'var(--odb-surface)', borderBottom: '1px solid var(--odb-border)' }}>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+              style={{ background: 'linear-gradient(135deg, #f97316 0%, #c2410c 100%)', boxShadow: '0 0 16px rgba(249,115,22,0.3)' }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+              </svg>
+            </div>
+            <div>
+              <h1 className="text-base font-bold tracking-tight">Єдиний пошук витоків</h1>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--odb-text-dim)' }}>
+                OsintKit · LeakOsint · Telegram LEAK_BOTS · DeHashed · SnusBase · LeakCheck
+              </p>
+            </div>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs px-2 py-1 bg-green-900/30 text-green-400 border border-green-800/50 rounded">
+            <span className="text-xs px-2 py-1 rounded"
+              style={{ background: 'rgba(34,197,94,0.1)', color: 'var(--odb-ok)', border: '1px solid rgba(34,197,94,0.3)' }}>
               ✅ {freeCount} free
             </span>
             {paidCount > 0 && (
-              <span className="text-xs px-2 py-1 bg-blue-900/30 text-blue-400 border border-blue-800/50 rounded">
+              <span className="text-xs px-2 py-1 rounded"
+                style={{ background: 'rgba(59,130,246,0.1)', color: 'var(--odb-accent)', border: '1px solid rgba(59,130,246,0.3)' }}>
                 🔑 {paidCount} платних
               </span>
             )}
             <button onClick={() => router.push('/admin/leaks-import')}
-              className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-lg text-xs transition">
+              className="px-3 py-1.5 rounded-lg text-xs transition"
+              style={{ background: 'var(--odb-surface3)', color: 'var(--odb-text-dim)', border: '1px solid var(--odb-border)' }}>
               📥 Імпорт
             </button>
           </div>
         </div>
 
         {/* Tabs */}
-        <div className="px-6 pt-4 border-b border-gray-800 flex gap-1 shrink-0">
+        <div className="px-6 flex gap-1 shrink-0"
+          style={{ borderBottom: '1px solid var(--odb-border)', background: 'var(--odb-surface)' }}>
           {[
             { key: 'smart',   label: '🧠 Smart Search' },
             { key: 'search',  label: '🔍 Ручний пошук' },
@@ -985,11 +1000,10 @@ function BreachIntelContent() {
             { key: 'keys',    label: '🔑 Джерела' },
           ].map(t => (
             <button key={t.key} onClick={() => setTab(t.key as any)}
-              className={`px-4 py-2 text-sm rounded-t-lg transition ${
-                tab === t.key
-                  ? 'bg-gray-800 text-white border-t border-l border-r border-gray-700'
-                  : 'text-gray-500 hover:text-gray-300'
-              }`}>
+              className="px-4 py-3 text-sm border-b-2 transition -mb-px"
+              style={tab === t.key
+                ? { borderBottomColor: 'var(--odb-accent)', color: 'var(--odb-text)' }
+                : { borderBottomColor: 'transparent', color: 'var(--odb-text-faint)' }}>
               {t.label}
             </button>
           ))}
@@ -1019,7 +1033,7 @@ function BreachIntelContent() {
               </div>
 
               {/* Search form */}
-              <div className="bg-gray-900 border border-gray-700 rounded-xl p-4 mb-4">
+              <div className="rounded-xl p-4 mb-4" style={{ background: 'var(--odb-surface)', border: '1px solid var(--odb-border)' }}>
                 <p className="text-xs text-gray-500 mb-3">Заповни що знаєш — чим більше, тим точніший результат:</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="col-span-2">
@@ -1027,43 +1041,43 @@ function BreachIntelContent() {
                     <input value={enrichFields.name} onChange={e => setEF('name', e.target.value)}
                       onKeyDown={e => e.key === 'Enter' && runEnrich()}
                       placeholder="Романов Александр Викторович"
-                      className="w-full px-3 py-2.5 bg-gray-800 border border-gray-600 rounded-lg text-white text-sm
-                                 focus:border-indigo-500 focus:outline-none placeholder-gray-600" />
+                      className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
+                      style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)', color: 'var(--odb-text)' }} />
                   </div>
                   <div>
                     <label className="text-xs text-gray-500 mb-1 block">Дата народження</label>
                     <input value={enrichFields.dob} onChange={e => setEF('dob', e.target.value)}
                       placeholder="05.03.1989"
-                      className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white text-sm
-                                 focus:border-indigo-500 focus:outline-none placeholder-gray-600 font-mono" />
+                      className="w-full px-3 py-2 rounded-lg text-sm outline-none font-mono"
+                      style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)', color: 'var(--odb-text)' }} />
                   </div>
                   <div>
                     <label className="text-xs text-gray-500 mb-1 block">Телефон</label>
                     <input value={enrichFields.phone} onChange={e => setEF('phone', e.target.value)}
                       placeholder="79888385632"
-                      className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white text-sm
-                                 focus:border-indigo-500 focus:outline-none placeholder-gray-600 font-mono" />
+                      className="w-full px-3 py-2 rounded-lg text-sm outline-none font-mono"
+                      style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)', color: 'var(--odb-text)' }} />
                   </div>
                   <div>
                     <label className="text-xs text-gray-500 mb-1 block">Email</label>
                     <input value={enrichFields.email} onChange={e => setEF('email', e.target.value)}
                       placeholder="romanov@mail.ru"
-                      className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white text-sm
-                                 focus:border-indigo-500 focus:outline-none placeholder-gray-600 font-mono" />
+                      className="w-full px-3 py-2 rounded-lg text-sm outline-none font-mono"
+                      style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)', color: 'var(--odb-text)' }} />
                   </div>
                   <div>
                     <label className="text-xs text-gray-500 mb-1 block">ІПН</label>
                     <input value={enrichFields.inn} onChange={e => setEF('inn', e.target.value)}
                       placeholder="123456789012"
-                      className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white text-sm
-                                 focus:border-indigo-500 focus:outline-none placeholder-gray-600 font-mono" />
+                      className="w-full px-3 py-2 rounded-lg text-sm outline-none font-mono"
+                      style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)', color: 'var(--odb-text)' }} />
                   </div>
                   <div>
                     <label className="text-xs text-gray-500 mb-1 block">Паспорт</label>
                     <input value={enrichFields.passport} onChange={e => setEF('passport', e.target.value)}
                       placeholder="4516409823"
-                      className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white text-sm
-                                 focus:border-indigo-500 focus:outline-none placeholder-gray-600 font-mono" />
+                      className="w-full px-3 py-2 rounded-lg text-sm outline-none font-mono"
+                      style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)', color: 'var(--odb-text)' }} />
                   </div>
                 </div>
                 {/* Sherlock Bot toggle */}

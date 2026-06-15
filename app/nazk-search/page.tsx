@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Sidebar from '../components/Sidebar'
+import Icon from '../components/Icon'
 
 // ─── Типи ────────────────────────────────────────────────────────────────────
 interface Declaration {
@@ -261,20 +262,24 @@ export default function NAZKSearchPage() {
   }
 
   return (
-    <div className="flex h-screen bg-gray-950 text-white overflow-hidden">
+    <div className="flex h-screen text-white overflow-hidden" style={{ background: 'var(--odb-bg)' }}>
       <Sidebar />
       <div className="flex-1 overflow-y-auto">
 
         {/* Header */}
-        <div className="sticky top-0 z-10 bg-gray-950/95 backdrop-blur border-b border-gray-800 px-6 py-4">
+        <div className="sticky top-0 z-10 odb-glass border-b px-6 py-4" style={{ borderColor: 'var(--odb-border-soft)' }}>
           <div className="flex items-center justify-between max-w-4xl mx-auto">
-            <div>
-              <h1 className="text-xl font-bold flex items-center gap-2">
-                🏛️ НАЗК Декларації
-              </h1>
-              <p className="text-gray-500 text-xs mt-0.5">
-                Єдиний державний реєстр декларацій · Майно · Доходи · Авто · Нерухомість
-              </p>
+            <div className="flex items-center gap-3">
+              <span className="inline-flex items-center justify-center w-10 h-10 rounded-xl text-white shrink-0"
+                    style={{ background: 'linear-gradient(135deg, var(--odb-accent-hi), var(--odb-accent-lo))', boxShadow: 'var(--odb-shadow-accent)' }}>
+                <Icon name="file" size={20} />
+              </span>
+              <div>
+                <h1 className="text-xl font-bold">НАЗК Декларації</h1>
+                <p className="text-[var(--odb-text-faint)] text-xs mt-0.5">
+                  Єдиний державний реєстр декларацій · Майно · Доходи · Авто · Нерухомість
+                </p>
+              </div>
             </div>
             <button onClick={() => router.push('/persons')} className="text-gray-500 hover:text-gray-300 text-sm transition">
               ← Особи

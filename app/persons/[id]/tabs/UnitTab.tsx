@@ -32,7 +32,7 @@ export function UnitTab({ person, osintRelatives }: UnitTabProps) {
         {(person.unit || person.unit_num) ? (
           <div className="space-y-3">
             <p className="text-gray-400 text-sm mb-4">
-              Підрозділ: <span className="text-white font-medium">{person.unit}</span>
+              Підрозділ: <span className="font-medium" style={{ color: 'var(--odb-text)' }}>{person.unit}</span>
               {person.unit_num && <span className="text-gray-500 ml-2">({person.unit_num})</span>}
             </p>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -95,7 +95,7 @@ export function UnitTab({ person, osintRelatives }: UnitTabProps) {
               <p className="text-gray-500 text-xs mb-2">Вектор: {v.label}</p>
               <div className="space-y-2">
                 {v.results.map((r: any, i: number) => (
-                  <div key={i} className="bg-gray-900 rounded-lg p-3 border border-gray-700">
+                  <div key={i} className="rounded-lg p-3" style={{ background: 'var(--odb-surface2)', border: '1px solid var(--odb-border)' }}>
                     <a href={r.link} target="_blank" rel="noopener noreferrer"
                       className="text-blue-400 text-sm hover:text-blue-300">{r.title}</a>
                     {r.snippet && <p className="text-gray-400 text-xs mt-1">{r.snippet}</p>}

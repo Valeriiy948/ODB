@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Sidebar from '../components/Sidebar'
+import Icon from '../components/Icon'
 import { createClient } from '../lib/supabase/client'
 
 const supabase = createClient()
@@ -29,10 +30,10 @@ const KEY_LABELS: Record<string, { label: string; desc: string; url: string; ico
 
 function SectionCard({ title, icon, children }: { title: string; icon: string; children: React.ReactNode }) {
   return (
-    <div className="bg-gray-800 rounded-2xl border border-gray-700 overflow-hidden">
-      <div className="px-6 py-4 border-b border-gray-700 flex items-center gap-3">
+    <div className="rounded-2xl overflow-hidden" style={{ background: 'var(--odb-surface)', border: '1px solid var(--odb-border)' }}>
+      <div className="px-6 py-4 flex items-center gap-3" style={{ borderBottom: '1px solid var(--odb-border)' }}>
         <span className="text-xl">{icon}</span>
-        <h2 className="font-semibold text-white">{title}</h2>
+        <h2 className="font-semibold" style={{ color: 'var(--odb-text)' }}>{title}</h2>
       </div>
       <div className="p-6">{children}</div>
     </div>
@@ -116,8 +117,8 @@ export default function SettingsPage() {
   }
 
   if (loading) return (
-    <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-      <div className="text-gray-400">Завантаження...</div>
+    <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--odb-bg)' }}>
+      <div style={{ color: 'var(--odb-text-dim)' }}>Завантаження...</div>
     </div>
   )
 
@@ -129,30 +130,37 @@ export default function SettingsPage() {
   ] as const
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white flex">
+    <div className="min-h-screen flex" style={{ background: 'var(--odb-bg)', color: 'var(--odb-text)' }}>
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0">
 
-        <header className="bg-gray-800 border-b border-gray-700 px-6 py-4 flex items-center gap-4">
-          <h1 className="text-lg font-bold">⚙️ Налаштування</h1>
-          {isAdmin && (
-            <span className="ml-2 px-2 py-0.5 bg-yellow-900/50 border border-yellow-700 rounded text-yellow-400 text-xs font-semibold">
-              👑 Адміністратор
-            </span>
-          )}
+        <header className="px-6 py-4 flex items-center gap-3 shrink-0"
+          style={{ background: 'var(--odb-surface)', borderBottom: '1px solid var(--odb-border)' }}>
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+            style={{ background: 'linear-gradient(135deg, #6366f1 0%, #4338ca 100%)', boxShadow: '0 0 16px rgba(99,102,241,0.3)' }}>
+            <Icon name="settings" size={20} strokeWidth={1.8} />
+          </div>
+          <div>
+            <h1 className="text-base font-bold tracking-tight">Налаштування</h1>
+            {isAdmin && (
+              <span className="px-2 py-0.5 rounded text-xs font-semibold"
+                style={{ background: 'rgba(234,179,8,0.15)', border: '1px solid rgba(234,179,8,0.4)', color: '#eab308' }}>
+                👑 Адміністратор
+              </span>
+            )}
+          </div>
         </header>
 
         <div className="flex-1 overflow-y-auto">
           {/* Tabs */}
-          <div className="bg-gray-800/50 border-b border-gray-700 px-6">
+          <div className="px-6" style={{ borderBottom: '1px solid var(--odb-border)', background: 'var(--odb-surface2)' }}>
             <div className="flex gap-1">
               {tabs.map(tab => (
                 <button key={tab.id} onClick={() => setActiveTab(tab.id as any)}
-                  className={`px-4 py-3 text-sm font-medium border-b-2 transition ${
-                    activeTab === tab.id
-                      ? 'border-blue-500 text-white'
-                      : 'border-transparent text-gray-400 hover:text-gray-200'
-                  }`}>
+                  className="px-4 py-3 text-sm font-medium border-b-2 transition"
+                  style={activeTab === tab.id
+                    ? { borderBottomColor: 'var(--odb-accent)', color: 'var(--odb-text)' }
+                    : { borderBottomColor: 'transparent', color: 'var(--odb-text-dim)' }}>
                   {tab.icon} {tab.label}
                 </button>
               ))}
@@ -184,7 +192,8 @@ export default function SettingsPage() {
                       <button
                         onClick={handleSendReset}
                         disabled={pwLoading}
-                        className="px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 rounded-lg text-sm transition"
+                        className="px-4 py-2 rounded-lg text-sm transition disabled:opacity-50"
+        style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)', color: 'var(--odb-text)' }}
                       >
                         {pwLoading ? '⏳ Надсилання...' : '📧 Надіслати лист для зміни паролю'}
                       </button>
@@ -201,7 +210,7 @@ export default function SettingsPage() {
                       { label: 'Роль', value: isAdmin ? '👑 Адміністратор' : '🔍 Аналітик' },
                       { label: 'Акаунт створено', value: user?.created_at ? new Date(user.created_at).toLocaleDateString('uk-UA') : '—' },
                     ].map(({ label, value }) => (
-                      <div key={label} className="bg-gray-700/50 rounded-lg p-3">
+                      <div key={label} className="rounded-lg p-3" style={{ background: 'var(--odb-surface3)' }}>
                         <p className="text-gray-500 text-xs mb-0.5">{label}</p>
                         <p className="text-gray-200 font-mono text-xs">{value}</p>
                       </div>
@@ -220,8 +229,8 @@ export default function SettingsPage() {
                   </div>
                 )}
 
-                <div className="bg-gray-800 rounded-2xl border border-gray-700 overflow-hidden">
-                  <div className="px-6 py-4 border-b border-gray-700 flex items-center justify-between">
+                <div className="rounded-2xl overflow-hidden" style={{ background: 'var(--odb-surface)', border: '1px solid var(--odb-border)' }}>
+                  <div className="px-6 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid var(--odb-border)' }}>
                     <div className="flex items-center gap-3">
                       <span className="text-xl">🔑</span>
                       <h2 className="font-semibold">API Ключі</h2>
@@ -240,7 +249,7 @@ export default function SettingsPage() {
                     )}
                   </div>
 
-                  <div className="divide-y divide-gray-700">
+                  <div className="divide-y" style={{ borderColor: 'var(--odb-border)' }}>
                     {apiKeys.map(k => {
                       const meta = KEY_LABELS[k.key]
                       if (!meta) return null
@@ -274,7 +283,10 @@ export default function SettingsPage() {
                                 placeholder={k.configured ? k.value || 'Змінити...' : 'Ввести ключ...'}
                                 value={editKeys[k.key] ?? ''}
                                 onChange={e => setEditKeys(prev => ({ ...prev, [k.key]: e.target.value }))}
-                                className="flex-1 px-3 py-1.5 bg-gray-700 border border-gray-600 rounded-lg text-sm text-white focus:border-blue-500 focus:outline-none font-mono"
+                                className="flex-1 px-3 py-1.5 rounded-lg text-sm outline-none font-mono"
+                              style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)', color: 'var(--odb-text)' }}
+                              onFocus={e => (e.target.style.borderColor = 'var(--odb-accent)')}
+                              onBlur={e => (e.target.style.borderColor = 'var(--odb-border)')}
                               />
                               <button
                                 onClick={() => setShowKeys(p => ({ ...p, [k.key]: !p[k.key] }))}
@@ -326,7 +338,7 @@ export default function SettingsPage() {
                       { label: 'Telegram порт',    value: platform.telegram_port,   ok: !!platform.telegram_port },
                       { label: 'SpiderFoot порт',  value: platform.spiderfoot_port, ok: !!platform.spiderfoot_port },
                     ].map(({ label, value, ok }) => (
-                      <div key={label} className="flex items-center justify-between py-2 border-b border-gray-700 last:border-0">
+                      <div key={label} className="flex items-center justify-between py-2 last:border-0" style={{ borderBottom: '1px solid var(--odb-border)' }}>
                         <span className="text-gray-400">{label}</span>
                         <div className="flex items-center gap-2">
                           <span className={ok ? 'text-green-400' : 'text-red-400'}>{ok ? '✓' : '✗'}</span>
@@ -348,16 +360,17 @@ export default function SettingsPage() {
               <div className="space-y-5">
                 <div className="grid grid-cols-2 gap-4">
                   {[
-                    { icon: '📊', title: 'Активність', desc: 'Хто, що і коли шукав', href: '/admin/activity', color: 'blue' },
-                    { icon: '👥', title: 'Користувачі', desc: 'Управління доступом', href: '/admin/users',    color: 'purple' },
-                    { icon: '📥', title: 'Імпорт',      desc: 'CSV масовий імпорт',  href: '/admin/import',  color: 'green' },
-                    { icon: '🔧', title: 'Інструменти', desc: 'OSINT та утиліти',    href: '/admin/tools',   color: 'orange' },
+                    { icon: '📊', title: 'Активність', desc: 'Хто, що і коли шукав', href: '/admin/activity' },
+                    { icon: '👥', title: 'Користувачі', desc: 'Управління доступом', href: '/admin/users' },
+                    { icon: '📥', title: 'Імпорт',      desc: 'CSV масовий імпорт',  href: '/admin/import' },
+                    { icon: '🔧', title: 'Інструменти', desc: 'OSINT та утиліти',    href: '/admin/tools' },
                   ].map(item => (
                     <a key={item.href} href={item.href}
-                      className="bg-gray-700 hover:bg-gray-600 border border-gray-600 hover:border-gray-500 rounded-xl p-5 transition group">
+                      className="odb-card-hover rounded-xl p-5 transition"
+                      style={{ background: 'var(--odb-surface2)', border: '1px solid var(--odb-border)' }}>
                       <div className="text-3xl mb-2">{item.icon}</div>
-                      <div className="font-semibold text-white">{item.title}</div>
-                      <div className="text-gray-400 text-sm">{item.desc}</div>
+                      <div className="font-semibold" style={{ color: 'var(--odb-text)' }}>{item.title}</div>
+                      <div className="text-sm" style={{ color: 'var(--odb-text-dim)' }}>{item.desc}</div>
                     </a>
                   ))}
                 </div>
@@ -368,7 +381,7 @@ export default function SettingsPage() {
                       { label: 'Node ENV', value: process.env.NODE_ENV || 'development' },
                       { label: 'Admin email', value: user?.email },
                     ].map(({ label, value }) => (
-                      <div key={label} className="bg-gray-700/50 rounded-lg p-3">
+                      <div key={label} className="rounded-lg p-3" style={{ background: 'var(--odb-surface3)' }}>
                         <p className="text-gray-500 text-xs mb-0.5">{label}</p>
                         <p className="text-gray-200 font-mono text-xs">{value || '—'}</p>
                       </div>
@@ -404,7 +417,8 @@ function VpsStatus() {
   return (
     <div className="flex items-center gap-4">
       <button onClick={check} disabled={status === 'checking'}
-        className="px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 rounded-lg text-sm transition">
+        className="px-4 py-2 rounded-lg text-sm transition disabled:opacity-50"
+        style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)', color: 'var(--odb-text)' }}>
         {status === 'checking' ? '⏳ Перевіряю...' : '🔄 Перевірити VPS'}
       </button>
       {status === 'ok' && (
