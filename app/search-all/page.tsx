@@ -57,7 +57,7 @@ const CATEGORIES = [
     color: 'text-sky-400',
     borderHit: 'border-sky-800/50',
     bgHit: 'bg-sky-950/10',
-    sources: ['telegram', 'getcontact', 'phone_presence'],
+    sources: ['telegram', 'getcontact', 'phone_presence', 'tg_bots'],
     types: ['phone', 'username', 'name', 'tg_username'],
   },
   {
@@ -1284,6 +1284,118 @@ function SaveToCardPanel({
   )
 }
 
+// ─── Messengers Section — Telegram MTProto + phone_presence + tg_bots ────────
+function MessengersSection({ sources }: { sources: Record<string, { status: string; data: any }> }) {
+  const [tgBotsLoading, setTgBotsLoading] = useState(false)
+  const [tgBotsData,    setTgBotsData]    = useState<any>(null)
+  const [tgBotsError,   setTgBotsError]   = useState('')
+
+  const tgBotsInfo = sources.tg_bots?.data  // { async: true, endpoint, query, dob }
+
+  async function runTgBots() {
+    if (!tgBotsInfo?.endpoint || !tgBotsInfo?.query) return
+    setTgBotsLoading(true); setTgBotsError('')
+    try {
+      const url = new URL(tgBotsInfo.endpoint)
+      url.searchParams.set('q', tgBotsInfo.query)
+      if (tgBotsInfo.dob) url.searchParams.set('dob', tgBotsInfo.dob)
+      const res = await fetch(url.toString(), { signal: AbortSignal.timeout(65000) })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const d = await res.json()
+      setTgBotsData(d)
+    } catch (e: any) {
+      setTgBotsError(e.message || 'Помилка')
+    } finally {
+      setTgBotsLoading(false)
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      {/* Phone presence */}
+      {sources.phone_presence?.data && (
+        <div>
+          <p className="text-xs text-gray-500 font-semibold mb-2">📱 Наявність у месенджерах</p>
+          <PhonePresenceResults data={sources.phone_presence.data} />
+        </div>
+      )}
+
+      {/* Telegram MTProto */}
+      {sources.telegram?.data && (
+        <div className={sources.phone_presence?.data ? 'pt-3 border-t border-gray-800' : ''}>
+          <p className="text-xs text-gray-500 mb-2">✈️ Telegram MTProto</p>
+          <MessengerResults data={sources.telegram.data} />
+        </div>
+      )}
+
+      {/* GetContact */}
+      {sources.getcontact?.data && (
+        <div className="pt-3 border-t border-gray-800">
+          <p className="text-xs text-gray-500 mb-2">📒 Getcontact</p>
+          <GetcontactResults data={sources.getcontact.data} />
+        </div>
+      )}
+
+      {/* Telegram LEAK BOTS — async, запускається вручну */}
+      {tgBotsInfo?.async && (
+        <div className="pt-3 border-t border-gray-800">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs text-gray-500">🤖 Telegram OSINT боти (~10 ботів, 30-60с)</p>
+            {!tgBotsData && (
+              <button
+                onClick={runTgBots}
+                disabled={tgBotsLoading}
+                className="px-3 py-1 bg-sky-800 hover:bg-sky-700 disabled:opacity-50 rounded-lg text-xs text-sky-200 transition flex items-center gap-1.5"
+              >
+                {tgBotsLoading
+                  ? <><span className="animate-spin inline-block">⟳</span> Пошук...</>
+                  : <>🔍 Перевірити боти</>
+                }
+              </button>
+            )}
+          </div>
+
+          {tgBotsError && (
+            <p className="text-red-400 text-xs">❌ {tgBotsError}</p>
+          )}
+
+          {tgBotsLoading && (
+            <div className="text-center py-4">
+              <p className="text-sky-400 text-xs animate-pulse">Запит до {'>'}10 Telegram ботів... це займе ~40 секунд</p>
+            </div>
+          )}
+
+          {tgBotsData && (() => {
+            const entries: any[] = tgBotsData.results || tgBotsData.entries || []
+            if (!entries.length) {
+              return <p className="text-gray-600 text-xs">Боти не знайшли даних</p>
+            }
+            return (
+              <div className="space-y-2">
+                {entries.slice(0, 20).map((e: any, i: number) => (
+                  <div key={i} className="bg-gray-900 rounded-lg px-3 py-2 text-xs border border-gray-800">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sky-400 font-mono">{e.source || e.source_label || e.database}</span>
+                      {e.fields?.phone && <span className="text-green-400">📱 {e.fields.phone}</span>}
+                    </div>
+                    {(e.fields?.name || e.name) && <p className="text-gray-300">{e.fields?.name || e.name}</p>}
+                    {(e.fields?.dob || e.dob) && <p className="text-gray-500">📅 {e.fields?.dob || e.dob}</p>}
+                    {(e.fields?.address || e.address) && <p className="text-gray-500">📍 {e.fields?.address || e.address}</p>}
+                    {e.snippet && <p className="text-gray-400 mt-1">{e.snippet}</p>}
+                  </div>
+                ))}
+                {entries.length > 20 && (
+                  <p className="text-xs text-gray-600 text-center">...та ще {entries.length - 20} результатів</p>
+                )}
+              </div>
+            )
+          })()}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Category Card ─────────────────────────────────────────────────────────────
 function CategoryCard({
   cat, sources, type,
@@ -1355,26 +1467,7 @@ function CategoryCard({
           {cat.key === 'social'      && <SocialResults sources={sources} />}
           {cat.key === 'persons'     && <PersonsResults data={sources.odb?.data} />}
           {cat.key === 'messengers'  && (
-            <>
-              {/* Phone presence — WhatsApp/Viber/Telegram/Signal */}
-              {sources.phone_presence?.data && (
-                <div className="mb-4">
-                  <p className="text-xs text-gray-500 font-semibold mb-2">📱 Наявність у месенджерах</p>
-                  <PhonePresenceResults data={sources.phone_presence.data} />
-                </div>
-              )}
-              {/* Telegram name/username search */}
-              {sources.telegram?.data && (
-                <div className={sources.phone_presence?.data ? 'mt-3 pt-3 border-t border-gray-800' : ''}>
-                  {sources.phone_presence?.data && <p className="text-xs text-gray-500 mb-2">✈️ Telegram пошук</p>}
-                  <MessengerResults data={sources.telegram.data} />
-                </div>
-              )}
-              {sources.getcontact?.data && <div className="mt-3 pt-3 border-t border-gray-800">
-                <p className="text-xs text-gray-500 mb-2">📒 Getcontact</p>
-                <GetcontactResults data={sources.getcontact?.data} />
-              </div>}
-            </>
+            <MessengersSection sources={sources} />
           )}
           {cat.key === 'vehicles'    && <VehicleResults data={sources.vehicles?.data} />}
           {cat.key === 'registries'  && <RegistriesResults sources={sources} />}

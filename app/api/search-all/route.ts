@@ -151,6 +151,20 @@ export async function POST(req: NextRequest) {
   const type    = detectType(q)
   const startTs = Date.now()
 
+  // ── Extract DOB from name query ──────────────────────────────────────────────
+  // "Іванов Іван Іванович 10.10.1993" → cleanName="Іванов Іван Іванович", dob="10.10.1993"
+  let cleanName = q
+  let extractedDob = ''
+  if (type === 'name') {
+    const dobMatch = q.match(/\b(\d{2}[./]\d{2}[./]\d{4})\b/)
+    if (dobMatch) {
+      cleanName = q.replace(dobMatch[0], '').trim().replace(/\s+/g, ' ')
+      extractedDob = dobMatch[1]
+    }
+  }
+  // Surname = first word of name (for relevance filtering in sanctions)
+  const querySurname = cleanName.split(/\s+/)[0].toLowerCase()
+
   // Cookie forwarding — передаємо сесію для авторизації внутрішніх API викликів
   const cookieHeader = req.headers.get('cookie') || ''
   const safeFetch = makeSafeFetch(cookieHeader)
@@ -179,13 +193,11 @@ export async function POST(req: NextRequest) {
     // ── 1. ODB persons DB ─────────────────────────────────────────────────────
     tasks.push((async () => {
       send('odb', 'loading')
-      // Use GET /api/persons with query params (supports q, phone, ipn)
       const params = new URLSearchParams({ limit: '20' })
       if (type === 'phone')    params.set('phone', q)
       else if (type === 'inn') params.set('ipn', q)
-      else                     params.set('q', q)
+      else                     params.set('q', cleanName)  // cleanName без ДН
       const d = await safeFetch(`${LOCAL}/api/persons?${params}`, {}, 7000)
-      // Normalize response shape for countHits
       if (d && d.data !== undefined) {
         send('odb', 'done', { persons: d.data, total: d.total || d.data?.length || 0 })
       } else {
@@ -208,32 +220,31 @@ export async function POST(req: NextRequest) {
           d = await safeFetch(`${VPS_URL}/telethon/search/tg-user`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: q, limit: 5 }),
+            body: JSON.stringify({ name: cleanName, limit: 5 }),
           }, 7000)
         }
         send('telegram', d ? 'done' : 'error', d)
       })())
     }
 
-    // ── 2b. Telegram OSINT боти — ОКРЕМИЙ ENDPOINT ───────────────────────────
-    // Telegram бот пошук займає 30-60с — НЕ може бути в search-all (Vercel 10s limit)
-    // Фронтенд викликає /api/telegram/search напряму через VPS proxy
-    // Тут лише повідомляємо фронтенду куди звертатись
+    // ── 2b. Telegram LEAK BOTS — окремий async пошук ─────────────────────────
+    // Займає 30-60с → фронтенд запускає окремо після SSE завершення
     if (['name', 'phone'].includes(type)) {
       send('tg_bots', 'done', {
         async: true,
-        vps_url: VPS_URL,
-        query: toRussian(q),
-        query_original: q,
-        message: 'Пошук через Telegram боти виконується окремо (30-60с)',
+        endpoint: `${VPS_URL}/presence/search`,
+        query: toRussian(cleanName),
+        query_original: cleanName,
+        dob: extractedDob,
+        message: 'Натисніть "Перевірити боти" для пошуку через Telegram боти (~40с)',
       })
     }
 
-    // ── 3. Sherlock ───────────────────────────────────────────────────────────
-    if (['username', 'name', 'email'].includes(type)) {
+    // ── 3. Sherlock — ТІЛЬКИ для username/email, не для ПІБ ──────────────────
+    if (['username', 'email'].includes(type)) {
       tasks.push((async () => {
         send('sherlock', 'loading')
-        const uname = type === 'email' ? q.split('@')[0] : q.split(' ')[0]
+        const uname = type === 'email' ? q.split('@')[0] : q
         const d = await safeFetch(`${LOCAL}/api/osint/sherlock`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -243,15 +254,14 @@ export async function POST(req: NextRequest) {
       })())
     }
 
-    // ── 4. Chimera (Maigret) ──────────────────────────────────────────────────
-    if (['username', 'name'].includes(type)) {
+    // ── 4. Chimera — ТІЛЬКИ для username, не для ПІБ ─────────────────────────
+    if (type === 'username') {
       tasks.push((async () => {
         send('chimera', 'loading')
-        const uname = q.split(' ')[0]
         const d = await safeFetch(`${LOCAL}/api/osint/chimera`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: uname, timeout: 20 }),
+          body: JSON.stringify({ username: q, timeout: 20 }),
         }, 7000)
         send('chimera', d ? 'done' : 'error', d)
       })())
@@ -264,7 +274,7 @@ export async function POST(req: NextRequest) {
         const d = await safeFetch(`${LOCAL}/api/breach/search`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: q }),
+          body: JSON.stringify({ query: type === 'name' ? cleanName : q }),
         }, 7000)
         send('leaks', d ? 'done' : 'error', d)
       })())
@@ -274,72 +284,72 @@ export async function POST(req: NextRequest) {
     if (['domain', 'username', 'name'].includes(type)) {
       tasks.push((async () => {
         send('breach_catalog', 'loading')
-        const qterm = type === 'domain' ? q.split('.')[0] : q.split(' ')[0]
+        const qterm = type === 'domain' ? q.split('.')[0] : cleanName.split(' ')[0]
         const d = await safeFetch(`${LOCAL}/api/breach/catalog?q=${encodeURIComponent(qterm)}&limit=10`, {}, 7000)
         send('breach_catalog', d ? 'done' : 'error', d)
       })())
     }
 
-    // ── 7. НАЗК декларації ────────────────────────────────────────────────────
+    // ── 7. НАЗК декларації — cleanName без дати народження ───────────────────
     if (type === 'name') {
       tasks.push((async () => {
         send('nazk', 'loading')
         const d = await safeFetch(`${LOCAL}/api/nazk/search`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: q }),
+          body: JSON.stringify({ query: cleanName }),  // БЕЗ дати
         }, 7000)
         send('nazk', d ? 'done' : 'error', d)
       })())
     }
 
-    // ── 8. МВС розшук ────────────────────────────────────────────────────────
+    // ── 8. МВС розшук — cleanName без ДН ────────────────────────────────────
     if (type === 'name') {
       tasks.push((async () => {
         send('mvs', 'loading')
         const d = await safeFetch(`${LOCAL}/api/mvs/search`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: q }),
+          body: JSON.stringify({ query: cleanName }),
         }, 7000)
         send('mvs', d ? 'done' : 'error', d)
       })())
     }
 
-    // ── 9. Миротворець ────────────────────────────────────────────────────────
+    // ── 9. Миротворець — cleanName без ДН ────────────────────────────────────
     if (type === 'name') {
       tasks.push((async () => {
         send('myrotvorets', 'loading')
         const d = await safeFetch(`${LOCAL}/api/myrotvorets/search`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: q }),
+          body: JSON.stringify({ query: cleanName }),
         }, 7000)
         send('myrotvorets', d ? 'done' : 'error', d)
       })())
     }
 
-    // ── 10. ЄРБ боржники ─────────────────────────────────────────────────────
+    // ── 10. ЄРБ боржники — cleanName без ДН ──────────────────────────────────
     if (['name', 'inn'].includes(type)) {
       tasks.push((async () => {
         send('erb', 'loading')
         const d = await safeFetch(`${LOCAL}/api/erb/search`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: q }),
+          body: JSON.stringify({ query: type === 'name' ? cleanName : q }),
         }, 7000)
         send('erb', d ? 'done' : 'error', d)
       })())
     }
 
-    // ── 11. Бізнес-розвідка ───────────────────────────────────────────────────
+    // ── 11. Бізнес-розвідка — cleanName без ДН ───────────────────────────────
     if (['name', 'edrpou', 'inn'].includes(type)) {
       tasks.push((async () => {
         send('company', 'loading')
         const d = await safeFetch(`${LOCAL}/api/company/search`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: q }),
+          body: JSON.stringify({ query: type === 'name' ? cleanName : q }),
         }, 7000)
         send('company', d ? 'done' : 'error', d)
       })())
@@ -371,26 +381,34 @@ export async function POST(req: NextRequest) {
       })())
     }
 
-    // ── 14. Web search (Tavily — всі типи) ───────────────────────────────────
+    // ── 14. Web search (Tavily) — для name передаємо повний q (з ДН для кращого результату)
     tasks.push((async () => {
       send('web', 'loading')
       const d = await safeFetch(`${LOCAL}/api/web/search`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: q, type }),
+        body: JSON.stringify({ query: q, type }),  // Повний q — дата допомагає Web пошуку
       }, 7000)
       send('web', d ? 'done' : 'error', d)
     })())
 
-    // ── 15. OpenSanctions (OFAC + EU + UN + РНБО) — для всіх імен та документів
+    // ── 15. OpenSanctions (OFAC + EU + UN + РНБО) ───────────────────────────
     if (['name', 'inn', 'rinn', 'ogrn', 'ogrnip', 'phone', 'email'].includes(type)) {
       tasks.push((async () => {
         send('sanctions', 'loading')
         const d = await safeFetch(`${LOCAL}/api/sanctions/search`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: q, type }),
+          body: JSON.stringify({ query: type === 'name' ? cleanName : q, type }),
         }, 7000)
+        // Фільтруємо результати: прізвище запиту ОБОВ'ЯЗКОВО присутнє в імені результату
+        if (d && Array.isArray(d.entries) && type === 'name' && querySurname.length >= 3) {
+          d.entries = d.entries.filter((e: any) => {
+            const names = [e.name, ...(e.aliases || [])].join(' ').toLowerCase()
+            return names.includes(querySurname)
+          })
+          d.total = d.entries.length
+        }
         send('sanctions', d ? 'done' : 'error', d)
       })())
     }
