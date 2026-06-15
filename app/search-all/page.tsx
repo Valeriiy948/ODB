@@ -903,6 +903,29 @@ function NetworkResults({ sources }: { sources: Record<string, any> }) {
   )
 }
 
+// ─── Score Badge ──────────────────────────────────────────────────────────────
+function ScoreBadge({ score }: { score: number }) {
+  if (score >= 70) {
+    return (
+      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400 border border-green-700/40">
+        Висока релевантність
+      </span>
+    )
+  }
+  if (score >= 40) {
+    return (
+      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-500/20 text-yellow-400 border border-yellow-700/40">
+        Можливий збіг
+      </span>
+    )
+  }
+  return (
+    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-500/20 text-gray-400 border border-gray-700/40">
+      Низька релевантність
+    </span>
+  )
+}
+
 function SanctionsResults({ data }: { data: any }) {
   const entries = data?.entries || []
   if (!entries.length) return <p className="text-gray-500 text-sm">Не знайдено в санкційних базах</p>
@@ -1491,6 +1514,8 @@ function SearchAllPage() {
   const [sources,      setSources]      = useState<Record<string, { status: string; data: any }>>({})
   const [detectedType, setDetectedType] = useState('')
   const [totalHits,    setTotalHits]    = useState(0)
+  const [parsedQuery,  setParsedQuery]  = useState<{ fullName?: string; dob?: string | null; dobYear?: number | null; phones?: string[] } | null>(null)
+  const [searchDuration, setSearchDuration] = useState(0)
   const abortRef  = useRef<AbortController | null>(null)
   const supabase  = createClient()
   const userRef   = useRef<{ id?: string; email?: string }>({})
@@ -1560,7 +1585,12 @@ function SearchAllPage() {
           if (!line.startsWith('data: ')) continue
           try {
             const msg = JSON.parse(line.slice(6))
-            if (msg.source === '__done__') { setRunning(false); return }
+            if (msg.source === '__done__') {
+              setRunning(false)
+              if (msg.parsedQuery) setParsedQuery(msg.parsedQuery)
+              if (msg.durationMs)  setSearchDuration(msg.durationMs)
+              return
+            }
             setSources(prev => {
               const next = { ...prev, [msg.source]: { status: msg.status, data: msg.data } }
               let hits = 0
@@ -1585,6 +1615,8 @@ function SearchAllPage() {
     setQuery('')
     setSources({})
     setTotalHits(0)
+    setParsedQuery(null)
+    setSearchDuration(0)
     router.push('/search-all')
   }
 
@@ -1649,20 +1681,37 @@ function SearchAllPage() {
 
           {/* Status bar */}
           {searched && (
-            <div className="flex items-center gap-3 mb-5">
+            <div className="flex flex-wrap items-center gap-3 mb-5">
               {running ? (
                 <span className="text-gray-400 text-sm animate-pulse">
                   ⟳ Пошук по всіх джерелах...
                 </span>
-              ) : (
-                <span className={`font-bold text-base ${totalHits > 0 ? 'text-green-400' : 'text-gray-400'}`}>
-                  {totalHits > 0 ? `✅ Знайдено ${totalHits} результатів` : '❌ Нічого не знайдено'}
-                </span>
-              )}
+              ) : (() => {
+                const sourcesWithResults = Object.entries(sources).filter(
+                  ([k, v]) => v.status === 'done' && k !== '__done__' && countHits(k, v.data) > 0
+                ).length
+                return (
+                  <span className={`font-bold text-base ${totalHits > 0 ? 'text-green-400' : 'text-gray-400'}`}>
+                    {totalHits > 0
+                      ? `✅ Знайдено ${totalHits} результатів з ${sourcesWithResults} джерел`
+                      : '❌ Нічого не знайдено'}
+                  </span>
+                )
+              })()}
               {detectedType && typeInfo && (
                 <span className={`text-xs px-2.5 py-1 rounded-full bg-gray-800 border border-gray-700 ${typeInfo.color}`}>
                   {typeInfo.icon} {typeInfo.label}
                 </span>
+              )}
+              {/* Parsed query info — показуємо що розпізнано */}
+              {!running && parsedQuery?.fullName && parsedQuery.fullName !== query.trim() && (
+                <span className="text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded border border-gray-700">
+                  Пошук: <span className="text-gray-300">{parsedQuery.fullName}</span>
+                  {parsedQuery.dob && <span className="ml-1 text-blue-400">📅 {parsedQuery.dob}</span>}
+                </span>
+              )}
+              {!running && searchDuration > 0 && (
+                <span className="text-xs text-gray-600">{(searchDuration / 1000).toFixed(1)}с</span>
               )}
             </div>
           )}
