@@ -649,11 +649,93 @@ function OldFormatCard({ profile, threatScore }: { profile: AiProfileOld; threat
         </Section>
       )}
 
+      {profile.military && (profile.military.rank || profile.military.unit) && (
+        <Section title="🎖️ Військові дані">
+          <div className="space-y-2 text-sm">
+            {profile.military.rank && (
+              <div className="flex gap-2">
+                <span className="text-gray-500 w-24 shrink-0">Звання:</span>
+                <span className="text-white font-medium">{profile.military.rank}</span>
+              </div>
+            )}
+            {profile.military.unit && (
+              <div className="flex gap-2">
+                <span className="text-gray-500 w-24 shrink-0">Підрозділ:</span>
+                <span className="text-gray-200">{profile.military.unit}</span>
+              </div>
+            )}
+            {profile.military.role_description && (
+              <p className="text-gray-400 text-xs mt-1">{profile.military.role_description}</p>
+            )}
+          </div>
+        </Section>
+      )}
+
+      {profile.crimes?.length ? (
+        <Section title="⚖️ Злочини та інциденти" badge={profile.crimes.length}>
+          <div className="space-y-3">
+            {profile.crimes.map((c, i) => (
+              <div key={i} className={`rounded-lg p-3 border-l-4 ${SEVERITY_COLORS[c.severity || ''] || 'border-l-gray-600 bg-gray-900/50'}`}>
+                <p className="text-gray-200 text-sm font-medium">{c.title}</p>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1.5 text-xs text-gray-500">
+                  {c.date && <span>📅 {c.date}</span>}
+                  {c.location && <span>📍 {c.location}</span>}
+                  {c.type && <span>🏷️ {c.type}</span>}
+                  {c.role && <span>👤 Роль: <span className="text-gray-300">{c.role}</span></span>}
+                </div>
+                {c.icc_article && (
+                  <span className="inline-block mt-1.5 text-xs px-2 py-0.5 bg-red-900/40 text-red-300 border border-red-800/50 rounded">
+                    МКС: {c.icc_article}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </Section>
+      ) : null}
+
+      {profile.icc_articles?.length ? (
+        <Section title="📜 Статті МКС">
+          <TagList items={profile.icc_articles} color="bg-red-900/40 text-red-300 border border-red-800/40" />
+        </Section>
+      ) : null}
+
+      {profile.ua_criminal_articles?.length ? (
+        <Section title="⚖️ КК України">
+          <TagList items={profile.ua_criminal_articles} color="bg-orange-900/40 text-orange-300 border border-orange-800/40" />
+        </Section>
+      ) : null}
+
       {profile.connections?.length ? (
         <Section title="🔗 Зв'язки">
           <BulletList items={profile.connections} icon="👤" />
         </Section>
       ) : null}
+
+      {profile.key_facts?.length ? (
+        <Section title="🔑 Ключові факти для слідства">
+          <BulletList items={profile.key_facts} icon="▸" />
+        </Section>
+      ) : null}
+
+      {profile.recommendations?.length ? (
+        <Section title="✅ Рекомендації слідчим">
+          <BulletList items={profile.recommendations} icon="→" />
+        </Section>
+      ) : null}
+
+      {profile.information_gaps?.length ? (
+        <Section title="❓ Що ще встановити">
+          <BulletList items={profile.information_gaps} icon="?" />
+        </Section>
+      ) : null}
+
+      {profile.analyst_note && (
+        <div className="bg-amber-950/30 border border-amber-700/50 rounded-xl p-4">
+          <p className="text-amber-400 text-xs uppercase tracking-wider mb-2">📝 Нотатка аналітика</p>
+          <p className="text-gray-300 text-sm leading-relaxed">{profile.analyst_note}</p>
+        </div>
+      )}
 
     </div>
   )
