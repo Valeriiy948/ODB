@@ -305,7 +305,14 @@ function countHits(key: string, data: any): number {
     case 'telegram':       return (data.found || data.result?.user_id) ? 1 : (data.results?.length || 0)
     case 'sherlock':       return data.total || data.found?.length || 0
     case 'chimera':        return data.total || data.found?.length || 0
-    case 'leaks':          return data.total_hits || 0
+    case 'leaks': {
+      // Рахуємо реальні записи після relevance-фільтра (не сире total_hits)
+      if (data.sources) {
+        return Object.values(data.sources as Record<string, any>)
+          .reduce((s: number, src: any) => s + (src?.entries?.length || 0), 0)
+      }
+      return data.total_hits || 0
+    }
     case 'breach_catalog': return data.total || 0
     case 'nazk':           return data.found || data.total || 0
     case 'mvs':            return data.found || data.total || 0
