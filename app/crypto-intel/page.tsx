@@ -6,6 +6,7 @@ import Sidebar from '../components/Sidebar'
 import RiskScore from '../components/crypto/RiskScore'
 import Icon from '../components/Icon'
 import CryptoPriceTicker from '../components/CryptoPriceTicker'
+import { CryptoNewsWidget } from '../components/crypto/CryptoNewsWidget'
 
 const TransactionGraph = dynamic(
   () => import('../components/crypto/TransactionGraph'),
@@ -1767,15 +1768,20 @@ export default function CryptoIntelPage() {
 
         {/* ── Empty state ── */}
         {!hasResults && !loading && (
-          <div className="text-center py-20">
-            <p className="text-6xl mb-4">₿</p>
-            <p className="text-gray-400 text-lg mb-2">Введіть адресу гаманця</p>
-            <p className="text-gray-600 text-sm max-w-md mx-auto">
+          <div className="text-center pt-12 pb-8">
+            <p className="text-5xl mb-3">₿</p>
+            <p className="text-gray-400 text-base mb-1">Введіть адресу гаманця</p>
+            <p className="text-gray-600 text-sm max-w-md mx-auto mb-10">
               Bitcoin, Ethereum, TRON, BNB Chain або Polygon. Агент проведе повну форензику:
               трасування транзакцій, кластеризацію, OSINT-ідентифікацію та AI-звіт.
             </p>
           </div>
         )}
+
+        {/* ── Crypto news widget ── */}
+        <div className="mt-2">
+          <CryptoNewsWidget defaultOpen={!hasResults} />
+        </div>
       </main>
     </div>
   )
