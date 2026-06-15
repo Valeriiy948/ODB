@@ -141,7 +141,7 @@ export default function CompanySearchPage() {
   }
 
   function searchPerson(name: string) {
-    router.push(`/fragment-search?q=${encodeURIComponent(name)}`)
+    router.push(`/search-all?q=${encodeURIComponent(name)}`)
   }
 
   return (

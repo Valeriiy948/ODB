@@ -169,7 +169,7 @@ const ALL_MODULES: Module[] = [
   // ══ Соцмережі ═══════════════════════════════════════════════════════════════
   { id: 'telegram', icon: '✈️', title: 'Telegram', category: 'Соцмережі',
     status: 'active', description: 'Пошук по базі Telegram: Username, ID, phone',
-    href: '/social-search', price: 'free', count: '167k' },
+    href: '/search-all', price: 'free', count: '167k' },
 
   { id: 'vk', icon: '🔵', title: 'ВКонтакте', category: 'Соцмережі',
     status: 'active', description: 'Пошук VK профілів через Google/Yandex дорки',
@@ -178,15 +178,15 @@ const ALL_MODULES: Module[] = [
 
   { id: 'instagram', icon: '📸', title: 'Instagram', category: 'Соцмережі',
     status: 'active', description: 'Пошук профілів та постів Instagram',
-    href: '/social-search', price: 'free' },
+    href: '/search-all', price: 'free' },
 
   { id: 'tiktok', icon: '🎵', title: 'TikTok', category: 'Соцмережі',
     status: 'active', description: 'Профілі та статистика TikTok',
-    href: '/social-search', price: 'free' },
+    href: '/search-all', price: 'free' },
 
   { id: 'username-search', icon: '🌐', title: 'Username Search', category: 'Соцмережі',
     status: 'active', description: 'Пошук нікнейму на 500+ платформах (Sherlock + Maigret)',
-    href: '/sherlock', price: 'free' },
+    href: '/search-all', price: 'free' },
 
   { id: 'facebook', icon: '📘', title: 'Facebook', category: 'Соцмережі',
     status: 'coming_soon', description: 'Пошук профілів Facebook', price: 'free' },
@@ -203,7 +203,7 @@ const ALL_MODULES: Module[] = [
   // ══ OSINT / Витоки ══════════════════════════════════════════════════════════
   { id: 'fragment-search', icon: '🔍', title: 'Фрагментний пошук', category: 'OSINT / Витоки',
     status: 'active', description: 'Пошук по 167k записах локальної Telegram-бази',
-    href: '/fragment-search', price: 'free', count: '167k' },
+    href: '/search-all', price: 'free', count: '167k' },
 
   { id: 'breach-intel', icon: '🔓', title: 'Витоки (DeHashed + LeakCheck)', category: 'OSINT / Витоки',
     status: 'active', description: 'Пошук по злитих базах: email, пароль, IP, телефон',

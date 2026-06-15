@@ -234,9 +234,9 @@ export default function PhoneSearchPage() {
             <p className="text-gray-500 text-xs mt-0.5">Телефон · ІПН · Паспорт · СНІЛС · Email — всі бази одночасно</p>
           </div>
           <div className="flex gap-2">
-            <button onClick={() => router.push('/fragment-search')}
+            <button onClick={() => router.push('/search-all')}
               className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-lg text-xs transition">
-              📋 Пошук за крихтами
+              🔍 Пошук по всіх джерелах
             </button>
             <button onClick={() => router.push('/admin/leaks-import')}
               className="px-3 py-1.5 bg-amber-800 hover:bg-amber-700 text-amber-200 rounded-lg text-xs transition">

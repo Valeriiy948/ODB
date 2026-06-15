@@ -10,14 +10,14 @@ const TOOLS = [
       {
         icon: '🔍', name: 'Sherlock', tag: 'v0.16',
         desc: '400+ соцмереж та платформ. Quick mode (30 сайтів, ~8с) та Full mode (всі 400+, ~2хв).',
-        href: '/sherlock',
+        href: '/search-all',
         color: 'border-yellow-800/50 hover:border-yellow-700',
         badge: 'bg-yellow-900/30 text-yellow-400',
       },
       {
         icon: '🧬', name: 'Chimera (Maigret)', tag: 'v0.6.1',
         desc: '3000+ сайтів з фокусом на RU/CIS платформах. Витягує додаткові дані з профілів (телефон, фото, ID).',
-        href: '/sherlock',
+        href: '/search-all',
         color: 'border-purple-800/50 hover:border-purple-700',
         badge: 'bg-purple-900/30 text-purple-400',
       },
@@ -29,7 +29,7 @@ const TOOLS = [
       {
         icon: '🕷️', name: 'SpiderFoot', tag: 'v4.0',
         desc: 'Автоматизований збір OSINT по цілі. Email, домен, IP, ім\'я. Граф зв\'язків, DNS, WHOIS, pwnedpass.',
-        href: '/spiderfoot',
+        href: '/search-all',
         color: 'border-gray-700 hover:border-gray-600',
         badge: 'bg-gray-800 text-gray-300',
       },
@@ -74,14 +74,14 @@ const TOOLS = [
       {
         icon: '🌐', name: 'Соцмережі OSINT', tag: 'Social',
         desc: 'Детальний пошук по соціальних мережах. VK, Instagram, Facebook, TikTok та ін.',
-        href: '/social-search',
+        href: '/search-all',
         color: 'border-sky-800/50 hover:border-sky-700',
         badge: 'bg-sky-900/30 text-sky-400',
       },
       {
         icon: '🔍', name: 'Фрагментний пошук', tag: 'Fragment',
         desc: 'Пошук по окремих фрагментах даних. Частина імені, неповний телефон, шаблон email.',
-        href: '/fragment-search',
+        href: '/search-all',
         color: 'border-gray-700 hover:border-gray-600',
         badge: 'bg-gray-800 text-gray-300',
       },
