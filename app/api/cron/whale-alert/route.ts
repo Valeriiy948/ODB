@@ -808,6 +808,13 @@ function formatSmartDigest(intels: TxIntel[]): string {
       const to       = partyDisplay(tx.to_owner, tx.to_owner_type, tx.to_address, tx.blockchain)
       const sigEmoji = signal.direction === 'BEARISH' ? '🔴' : signal.direction === 'BULLISH' ? '🟢' : '⚪'
       lines.push(`  ${sigEmoji} <b>$${usdFmt(tx.amount_usd)}</b> ${tx.symbol} · ${from} → ${to}`)
+      // Повна адреса для деанонімізації — тільки якщо обидві сторони невідомі
+      const unknownAddr = isUnknown(tx.from_owner) ? tx.from_address
+                        : isUnknown(tx.to_owner)   ? tx.to_address
+                        : null
+      if (unknownAddr) {
+        lines.push(`     <code>${htmlEscape(unknownAddr)}</code> <a href="${APP_URL}/crypto-intel?address=${encodeURIComponent(unknownAddr)}">🔍</a>`)
+      }
     }
     lines.push(``)
   }
