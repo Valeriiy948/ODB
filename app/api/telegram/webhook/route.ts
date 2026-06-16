@@ -426,15 +426,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   ;(async () => {
     switch (cmd) {
       case '/help':
-      case '/start':      await cmdHelp(chatId);                break
-      case '/whale':      await cmdWhale(chatId, args[0]);      break
-      case '/stats':      await cmdStats(chatId);               break
-      case '/suspicious': await cmdSuspicious(chatId);          break
-      case '/watchlist':  await cmdWatchlist(chatId);           break
-      case '/add':        await cmdAdd(chatId, args);           break
-      case '/pause':      if (args[0]) await cmdPause(chatId, args[0]);  break
-      case '/resume':     if (args[0]) await cmdResume(chatId, args[0]); break
-      case '/remove':     if (args[0]) await cmdRemove(chatId, args[0]); break
+      case '/start':       await cmdHelp(chatId);                break
+      case '/whale':       await cmdWhale(chatId, args[0]);      break
+      case '/whale_btc':   await cmdWhale(chatId, 'btc');        break
+      case '/whale_eth':   await cmdWhale(chatId, 'eth');        break
+      case '/whale_tron':  await cmdWhale(chatId, 'tron');       break
+      case '/whale_sol':   await cmdWhale(chatId, 'sol');        break
+      case '/whale_xrp':   await cmdWhale(chatId, 'xrp');       break
+      case '/stats':       await cmdStats(chatId);               break
+      case '/suspicious':  await cmdSuspicious(chatId);          break
+      case '/watchlist':   await cmdWatchlist(chatId);           break
+      case '/add':         await cmdAdd(chatId, args);           break
+      case '/pause':       if (args[0]) await cmdPause(chatId, args[0]);  break
+      case '/resume':      if (args[0]) await cmdResume(chatId, args[0]); break
+      case '/remove':      if (args[0]) await cmdRemove(chatId, args[0]); break
     }
   })().catch(() => {})
 
