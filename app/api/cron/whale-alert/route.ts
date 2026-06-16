@@ -257,25 +257,22 @@ function classifySignal(
   const ac       = getAssetClass(tx.symbol)
 
   if (dir === 'outflow') {
+    // Стейблкоїн з біржі = OTC/custody розрахунок, НЕ sell pressure (аналітична помилка якщо позначати BEARISH)
+    if (ac === 'stable') return { direction: 'NEUTRAL', confidence: 'LOW', reason: `${tx.symbol} виходить з ${htmlEscape(tx.from_owner ?? 'Exchange')} — OTC / custody, без ринкового сигналу` }
     // Volatile виходить з біржі = накопичення = BULLISH
-    // Stable виходить з біржі = BEARISH (купівельна сила залишає)
-    return ac === 'volatile'
-      ? { direction: 'BULLISH',
-          confidence: tx.amount_usd >= 5_000_000 ? 'MEDIUM' : 'LOW',
-          reason: `${htmlEscape(tx.from_owner ?? 'Exchange')} → холодний гаманець (накопичення)` }
-      : { direction: 'BEARISH', confidence: 'LOW',
-          reason: `Стейблкоїн виходить з ${htmlEscape(tx.from_owner ?? 'Exchange')}` }
+    return { direction: 'BULLISH',
+      confidence: tx.amount_usd >= 5_000_000 ? 'MEDIUM' : 'LOW',
+      reason: `${htmlEscape(tx.from_owner ?? 'Exchange')} → холодний гаманець (накопичення)` }
   }
   if (dir === 'inflow') {
-    // Stable приходить на біржу = BULLISH (купівельна сила)
+    // Стейблкоїн на біржу = поповнення для торгів = BULLISH (сухий порох)
+    if (ac === 'stable') return { direction: 'BULLISH',
+      confidence: tx.amount_usd >= 5_000_000 ? 'MEDIUM' : 'LOW',
+      reason: `${tx.symbol} → ${htmlEscape(tx.to_owner ?? 'Exchange')} (купівельна сила)` }
     // Volatile приходить на біржу = BEARISH (продаж)
-    return ac === 'stable'
-      ? { direction: 'BULLISH',
-          confidence: tx.amount_usd >= 5_000_000 ? 'MEDIUM' : 'LOW',
-          reason: `Стейблкоїн → ${htmlEscape(tx.to_owner ?? 'Exchange')} (купівельна сила)` }
-      : { direction: 'BEARISH',
-          confidence: tx.amount_usd >= 5_000_000 ? 'MEDIUM' : 'LOW',
-          reason: `${tx.symbol} → ${htmlEscape(tx.to_owner ?? 'Exchange')} (продажний тиск)` }
+    return { direction: 'BEARISH',
+      confidence: tx.amount_usd >= 5_000_000 ? 'MEDIUM' : 'LOW',
+      reason: `${tx.symbol} → ${htmlEscape(tx.to_owner ?? 'Exchange')} (продажний тиск)` }
   }
   if (dir === 'internal' || dir === 'inter_exchange') {
     return { direction: 'NEUTRAL', confidence: 'LOW',
@@ -352,7 +349,9 @@ function computeFlowSignals(txs: StoredWhaleTx[]): Map<string, AssetFlow> {
 
     if (confidence >= 0.25) {                     // мін 25% помічених коштів
       const abs = Math.abs(netFlow)
-      const dir = netFlow > 0 ? 'BULLISH' : 'BEARISH'
+      // Стейблкоїн outflow з біржі ≠ ринковий сигнал (OTC/custody).
+      // Для стейблів тільки BULLISH (нетто-приплив = купівельна сила), ніколи BEARISH.
+      const dir = netFlow > 0 ? 'BULLISH' : (ac === 'volatile' ? 'BEARISH' : 'NEUTRAL')
       if (abs >= 10_000_000) { signal = dir; strength = 'HIGH' }
       else if (abs >= 3_000_000) { signal = dir; strength = 'MEDIUM' }
       else if (abs >= 1_000_000) { signal = dir; strength = 'LOW' }
