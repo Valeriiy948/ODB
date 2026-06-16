@@ -3,10 +3,6 @@
     {
       "path": "/api/cron/monitor",
       "schedule": "0 0 * * *"
-    },
-    {
-      "path": "/api/cron/whale-alert",
-      "schedule": "0 * * * *"
     }
   ]
 }
