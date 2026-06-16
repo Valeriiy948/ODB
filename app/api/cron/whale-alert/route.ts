@@ -90,6 +90,8 @@ interface TxIntel {
   sanction_label: string
   is_structuring: boolean
   struct_group:   string
+  is_transit:     boolean
+  transit_addr:   string
   is_smart_money: boolean
   seen_before:    number
   risk_score:     number
@@ -174,18 +176,29 @@ function isExchange(owner: string | null): boolean {
 // ─── Market Signal Classification ────────────────────────────────────────────
 function classifySignal(
   tx: StoredWhaleTx,
-  intel: { is_structuring: boolean; is_smart_money: boolean },
+  intel: { is_structuring: boolean; is_smart_money: boolean; is_transit: boolean },
 ): MarketSignal {
   const toExchange   = isExchange(tx.to_owner)
   const fromExchange = isExchange(tx.from_owner)
   const isStable     = ['USDT', 'USDC', 'DAI', 'BUSD'].includes(tx.symbol)
 
-  // Structuring cluster → exchange = coordinated sell = BEARISH HIGH
-  if (intel.is_structuring && toExchange) {
+  // Structuring = завжди BEARISH HIGH (дроблення приховує рух коштів)
+  if (intel.is_structuring) {
     return {
       direction:  'BEARISH',
       confidence: 'HIGH',
-      reason:     `Structuring → ${htmlEscape(tx.to_owner ?? 'Exchange')} (координований вихід)`,
+      reason:     toExchange
+        ? `Structuring → ${htmlEscape(tx.to_owner ?? 'Exchange')} (координований вихід)`
+        : 'Structuring — дроблення суми, приховування руху коштів',
+    }
+  }
+
+  // Transit chain-hop = BEARISH MEDIUM (отримав і одразу переслав)
+  if (intel.is_transit) {
+    return {
+      direction:  'BEARISH',
+      confidence: 'MEDIUM',
+      reason:     'Chain-hop транзит — отримав і одразу переслав далі',
     }
   }
 
@@ -326,6 +339,29 @@ async function autoFlagHighRisk(intels: TxIntel[]): Promise<number> {
   return flagged
 }
 
+// ─── AML: Transit Chain-hop Detection ────────────────────────────────────────
+// Знаходить адреси які є одночасно to_address і from_address в одному батчі
+// (отримав → одразу переслав = transit/relay вузол)
+function detectTransitChain(txs: StoredWhaleTx[]): Map<string, string> {
+  const toMap   = new Map<string, string>() // address → whale_alert_id (tx де отримав)
+  const fromMap = new Map<string, string>() // address → whale_alert_id (tx де відправив)
+
+  for (const tx of txs) {
+    if (tx.to_address   && isUnknown(tx.to_owner))   toMap.set(tx.to_address, tx.whale_alert_id)
+    if (tx.from_address && isUnknown(tx.from_owner)) fromMap.set(tx.from_address, tx.whale_alert_id)
+  }
+
+  const flagged = new Map<string, string>() // whale_alert_id → transit_address
+  for (const [addr, rxId] of toMap) {
+    const txId = fromMap.get(addr)
+    if (txId && txId !== rxId) {
+      flagged.set(rxId, addr) // tx де адреса отримала
+      flagged.set(txId, addr) // tx де адреса відправила
+    }
+  }
+  return flagged
+}
+
 // ─── AML: Structuring Detection ──────────────────────────────────────────────
 function detectStructuring(txs: StoredWhaleTx[]): Map<string, string> {
   const byFrom = new Map<string, StoredWhaleTx[]>()
@@ -365,6 +401,7 @@ function calcRiskScore(tx: StoredWhaleTx, intel: Partial<TxIntel>): number {
   let score = 0
   if (intel.is_sanctioned)    score += 90
   if (intel.is_structuring)   score += 60
+  if (intel.is_transit)       score += 45
   if (isUnknown(tx.from_owner) && isUnknown(tx.to_owner)) score += 40
   if (tx.amount_usd >= 10_000_000) score += 20
   if (tx.amount_usd >= 5_000_000)  score += 10
@@ -382,7 +419,7 @@ function formatSmartDigest(intels: TxIntel[]): string {
   const clusters   = intels.filter(i => i.is_structuring && !i.is_sanctioned)
   const transit    = intels.filter(i =>
     !i.is_structuring && !i.is_sanctioned &&
-    i.seen_before > 10 && i.risk_score >= 70,
+    (i.is_transit || (i.seen_before > 10 && i.risk_score >= 70)),
   )
   const smartMoney = intels.filter(i =>
     i.is_smart_money && !i.is_structuring && !i.is_sanctioned &&
@@ -451,6 +488,7 @@ function formatSmartDigest(intels: TxIntel[]): string {
 
       lines.push(
         `  📍 ${addrLink}` + (seenMax > 0 ? ` · 👁 ${seenMax}× у БД` : '') + ` · Risk ${group[0].risk_score}/100`,
+        addr !== 'unknown' ? `  <code>${htmlEscape(addr)}</code>` : '',
         `  ${group.length} транзакцій · <b>$${usdFmt(totalGroup)}</b>` +
           (toOwners.length ? ` → ${toOwners.map(htmlEscape).join(', ')}` : ''),
         `  ${sigEmoji} <b>${signal.direction}</b> ${signal.confidence} · ${signal.reason}`,
@@ -464,22 +502,29 @@ function formatSmartDigest(intels: TxIntel[]): string {
 
   // ── TRANSIT WALLETS ────────────────────────────────────────────────────────
   if (transit.length) {
+    // Групуємо по transit_addr щоб не дублювати одну адресу двічі
+    const shownTransitAddrs = new Set<string>()
     lines.push(`━━━━━━━━━━━━`)
-    lines.push(`⚠️ <b>ТРАНЗИТНІ ГАМАНЦІ (${transit.length})</b>`)
-    for (const { tx, seen_before, risk_score, signal } of transit) {
-      const from    = partyDisplay(tx.from_owner, tx.from_owner_type, tx.from_address, tx.blockchain)
-      const to      = partyDisplay(tx.to_owner, tx.to_owner_type, tx.to_address, tx.blockchain)
-      const txUrl   = explorerTxUrl(tx.blockchain, tx.hash)
-      const addr    = tx.from_address || tx.to_address
+    lines.push(`⚠️ <b>CHAIN-HOP / ТРАНЗИТ (${transit.length} tx)</b>`)
+    for (const { tx, seen_before, risk_score, signal, transit_addr } of transit) {
+      const from     = partyDisplay(tx.from_owner, tx.from_owner_type, tx.from_address, tx.blockchain)
+      const to       = partyDisplay(tx.to_owner,   tx.to_owner_type,   tx.to_address,   tx.blockchain)
+      const txUrl    = explorerTxUrl(tx.blockchain, tx.hash)
+      const addr     = transit_addr || tx.from_address || tx.to_address
       const sigEmoji = signal.direction === 'BEARISH' ? '🔴' : signal.direction === 'BULLISH' ? '🟢' : '⚪'
+
       lines.push(
         `  💸 <b>$${usdFmt(tx.amount_usd)} ${tx.symbol}</b> (${chainLabel(tx.blockchain)}) <a href="${txUrl}">↗</a>`,
-        `  👁 ${seen_before}× у БД · Risk ${risk_score}/100`,
+        seen_before > 0 ? `  👁 ${seen_before}× у БД · Risk ${risk_score}/100` : `  Risk ${risk_score}/100`,
         `  ${from} → ${to}`,
-        `  ${sigEmoji} ${signal.direction} ${signal.confidence} · ${signal.reason}`,
-        addr ? `  🔍 <a href="${APP_URL}/crypto-intel?address=${encodeURIComponent(addr)}">Розслідувати →</a>` : '',
-        ``,
+        `  ${sigEmoji} ${signal.reason}`,
       )
+      if (addr && !shownTransitAddrs.has(addr)) {
+        shownTransitAddrs.add(addr)
+        lines.push(`  <code>${htmlEscape(addr)}</code>`)
+        lines.push(`  🔍 <a href="${APP_URL}/crypto-intel?address=${encodeURIComponent(addr)}">Розслідувати →</a>`)
+      }
+      lines.push(``)
     }
   }
 
@@ -713,8 +758,9 @@ export async function GET(req: NextRequest) {
         const addresses = unsent.flatMap(t => [t.from_address, t.to_address]).filter(Boolean) as string[]
         const walletMap = await crossRefAddresses(addresses)
 
-        // ── Structuring detection ──────────────────────────────────────────
+        // ── Structuring + Transit detection ───────────────────────────────
         const structuringMap = detectStructuring(unsent as StoredWhaleTx[])
+        const transitMap     = detectTransitChain(unsent as StoredWhaleTx[])
 
         // ── Build Intel ────────────────────────────────────────────────────
         const intels: TxIntel[] = []
@@ -726,21 +772,25 @@ export async function GET(req: NextRequest) {
 
           const isStructuring = structuringMap.has(rawTx.whale_alert_id)
           const structGroup   = structuringMap.get(rawTx.whale_alert_id) ?? ''
+          const isTransit     = transitMap.has(rawTx.whale_alert_id)
+          const transitAddr   = transitMap.get(rawTx.whale_alert_id) ?? ''
           const smartMoney    = isSmartMoney(rawTx)
 
           let seenBefore = 0
-          if (isStructuring || (isUnknown(rawTx.from_owner) && isUnknown(rawTx.to_owner))) {
+          if (isStructuring || isTransit || (isUnknown(rawTx.from_owner) && isUnknown(rawTx.to_owner))) {
             const checkAddr = rawTx.from_address || rawTx.to_address
             if (checkAddr) seenBefore = await getAddressSeen(checkAddr)
           }
 
-          const partialIntel = { is_structuring: isStructuring, is_smart_money: smartMoney }
+          const partialIntel = { is_structuring: isStructuring, is_smart_money: smartMoney, is_transit: isTransit }
           const intel: TxIntel = {
             tx:             rawTx,
             is_sanctioned:  isSanctioned,
             sanction_label: sanctionLabel,
             is_structuring: isStructuring,
             struct_group:   structGroup,
+            is_transit:     isTransit,
+            transit_addr:   transitAddr,
             is_smart_money: smartMoney,
             seen_before:    seenBefore,
             risk_score:     0,
