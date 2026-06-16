@@ -17,6 +17,8 @@
                                         ├── :8005 social_search.py
                                         ├── :8006 registries.py
                                         ├── :8008 telethon_service.py (MTProto)
+                                        ├── :8010 sanctions_service.py (OpenSanctions: persons/names)
+                                        ├── :8012 ofac_service/ (OFAC SDN crypto addresses, 780 addrs, /v1/screening/check)
                                         └── enricher.py (24/7 agent)
 ```
 
