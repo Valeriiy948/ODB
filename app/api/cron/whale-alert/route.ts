@@ -1,9 +1,9 @@
 // app/api/cron/whale-alert/route.ts
-// Intelligence Engine v2:
-//   - Адреси замість "Невідомий" з посиланнями на Explorer
-//   - Cross-referencing з crypto_wallets (sanctions, risk_score)
-//   - Structuring/chain-hopping detection
-//   - Пріоритизований дайджест (SANCTIONS > AML > SMART MONEY > regular)
+// Intelligence Engine v3:
+//   - Market Signal Engine (BULLISH/BEARISH/NEUTRAL per tx + aggregate per asset)
+//   - Smart Digest: групування SANCTIONS > CLUSTER > TRANSIT > SMART MONEY > решта
+//   - Auto-flag: risk >= 80 → auto-upsert до crypto_wallets
+//   - Платний канал: тільки HIGH confidence сигнали для трейдерів
 //
 // cron-job.org: * * * * * → https://odb-one.vercel.app/api/cron/whale-alert
 
@@ -78,16 +78,22 @@ interface StoredWhaleTx {
   created_at:      string
 }
 
-// Результат аналізу транзакції
+interface MarketSignal {
+  direction:  'BULLISH' | 'BEARISH' | 'NEUTRAL'
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW'
+  reason:     string
+}
+
 interface TxIntel {
   tx:             StoredWhaleTx
   is_sanctioned:  boolean
-  sanction_label: string        // ім'я особи з ODB або назва санкційного списку
-  is_structuring: boolean       // chain-hopping / structuring паттерн
-  struct_group:   string        // адреса яка структурує
-  is_smart_money: boolean       // unknown → відома біржа >= $5M
-  seen_before:    number        // скільки разів бачили цю адресу раніше
-  risk_score:     number        // 0-100
+  sanction_label: string
+  is_structuring: boolean
+  struct_group:   string
+  is_smart_money: boolean
+  seen_before:    number
+  risk_score:     number
+  signal:         MarketSignal
 }
 
 // ─── URL Helpers ──────────────────────────────────────────────────────────────
@@ -138,14 +144,10 @@ function isUnknown(owner: string | null): boolean {
   return !owner || owner.toLowerCase() === 'unknown'
 }
 
-// Адреса скорочена: перші 8 + … + останні 6 символів
 function addrShort(address: string): string {
   return address.slice(0, 8) + '…' + address.slice(-6)
 }
 
-// Відображення сторони транзакції:
-// - відома назва (Binance, Garantex) → жирний текст
-// - невідомий власник → скорочена адреса з посиланням на Explorer
 function partyDisplay(
   owner: string | null,
   ownerType: string | null,
@@ -162,7 +164,106 @@ function partyDisplay(
   return '❓'
 }
 
-// ─── Cross-referencing: перевірка адрес у crypto_wallets ─────────────────────
+// ─── Exchange Detection ───────────────────────────────────────────────────────
+function isExchange(owner: string | null): boolean {
+  if (!owner || isUnknown(owner)) return false
+  const ex = ['binance','coinbase','okex','okx','kraken','bitfinex','huobi','bybit','kucoin','gate','gemini','crypto.com','bitmex','bitstamp']
+  return ex.some(e => owner.toLowerCase().includes(e))
+}
+
+// ─── Market Signal Classification ────────────────────────────────────────────
+function classifySignal(
+  tx: StoredWhaleTx,
+  intel: { is_structuring: boolean; is_smart_money: boolean },
+): MarketSignal {
+  const toExchange   = isExchange(tx.to_owner)
+  const fromExchange = isExchange(tx.from_owner)
+  const isStable     = ['USDT', 'USDC', 'DAI', 'BUSD'].includes(tx.symbol)
+
+  // Structuring cluster → exchange = coordinated sell = BEARISH HIGH
+  if (intel.is_structuring && toExchange) {
+    return {
+      direction:  'BEARISH',
+      confidence: 'HIGH',
+      reason:     `Structuring → ${htmlEscape(tx.to_owner ?? 'Exchange')} (координований вихід)`,
+    }
+  }
+
+  // Smart money: unknown → major exchange ≥$5M = BEARISH
+  if (intel.is_smart_money) {
+    return {
+      direction:  'BEARISH',
+      confidence: tx.amount_usd >= 10_000_000 ? 'HIGH' : 'MEDIUM',
+      reason:     `Кит → ${htmlEscape(tx.to_owner ?? 'Exchange')} (продажний тиск)`,
+    }
+  }
+
+  // Exchange → unknown cold wallet ≥$5M = accumulation = BULLISH
+  if (fromExchange && isUnknown(tx.to_owner) && tx.amount_usd >= 5_000_000) {
+    return {
+      direction:  'BULLISH',
+      confidence: tx.amount_usd >= 10_000_000 ? 'HIGH' : 'MEDIUM',
+      reason:     `${htmlEscape(tx.from_owner ?? 'Exchange')} → холодний гаманець (накопичення)`,
+    }
+  }
+
+  // Stablecoin (unknown) → exchange ≥$5M = buy power incoming = BULLISH
+  if (isStable && toExchange && isUnknown(tx.from_owner) && tx.amount_usd >= 5_000_000) {
+    return {
+      direction:  'BULLISH',
+      confidence: 'MEDIUM',
+      reason:     `Стейблкоїн → ${htmlEscape(tx.to_owner ?? 'Exchange')} (купівельна сила)`,
+    }
+  }
+
+  // Exchange → Exchange = rebalancing = NEUTRAL
+  if (fromExchange && toExchange) {
+    return {
+      direction:  'NEUTRAL',
+      confidence: 'LOW',
+      reason:     `${htmlEscape(tx.from_owner ?? '')} → ${htmlEscape(tx.to_owner ?? '')} (ребалансування)`,
+    }
+  }
+
+  // Unknown → Unknown = unclear, suspicious
+  if (isUnknown(tx.from_owner) && isUnknown(tx.to_owner)) {
+    return { direction: 'NEUTRAL', confidence: 'LOW', reason: 'Невідомий → Невідомий (неясно)' }
+  }
+
+  return { direction: 'NEUTRAL', confidence: 'LOW', reason: 'Недостатньо даних' }
+}
+
+// ─── Aggregate Signals per Asset ─────────────────────────────────────────────
+function aggregateSignals(intels: TxIntel[]): string {
+  const byAsset = new Map<string, { bearish: number; bullish: number }>()
+
+  for (const intel of intels) {
+    const asset = intel.tx.symbol
+    const curr  = byAsset.get(asset) ?? { bearish: 0, bullish: 0 }
+    const w     = intel.signal.confidence === 'HIGH' ? 3
+                : intel.signal.confidence === 'MEDIUM' ? 2 : 1
+    if (intel.signal.direction === 'BEARISH') curr.bearish += w
+    if (intel.signal.direction === 'BULLISH') curr.bullish += w
+    byAsset.set(asset, curr)
+  }
+
+  const lines: string[] = []
+  for (const [asset, { bearish, bullish }] of byAsset) {
+    if (bearish === 0 && bullish === 0) continue
+    if (bearish >= bullish * 1.5) {
+      const conf = bearish >= 6 ? 'HIGH' : bearish >= 3 ? 'MEDIUM' : 'LOW'
+      lines.push(`  ${asset} 🔴 BEARISH ${conf} — продажний тиск`)
+    } else if (bullish >= bearish * 1.5) {
+      const conf = bullish >= 6 ? 'HIGH' : bullish >= 3 ? 'MEDIUM' : 'LOW'
+      lines.push(`  ${asset} 🟢 BULLISH ${conf} — накопичення`)
+    } else if (bearish > 0 || bullish > 0) {
+      lines.push(`  ${asset} ⚪ MIXED — суперечливі сигнали`)
+    }
+  }
+  return lines.join('\n')
+}
+
+// ─── Cross-referencing ────────────────────────────────────────────────────────
 interface WalletRecord {
   address:          string
   label:            string | null
@@ -171,9 +272,7 @@ interface WalletRecord {
   linked_person_id: string | null
 }
 
-async function crossRefAddresses(
-  addresses: string[],
-): Promise<Map<string, WalletRecord>> {
+async function crossRefAddresses(addresses: string[]): Promise<Map<string, WalletRecord>> {
   const unique = [...new Set(addresses.filter(Boolean))]
   if (!unique.length) return new Map()
 
@@ -187,7 +286,6 @@ async function crossRefAddresses(
   return map
 }
 
-// Підрахунок скільки разів бачили адресу в нашій БД whale_transactions
 async function getAddressSeen(address: string): Promise<number> {
   const { count } = await supabase
     .from('whale_transactions')
@@ -196,11 +294,40 @@ async function getAddressSeen(address: string): Promise<number> {
   return count ?? 0
 }
 
+// ─── Auto-flag High Risk Wallets to DB ───────────────────────────────────────
+async function autoFlagHighRisk(intels: TxIntel[]): Promise<number> {
+  const toFlag = intels.filter(i => i.risk_score >= 80)
+  let flagged = 0
+
+  for (const intel of toFlag) {
+    const addresses = [intel.tx.from_address, intel.tx.to_address].filter(Boolean) as string[]
+    for (const addr of addresses) {
+      const reason = intel.is_sanctioned
+        ? `Sanctions: ${intel.sanction_label}`
+        : intel.is_structuring
+        ? 'Structuring/Chain-hopping'
+        : intel.is_smart_money
+        ? `Smart Money exit (${intel.signal.confidence})`
+        : `High risk ${intel.risk_score}/100`
+
+      const { error } = await supabase.from('crypto_wallets').upsert(
+        {
+          address:       addr,
+          blockchain:    intel.tx.blockchain,
+          risk_score:    intel.risk_score,
+          is_sanctioned: intel.is_sanctioned,
+          label:         `Auto: ${reason}`,
+        },
+        { onConflict: 'address', ignoreDuplicates: true },
+      )
+      if (!error) flagged++
+    }
+  }
+  return flagged
+}
+
 // ─── AML: Structuring Detection ──────────────────────────────────────────────
-// Визначає "structuring" (дроблення суми):
-//   3+ транзакції з однієї адреси в поточному батчі з однаковою сумою (±5%)
 function detectStructuring(txs: StoredWhaleTx[]): Map<string, string> {
-  // Повертає Map<whale_alert_id, from_address> для підозрілих txs
   const byFrom = new Map<string, StoredWhaleTx[]>()
   for (const tx of txs) {
     if (!tx.from_address) continue
@@ -209,14 +336,12 @@ function detectStructuring(txs: StoredWhaleTx[]): Map<string, string> {
     byFrom.set(tx.from_address, arr)
   }
 
-  const flagged = new Map<string, string>() // whale_alert_id → from_address
+  const flagged = new Map<string, string>()
   for (const [addr, addrTxs] of byFrom) {
     if (addrTxs.length < 3) continue
     const amounts = addrTxs.map(t => t.amount_usd).sort((a, b) => a - b)
     const median  = amounts[Math.floor(amounts.length / 2)]
-    const similar = addrTxs.filter(
-      t => Math.abs(t.amount_usd - median) / median < 0.08
-    )
+    const similar = addrTxs.filter(t => Math.abs(t.amount_usd - median) / median < 0.08)
     if (similar.length >= 3) {
       for (const t of similar) flagged.set(t.whale_alert_id, addr)
     }
@@ -224,19 +349,18 @@ function detectStructuring(txs: StoredWhaleTx[]): Map<string, string> {
   return flagged
 }
 
-// ─── Smart Money Signal ───────────────────────────────────────────────────────
-// unknown → відома біржа + сума >= $5M → підготовка до продажу / ліквідності
+// ─── Smart Money ──────────────────────────────────────────────────────────────
 function isSmartMoney(tx: StoredWhaleTx): boolean {
-  const unknownFrom = isUnknown(tx.from_owner)
-  const knownTo     = !isUnknown(tx.to_owner)
+  const unknownFrom   = isUnknown(tx.from_owner)
+  const knownTo       = !isUnknown(tx.to_owner)
   const toBigExchange = tx.to_owner_type === 'exchange' || (
-    tx.to_owner && ['binance','coinbase','okex','okx','kraken','bitfinex','huobi']
+    tx.to_owner && ['binance','coinbase','okex','okx','kraken','bitfinex','huobi','bybit']
       .some(e => tx.to_owner!.toLowerCase().includes(e))
   )
-  return unknownFrom && knownTo && toBigExchange && tx.amount_usd >= 5_000_000
+  return unknownFrom && knownTo && !!toBigExchange && tx.amount_usd >= 5_000_000
 }
 
-// ─── Risk Score Calculation ───────────────────────────────────────────────────
+// ─── Risk Score ───────────────────────────────────────────────────────────────
 function calcRiskScore(tx: StoredWhaleTx, intel: Partial<TxIntel>): number {
   let score = 0
   if (intel.is_sanctioned)    score += 90
@@ -245,99 +369,180 @@ function calcRiskScore(tx: StoredWhaleTx, intel: Partial<TxIntel>): number {
   if (tx.amount_usd >= 10_000_000) score += 20
   if (tx.amount_usd >= 5_000_000)  score += 10
   if ((intel.seen_before ?? 0) > 5) score += 15
-  if (isSmartMoney(tx))        score += 25
+  if (isSmartMoney(tx)) score += 25
   return Math.min(score, 100)
 }
 
-// ─── Digest Formatter (Intelligence Engine) ───────────────────────────────────
-function formatDigest(intels: TxIntel[]): string {
-  const total      = intels.reduce((s, i) => s + i.tx.amount_usd, 0)
-  const sanctioned = intels.filter(i => i.is_sanctioned).length
-  const structuring = intels.filter(i => i.is_structuring).length
-  const suspicious = intels.filter(i => i.risk_score >= 40).length
+// ─── Smart Digest Formatter (Intelligence Engine v3) ─────────────────────────
+function formatSmartDigest(intels: TxIntel[]): string {
+  const total = intels.reduce((s, i) => s + i.tx.amount_usd, 0)
 
-  // Пріоритизація: санкції → AML → ризик → smart money → решта
-  const sorted = [...intels].sort((a, b) => {
-    if (a.is_sanctioned !== b.is_sanctioned) return a.is_sanctioned ? -1 : 1
-    if (a.is_structuring !== b.is_structuring) return a.is_structuring ? -1 : 1
-    return b.risk_score - a.risk_score
-  })
+  // Групування
+  const sanctioned = intels.filter(i => i.is_sanctioned)
+  const clusters   = intels.filter(i => i.is_structuring && !i.is_sanctioned)
+  const transit    = intels.filter(i =>
+    !i.is_structuring && !i.is_sanctioned &&
+    i.seen_before > 10 && i.risk_score >= 70,
+  )
+  const smartMoney = intels.filter(i =>
+    i.is_smart_money && !i.is_structuring && !i.is_sanctioned &&
+    !transit.find(t => t.tx.whale_alert_id === i.tx.whale_alert_id),
+  )
+  const regularSet = new Set([...sanctioned, ...clusters, ...transit, ...smartMoney])
+  const regular    = intels.filter(i => !regularSet.has(i))
 
-  const headerLines: string[] = [
-    `🐋 <b>Whale Digest — ${intels.length} транзакції</b>`,
-    `💰 Загалом: <b>$${usdFmt(total)}</b>`,
+  const lines: string[] = [
+    `🐋 <b>Whale Intelligence Report</b>`,
+    `💰 <b>$${usdFmt(total)}</b> · ${intels.length} транзакцій`,
+    ``,
   ]
-  if (sanctioned > 0)  headerLines.push(`🚨 <b>${sanctioned} ЗБІГ З САНКЦІЙНИМ СПИСКОМ!</b>`)
-  if (structuring > 0) headerLines.push(`🕵️ <b>${structuring} підозрілих (structuring)</b>`)
-  else if (suspicious > 0) headerLines.push(`🔴 <b>${suspicious} підозрілих</b>`)
-  headerLines.push(``)
 
-  const lines: string[] = [...headerLines]
-
-  for (let i = 0; i < sorted.length; i++) {
-    const { tx, is_sanctioned, sanction_label, is_structuring, is_smart_money, seen_before, risk_score } = sorted[i]
-
-    const txUrl  = explorerTxUrl(tx.blockchain, tx.hash)
-    const txLink = tx.hash ? ` <a href="${txUrl}">↗</a>` : ''
-
-    const from = partyDisplay(tx.from_owner, tx.from_owner_type, tx.from_address, tx.blockchain)
-    const to   = partyDisplay(tx.to_owner,   tx.to_owner_type,   tx.to_address,   tx.blockchain)
-
-    // Маркер пріоритету
-    const amtEmoji = tx.amount_usd >= 10_000_000 ? '🚨🚨🚨'
-                   : tx.amount_usd >= 5_000_000  ? '🚨🚨'
-                   : '🚨'
-
-    lines.push(`${i + 1}. ${amtEmoji} <b>$${usdFmt(tx.amount_usd)} ${tx.symbol}</b> (${chainLabel(tx.blockchain)})${txLink}`)
-
-    // AML маркери
-    if (is_sanctioned) {
-      lines.push(`   🚨 <b>ЗБІГ З ODB:</b> ${htmlEscape(sanction_label)}`)
-    }
-    if (is_structuring) {
-      lines.push(`   🕵️ <b>Structuring/Chain-hopping</b> — дроблення суми`)
-    }
-    if (is_smart_money) {
-      lines.push(`   🐋 <b>Smart Money:</b> підготовка до продажу?`)
-    }
-    if (seen_before > 3 && !is_sanctioned) {
-      lines.push(`   👁 Адреса бачена ${seen_before}× у нашій БД`)
-    }
-
-    lines.push(`   ${from} → ${to}`)
-    if (risk_score >= 70) lines.push(`   ⚠️ Risk score: <b>${risk_score}/100</b>`)
-    if (i < sorted.length - 1) lines.push(``)
+  // Зведений ринковий сигнал
+  const signalSummary = aggregateSignals(intels)
+  if (signalSummary) {
+    lines.push(`📊 <b>РИНКОВІ СИГНАЛИ:</b>`)
+    lines.push(signalSummary)
+    lines.push(``)
   }
 
-  lines.push(``)
-  lines.push(`<i>ODB Intelligence Engine · Whale Alert Monitor</i>`)
-  return lines.join('\n')
+  // ── SANCTIONS ──────────────────────────────────────────────────────────────
+  if (sanctioned.length) {
+    lines.push(`━━━━━━━━━━━━`)
+    lines.push(`🚨 <b>САНКЦІЙНІ ЗБІГИ (${sanctioned.length})</b>`)
+    for (const { tx, sanction_label, risk_score } of sanctioned) {
+      const from   = partyDisplay(tx.from_owner, tx.from_owner_type, tx.from_address, tx.blockchain)
+      const to     = partyDisplay(tx.to_owner, tx.to_owner_type, tx.to_address, tx.blockchain)
+      const txUrl  = explorerTxUrl(tx.blockchain, tx.hash)
+      const addr   = tx.from_address || tx.to_address
+      lines.push(
+        `  🚨 <b>$${usdFmt(tx.amount_usd)} ${tx.symbol}</b> (${chainLabel(tx.blockchain)}) <a href="${txUrl}">↗</a>`,
+        `  ⛔ ${htmlEscape(sanction_label)} · Risk ${risk_score}/100`,
+        `  ${from} → ${to}`,
+        addr ? `  🔍 <a href="${APP_URL}/crypto-intel?address=${encodeURIComponent(addr)}">Розслідувати →</a>` : '',
+        ``,
+      )
+    }
+  }
+
+  // ── STRUCTURING CLUSTERS ───────────────────────────────────────────────────
+  if (clusters.length) {
+    const clusterGroups = new Map<string, TxIntel[]>()
+    for (const intel of clusters) {
+      const key = intel.struct_group || 'unknown'
+      const arr = clusterGroups.get(key) ?? []
+      arr.push(intel)
+      clusterGroups.set(key, arr)
+    }
+
+    lines.push(`━━━━━━━━━━━━`)
+    lines.push(`🕵️ <b>КЛАСТЕРИ / STRUCTURING (${clusters.length} tx)</b>`)
+
+    for (const [addr, group] of clusterGroups) {
+      const totalGroup = group.reduce((s, i) => s + i.tx.amount_usd, 0)
+      const seenMax    = Math.max(...group.map(i => i.seen_before))
+      const chain      = group[0].tx.blockchain
+      const signal     = group[0].signal
+      const toOwners   = [...new Set(group.map(i => i.tx.to_owner).filter(o => !isUnknown(o)))]
+      const sigEmoji   = signal.direction === 'BEARISH' ? '🔴' : signal.direction === 'BULLISH' ? '🟢' : '⚪'
+
+      const addrLink = addr !== 'unknown'
+        ? `<a href="${explorerAddrUrl(chain, addr)}"><code>${addrShort(addr)}</code></a>`
+        : '?'
+
+      lines.push(
+        `  📍 ${addrLink}` + (seenMax > 0 ? ` · 👁 ${seenMax}× у БД` : '') + ` · Risk ${group[0].risk_score}/100`,
+        `  ${group.length} транзакцій · <b>$${usdFmt(totalGroup)}</b>` +
+          (toOwners.length ? ` → ${toOwners.map(htmlEscape).join(', ')}` : ''),
+        `  ${sigEmoji} <b>${signal.direction}</b> ${signal.confidence} · ${signal.reason}`,
+        addr !== 'unknown'
+          ? `  🔍 <a href="${APP_URL}/crypto-intel?address=${encodeURIComponent(addr)}">Розслідувати →</a>`
+          : '',
+        ``,
+      )
+    }
+  }
+
+  // ── TRANSIT WALLETS ────────────────────────────────────────────────────────
+  if (transit.length) {
+    lines.push(`━━━━━━━━━━━━`)
+    lines.push(`⚠️ <b>ТРАНЗИТНІ ГАМАНЦІ (${transit.length})</b>`)
+    for (const { tx, seen_before, risk_score, signal } of transit) {
+      const from    = partyDisplay(tx.from_owner, tx.from_owner_type, tx.from_address, tx.blockchain)
+      const to      = partyDisplay(tx.to_owner, tx.to_owner_type, tx.to_address, tx.blockchain)
+      const txUrl   = explorerTxUrl(tx.blockchain, tx.hash)
+      const addr    = tx.from_address || tx.to_address
+      const sigEmoji = signal.direction === 'BEARISH' ? '🔴' : signal.direction === 'BULLISH' ? '🟢' : '⚪'
+      lines.push(
+        `  💸 <b>$${usdFmt(tx.amount_usd)} ${tx.symbol}</b> (${chainLabel(tx.blockchain)}) <a href="${txUrl}">↗</a>`,
+        `  👁 ${seen_before}× у БД · Risk ${risk_score}/100`,
+        `  ${from} → ${to}`,
+        `  ${sigEmoji} ${signal.direction} ${signal.confidence} · ${signal.reason}`,
+        addr ? `  🔍 <a href="${APP_URL}/crypto-intel?address=${encodeURIComponent(addr)}">Розслідувати →</a>` : '',
+        ``,
+      )
+    }
+  }
+
+  // ── SMART MONEY ────────────────────────────────────────────────────────────
+  if (smartMoney.length) {
+    lines.push(`━━━━━━━━━━━━`)
+    lines.push(`🐋 <b>SMART MONEY (${smartMoney.length})</b>`)
+    for (const { tx, signal } of smartMoney) {
+      const from  = partyDisplay(tx.from_owner, tx.from_owner_type, tx.from_address, tx.blockchain)
+      const to    = partyDisplay(tx.to_owner, tx.to_owner_type, tx.to_address, tx.blockchain)
+      const txUrl = explorerTxUrl(tx.blockchain, tx.hash)
+      lines.push(
+        `  🐋 <b>$${usdFmt(tx.amount_usd)} ${tx.symbol}</b> (${chainLabel(tx.blockchain)}) <a href="${txUrl}">↗</a>`,
+        `  ${from} → ${to}`,
+        `  🔴 ${signal.reason}`,
+        ``,
+      )
+    }
+  }
+
+  // ── REGULAR (compact) ──────────────────────────────────────────────────────
+  if (regular.length) {
+    const regularTotal = regular.reduce((s, i) => s + i.tx.amount_usd, 0)
+    lines.push(`━━━━━━━━━━━━`)
+    lines.push(`📋 <b>Решта (${regular.length} · $${usdFmt(regularTotal)})</b>`)
+    for (const { tx, signal } of regular) {
+      const from     = partyDisplay(tx.from_owner, tx.from_owner_type, tx.from_address, tx.blockchain)
+      const to       = partyDisplay(tx.to_owner, tx.to_owner_type, tx.to_address, tx.blockchain)
+      const sigEmoji = signal.direction === 'BEARISH' ? '🔴' : signal.direction === 'BULLISH' ? '🟢' : '⚪'
+      lines.push(`  ${sigEmoji} <b>$${usdFmt(tx.amount_usd)}</b> ${tx.symbol} · ${from} → ${to}`)
+    }
+    lines.push(``)
+  }
+
+  lines.push(`<i>ODB Intelligence Engine v3 · Whale Alert Monitor</i>`)
+  return lines.filter(l => l !== null && l !== undefined).join('\n')
 }
 
-// ─── Single TX formatter ──────────────────────────────────────────────────────
+// ─── Single TX Formatter ──────────────────────────────────────────────────────
 function formatSingleTx(intel: TxIntel): string {
-  const { tx, is_sanctioned, sanction_label, is_structuring, is_smart_money, seen_before, risk_score } = intel
-  const from    = partyDisplay(tx.from_owner, tx.from_owner_type, tx.from_address, tx.blockchain)
-  const to      = partyDisplay(tx.to_owner,   tx.to_owner_type,   tx.to_address,   tx.blockchain)
-  const txUrl   = explorerTxUrl(tx.blockchain, tx.hash)
-  const shortH  = tx.hash ? tx.hash.slice(0, 14) + '…' + tx.hash.slice(-6) : 'N/A'
-  const txTime  = new Date(tx.tx_timestamp).toLocaleString('uk-UA', {
+  const { tx, is_sanctioned, sanction_label, is_structuring, is_smart_money, seen_before, risk_score, signal } = intel
+  const from   = partyDisplay(tx.from_owner, tx.from_owner_type, tx.from_address, tx.blockchain)
+  const to     = partyDisplay(tx.to_owner, tx.to_owner_type, tx.to_address, tx.blockchain)
+  const txUrl  = explorerTxUrl(tx.blockchain, tx.hash)
+  const shortH = tx.hash ? tx.hash.slice(0, 14) + '…' + tx.hash.slice(-6) : 'N/A'
+  const txTime = new Date(tx.tx_timestamp).toLocaleString('uk-UA', {
     timeZone: 'Europe/Kyiv', hour12: false,
     day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
   })
 
-  const amtEmoji = tx.amount_usd >= 10_000_000 ? '🚨🚨🚨'
-                 : tx.amount_usd >= 5_000_000  ? '🚨🚨'
-                 : '🚨'
+  const sigEmoji = signal.direction === 'BEARISH' ? '🔴' : signal.direction === 'BULLISH' ? '🟢' : '⚪'
 
   const lines: string[] = [
-    `${amtEmoji} <b>WHALE ALERT</b>` +
-      (is_sanctioned ? ' 🚨 <b>SANCTIONS HIT!</b>' : risk_score >= 70 ? ' 🔴 <b>HIGH RISK</b>' : ''),
+    `🐋 <b>WHALE ALERT</b>` +
+      (is_sanctioned ? ' 🚨 <b>SANCTIONS!</b>' : risk_score >= 70 ? ' 🔴 <b>HIGH RISK</b>' : ''),
     ``,
     `💸 <b>$${usdFmt(tx.amount_usd)} ${tx.symbol}</b> (${chainLabel(tx.blockchain)})`,
     ``,
     `📤 <b>Від:</b> ${from}`,
     `📥 <b>До:</b>  ${to}`,
+    ``,
+    `${sigEmoji} <b>Сигнал:</b> ${signal.direction} ${signal.confidence}`,
+    `   ${signal.reason}`,
     ``,
   ]
 
@@ -351,35 +556,59 @@ function formatSingleTx(intel: TxIntel): string {
     `⏰ ${txTime} (Kyiv)`,
     `⚠️ Risk score: <b>${risk_score}/100</b>`,
     ``,
-    `<i>ODB Intelligence Engine · Whale Alert Monitor</i>`,
+    `<i>ODB Intelligence Engine v3 · Whale Alert Monitor</i>`,
   )
   return lines.join('\n')
 }
 
-// ─── Channel formatter ────────────────────────────────────────────────────────
-function formatChannelAlert(intels: TxIntel[]): string {
+// ─── Paid Channel Formatter (signal-focused, for traders) ────────────────────
+function formatChannelSignal(intels: TxIntel[]): string {
   const total   = intels.reduce((s, i) => s + i.tx.amount_usd, 0)
+  const bearish = intels.filter(i => i.signal.direction === 'BEARISH').length
+  const bullish = intels.filter(i => i.signal.direction === 'BULLISH').length
+
+  let dominantEmoji = '⚪'
+  let dominantLabel = 'MIXED'
+  if (bearish > bullish * 1.5) { dominantEmoji = '🔴'; dominantLabel = 'BEARISH' }
+  else if (bullish > bearish * 1.5) { dominantEmoji = '🟢'; dominantLabel = 'BULLISH' }
+
+  const highConf = intels.filter(i => i.signal.confidence === 'HIGH')
+
   const lines: string[] = [
-    `🔴 <b>ODB Crypto Intel — Підозрілі рухи</b>`,
-    ``,
-    `Виявлено ${intels.length} підозрілих транзакцій · $${usdFmt(total)}`,
+    `📡 <b>ODB Crypto Signal</b> · ${dominantEmoji} ${dominantLabel}`,
+    `💰 $${usdFmt(total)} · ${intels.length} транзакцій`,
     ``,
   ]
-  for (const { tx, is_sanctioned, is_structuring, risk_score } of intels) {
-    const url  = explorerTxUrl(tx.blockchain, tx.hash)
-    const from = partyDisplay(tx.from_owner, tx.from_owner_type, tx.from_address, tx.blockchain)
-    const to   = partyDisplay(tx.to_owner,   tx.to_owner_type,   tx.to_address,   tx.blockchain)
-    const mark = is_sanctioned ? '🚨' : is_structuring ? '🕵️' : '🔴'
-    lines.push(
-      `${mark} <b>$${usdFmt(tx.amount_usd)} ${tx.symbol}</b> (${chainLabel(tx.blockchain)}) ` +
-      `<a href="${url}">↗</a>`,
-      `   ${from} → ${to}`,
-      ``,
-    )
+
+  if (highConf.length) {
+    lines.push(`🎯 <b>HIGH CONFIDENCE сигнали:</b>`)
+    for (const { tx, signal, risk_score } of highConf) {
+      const sigEmoji = signal.direction === 'BEARISH' ? '🔴' : '🟢'
+      const from = partyDisplay(tx.from_owner, tx.from_owner_type, tx.from_address, tx.blockchain)
+      const to   = partyDisplay(tx.to_owner, tx.to_owner_type, tx.to_address, tx.blockchain)
+      lines.push(
+        `${sigEmoji} <b>$${usdFmt(tx.amount_usd)} ${tx.symbol}</b> · Risk ${risk_score}/100`,
+        `   ${from} → ${to}`,
+        `   ${signal.reason}`,
+        ``,
+      )
+    }
   }
-  lines.push(
-    `🔎 Повний аналіз → ODB Platform · @odb_osint_monitor_bot`
-  )
+
+  // Решта high-risk
+  const rest = intels.filter(i => i.signal.confidence !== 'HIGH' && i.risk_score >= 50)
+  if (rest.length) {
+    lines.push(`⚠️ <b>Підозрілі (${rest.length}):</b>`)
+    for (const { tx, signal, risk_score } of rest) {
+      const sigEmoji = signal.direction === 'BEARISH' ? '🔴' : signal.direction === 'BULLISH' ? '🟢' : '⚪'
+      const from = partyDisplay(tx.from_owner, tx.from_owner_type, tx.from_address, tx.blockchain)
+      const to   = partyDisplay(tx.to_owner, tx.to_owner_type, tx.to_address, tx.blockchain)
+      lines.push(`  ${sigEmoji} $${usdFmt(tx.amount_usd)} ${tx.symbol} · ${from} → ${to} · Risk ${risk_score}/100`)
+    }
+    lines.push(``)
+  }
+
+  lines.push(`🔎 Деталі → ODB Platform · @odb_osint_monitor_bot`)
   return lines.join('\n')
 }
 
@@ -396,7 +625,7 @@ export async function GET(req: NextRequest) {
 
   const startedAt = Date.now()
   const log: string[] = []
-  let saved = 0, telegramSent = 0, errors = 0
+  let saved = 0, telegramSent = 0, autoFlagged = 0, errors = 0
 
   // ── 1. Fetch Whale Alert API ───────────────────────────────────────────────
   const start  = Math.floor(Date.now() / 1000) - 120
@@ -405,7 +634,7 @@ export async function GET(req: NextRequest) {
   let txsFromApi: WhaleAlertTx[] = []
   try {
     const res = await fetch(apiUrl, {
-      headers: { 'User-Agent': 'ODB-Crypto-Intel/2.0' },
+      headers: { 'User-Agent': 'ODB-Crypto-Intel/3.0' },
       signal:  AbortSignal.timeout(20_000),
     })
     if (!res.ok) {
@@ -450,7 +679,7 @@ export async function GET(req: NextRequest) {
   }
   log.push(`▶ Збережено: ${saved}`)
 
-  // ── 3. Digest: перевірка cooldown та відправка ────────────────────────────
+  // ── 3. Digest: cooldown check + send ─────────────────────────────────────
   try {
     const { data: lastSentRow } = await supabase
       .from('whale_transactions')
@@ -460,13 +689,12 @@ export async function GET(req: NextRequest) {
       .limit(1)
       .maybeSingle()
 
-    const lastSentMs  = lastSentRow?.created_at ? new Date(lastSentRow.created_at).getTime() : 0
+    const lastSentMs   = lastSentRow?.created_at ? new Date(lastSentRow.created_at).getTime() : 0
     const cooldownLeft = Math.max(0, DIGEST_COOL_MS - (Date.now() - lastSentMs))
 
     if (cooldownLeft > 0) {
       log.push(`▶ Cooldown: ${Math.round(cooldownLeft / 1000)}с залишилось`)
     } else {
-      // Unsent txs >= TG_THRESH за останню годину
       const { data: unsent } = await supabase
         .from('whale_transactions')
         .select('*')
@@ -479,20 +707,20 @@ export async function GET(req: NextRequest) {
       if (!unsent?.length) {
         log.push(`▶ Unsent: 0 — нічого надсилати`)
       } else {
-        log.push(`▶ Unsent: ${unsent.length} txs — запускаємо Intelligence Engine`)
+        log.push(`▶ Unsent: ${unsent.length} txs — Intelligence Engine v3`)
 
-        // ── Cross-referencing ─────────────────────────────────────────────
+        // ── Cross-referencing ──────────────────────────────────────────────
         const addresses = unsent.flatMap(t => [t.from_address, t.to_address]).filter(Boolean) as string[]
         const walletMap = await crossRefAddresses(addresses)
 
-        // ── Structuring detection ─────────────────────────────────────────
+        // ── Structuring detection ──────────────────────────────────────────
         const structuringMap = detectStructuring(unsent as StoredWhaleTx[])
 
-        // ── Збираємо Intel для кожної транзакції ──────────────────────────
+        // ── Build Intel ────────────────────────────────────────────────────
         const intels: TxIntel[] = []
         for (const rawTx of unsent as StoredWhaleTx[]) {
-          const fromWallet = rawTx.from_address ? walletMap.get(rawTx.from_address) : null
-          const toWallet   = rawTx.to_address   ? walletMap.get(rawTx.to_address)   : null
+          const fromWallet   = rawTx.from_address ? walletMap.get(rawTx.from_address) : null
+          const toWallet     = rawTx.to_address   ? walletMap.get(rawTx.to_address)   : null
           const isSanctioned = !!(fromWallet?.is_sanctioned || toWallet?.is_sanctioned)
           const sanctionLabel = fromWallet?.label || toWallet?.label || ''
 
@@ -500,13 +728,13 @@ export async function GET(req: NextRequest) {
           const structGroup   = structuringMap.get(rawTx.whale_alert_id) ?? ''
           const smartMoney    = isSmartMoney(rawTx)
 
-          // Seen before: тільки для підозрілих адрес (оптимізація)
           let seenBefore = 0
           if (isStructuring || (isUnknown(rawTx.from_owner) && isUnknown(rawTx.to_owner))) {
             const checkAddr = rawTx.from_address || rawTx.to_address
             if (checkAddr) seenBefore = await getAddressSeen(checkAddr)
           }
 
+          const partialIntel = { is_structuring: isStructuring, is_smart_money: smartMoney }
           const intel: TxIntel = {
             tx:             rawTx,
             is_sanctioned:  isSanctioned,
@@ -516,53 +744,65 @@ export async function GET(req: NextRequest) {
             is_smart_money: smartMoney,
             seen_before:    seenBefore,
             risk_score:     0,
+            signal:         { direction: 'NEUTRAL', confidence: 'LOW', reason: '' },
           }
           intel.risk_score = calcRiskScore(rawTx, intel)
+          intel.signal     = classifySignal(rawTx, partialIntel)
           intels.push(intel)
         }
 
-        const sanctionedCount = intels.filter(i => i.is_sanctioned).length
-        const structCount     = intels.filter(i => i.is_structuring).length
-        log.push(`▶ Intel: ${sanctionedCount} sanctioned, ${structCount} structuring`)
+        log.push(`▶ Intel: ${intels.filter(i => i.is_sanctioned).length} sanctioned, ` +
+                 `${intels.filter(i => i.is_structuring).length} structuring, ` +
+                 `${intels.filter(i => i.signal.direction === 'BEARISH').length} bearish`)
 
-        // ── Формат та відправка ───────────────────────────────────────────
+        // ── Auto-flag high risk до crypto_wallets ──────────────────────────
+        autoFlagged = await autoFlagHighRisk(intels)
+        if (autoFlagged > 0) log.push(`▶ Auto-flagged: ${autoFlagged} адрес → crypto_wallets`)
+
+        // ── Форматування та відправка ──────────────────────────────────────
         const text = intels.length === 1
           ? formatSingleTx(intels[0])
-          : formatDigest(intels)
+          : formatSmartDigest(intels)
 
+        const addr0 = intels[0]?.tx.from_address || intels[0]?.tx.to_address
         const keyboard = intels.length === 1
           ? [[
-              { text: '🔍 Explorer',       url: explorerTxUrl(intels[0].tx.blockchain, intels[0].tx.hash) },
-              { text: '🔎 ODB Dashboard',  url: `${APP_URL}/admin/whale-alert` },
+              { text: '🔍 Explorer',        url: explorerTxUrl(intels[0].tx.blockchain, intels[0].tx.hash) },
+              { text: '🔬 Розслідувати',    url: addr0 ? `${APP_URL}/crypto-intel?address=${encodeURIComponent(addr0)}` : `${APP_URL}/admin/whale-alert` },
             ]]
           : [[{ text: '🔎 ODB Whale Dashboard', url: `${APP_URL}/admin/whale-alert` }]]
 
         const mainSent = await sendTelegramMessage(text, 'HTML', undefined, { inline_keyboard: keyboard })
 
-        // ── Канал монетизації: тільки high-risk ───────────────────────────
+        // ── Платний канал: HIGH confidence або sanctions ───────────────────
         if (CHANNEL_ID) {
-          const highRisk = intels.filter(i => i.risk_score >= 50 || i.is_sanctioned || i.is_structuring)
-          if (highRisk.length > 0) {
+          const signalWorthy = intels.filter(i =>
+            i.signal.confidence === 'HIGH' ||
+            i.is_sanctioned ||
+            i.is_structuring ||
+            i.risk_score >= 70,
+          )
+          if (signalWorthy.length > 0) {
             await sendTelegramMessage(
-              formatChannelAlert(highRisk),
+              formatChannelSignal(signalWorthy),
               'HTML',
               { chat_id: CHANNEL_ID },
               { inline_keyboard: [[
-                { text: '📊 ODB Crypto Intel', url: `${APP_URL}/admin/whale-alert` },
-              ]]},
+                  { text: '📊 ODB Crypto Intel', url: `${APP_URL}/admin/whale-alert` },
+                ]] },
             )
-            log.push(`▶ Канал: ${highRisk.length} high-risk надіслано`)
+            log.push(`▶ Канал: ${signalWorthy.length} сигналів надіслано`)
           }
         }
 
-        // ── Позначаємо як надіслані ───────────────────────────────────────
+        // ── Позначаємо як надіслані ────────────────────────────────────────
         if (mainSent) {
           await supabase
             .from('whale_transactions')
             .update({ telegram_sent: true })
             .in('whale_alert_id', (unsent as StoredWhaleTx[]).map(t => t.whale_alert_id))
           telegramSent = unsent.length
-          log.push(`✅ Telegram digest надіслано (${unsent.length} txs)`)
+          log.push(`✅ Telegram smart digest надіслано (${unsent.length} txs)`)
         }
       }
     }
@@ -572,10 +812,11 @@ export async function GET(req: NextRequest) {
   }
 
   const elapsed = Date.now() - startedAt
-  log.push(`▶ Завершено: ${saved} saved, ${telegramSent} TG, ${errors} err — ${elapsed}ms`)
+  log.push(`▶ Завершено: ${saved} saved, ${telegramSent} TG, ${autoFlagged} flagged, ${errors} err — ${elapsed}ms`)
 
   return NextResponse.json({
     success: errors === 0, saved, telegram_sent: telegramSent,
-    errors, elapsed_ms: elapsed, log, ran_at: new Date().toISOString(),
+    auto_flagged: autoFlagged, errors, elapsed_ms: elapsed,
+    log, ran_at: new Date().toISOString(),
   })
 }
