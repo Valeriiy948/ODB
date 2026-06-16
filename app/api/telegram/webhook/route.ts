@@ -245,11 +245,15 @@ async function cmdSuspicious(chatId: number): Promise<void> {
   const since24h = new Date(Date.now() - 24 * 60 * 60_000).toISOString()
 
   // unknown→unknown АБО мегатранзакція >= $10M
+  // from_owner може бути null АБО рядком "unknown"
   const { data, error } = await supabase
     .from('whale_transactions')
     .select('blockchain, symbol, amount_usd, from_owner, to_owner, hash, tx_timestamp')
     .gte('tx_timestamp', since24h)
-    .or('and(from_owner.is.null,to_owner.is.null),amount_usd.gte.10000000')
+    .or(
+      'amount_usd.gte.10000000,' +
+      'and(or(from_owner.is.null,from_owner.eq.unknown),or(to_owner.is.null,to_owner.eq.unknown))'
+    )
     .order('amount_usd', { ascending: false })
     .limit(8)
 

@@ -114,8 +114,12 @@ function htmlEscape(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
+function isUnknown(owner: string | null): boolean {
+  return !owner || owner.toLowerCase() === 'unknown'
+}
+
 function ownerShort(owner: string | null, ownerType: string | null): string {
-  if (owner) return htmlEscape(owner)
+  if (!isUnknown(owner)) return htmlEscape(owner!)
   if (ownerType === 'exchange') return '?Біржа'
   return 'Невідомий'
 }
@@ -125,13 +129,10 @@ function usdFmt(n: number): string {
 }
 
 // ─── Smart Filter: визначає підозрілу транзакцію ──────────────────────────────
-// Критерії:
-//  1. Обидва боки невідомі + сума >= $2M → темна угода
-//  2. Сума >= $10M → мегатранзакція (завжди важлива)
-//  3. Невідомий → Невідомий >= TG_THRESH
+// "unknown" може бути null АБО рядком "unknown" — перевіряємо обидва випадки
 function isSuspicious(tx: StoredWhaleTx): boolean {
-  const unknownFrom = !tx.from_owner
-  const unknownTo   = !tx.to_owner
+  const unknownFrom = isUnknown(tx.from_owner)
+  const unknownTo   = isUnknown(tx.to_owner)
 
   if (tx.amount_usd >= 10_000_000) return true
   if (unknownFrom && unknownTo && tx.amount_usd >= 2_000_000) return true
@@ -140,8 +141,10 @@ function isSuspicious(tx: StoredWhaleTx): boolean {
 }
 
 function suspiciousTag(tx: StoredWhaleTx): string {
-  if (!tx.from_owner && !tx.to_owner && tx.amount_usd >= 2_000_000) return ' 🔴'
-  if (!tx.from_owner && !tx.to_owner) return ' ⚠️'
+  const unknownFrom = isUnknown(tx.from_owner)
+  const unknownTo   = isUnknown(tx.to_owner)
+  if (unknownFrom && unknownTo && tx.amount_usd >= 2_000_000) return ' 🔴'
+  if (unknownFrom && unknownTo) return ' ⚠️'
   return ''
 }
 
