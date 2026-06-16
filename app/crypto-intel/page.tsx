@@ -212,6 +212,14 @@ function BeneficiariesPanel({ beneficiaries, onInvestigate }: {
 }
 
 // ─── Link to Person panel ─────────────────────────────────────────────────────
+function chainToNetwork(c: string): 'ERC-20' | 'TRC-20' | 'BTC' | 'SOL' | null {
+  if (['eth', 'bsc', 'polygon'].includes(c)) return 'ERC-20'
+  if (c === 'tron')  return 'TRC-20'
+  if (c === 'btc')   return 'BTC'
+  if (c === 'sol')   return 'SOL'
+  return null
+}
+
 function LinkToPersonPanel({ address, chain, walletData }: { address: string; chain: string; walletData: any }) {
   const [open, setOpen]           = useState(false)
   const [query, setQuery]         = useState('')
@@ -220,6 +228,12 @@ function LinkToPersonPanel({ address, chain, walletData }: { address: string; ch
   const [linked, setLinked]       = useState<any>(null)
   const [linking, setLinking]     = useState(false)
   const [linkDone, setLinkDone]   = useState(false)
+
+  // Web3 Forensics: збереження в crypto_wallets + OFAC перевірка
+  const [saving,    setSaving]    = useState(false)
+  const [saved,     setSaved]     = useState(false)
+  const [ofacLoading, setOfacLoading] = useState(false)
+  const [ofacResult,  setOfacResult]  = useState<{ ofac_hit: boolean; matches: any[] } | null>(null)
 
   useEffect(() => {
     if (!address) return
@@ -253,20 +267,98 @@ function LinkToPersonPanel({ address, chain, walletData }: { address: string; ch
     } finally { setLinking(false) }
   }
 
+  async function handleSaveAnalysis() {
+    if (!linked?.id) return
+    const network = chainToNetwork(chain)
+    if (!network) return
+    setSaving(true)
+    try {
+      await fetch('/api/wallet/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet_address: address, network, person_id: linked.id }),
+      })
+      setSaved(true)
+    } finally { setSaving(false) }
+  }
+
+  async function handleOfac() {
+    if (!linked?.id) return
+    setOfacLoading(true)
+    try {
+      const res = await fetch('/api/wallet/sanctions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet_address: address, person_id: linked.id }),
+      })
+      const data = await res.json()
+      setOfacResult(data)
+    } finally { setOfacLoading(false) }
+  }
+
+  const network = chainToNetwork(chain)
+
   if (linkDone || linked) return (
-    <div className="bg-green-950/30 border border-green-800/40 rounded-xl p-3 flex items-center gap-3">
-      <span className="text-green-400 text-xl">✓</span>
-      <div className="flex-1 min-w-0">
-        <p className="text-green-400 text-xs font-semibold mb-0.5">Прив&apos;язано до картотеки</p>
-        <a href={`/persons/${linked.id}`} target="_blank" rel="noopener noreferrer"
-          className="text-green-300 text-sm hover:underline truncate block">
-          {linked.name || linked.name_ukr || linked.name_rus} →
-        </a>
+    <div className="space-y-2">
+      {/* Панель прив'язки */}
+      <div className="bg-green-950/30 border border-green-800/40 rounded-xl p-3 flex items-center gap-3">
+        <span className="text-green-400 text-xl">✓</span>
+        <div className="flex-1 min-w-0">
+          <p className="text-green-400 text-xs font-semibold mb-0.5">Прив&apos;язано до картотеки</p>
+          <a href={`/persons/${linked.id}`} target="_blank" rel="noopener noreferrer"
+            className="text-green-300 text-sm hover:underline truncate block">
+            {linked.name || linked.name_ukr || linked.name_rus} →
+          </a>
+        </div>
+        <button onClick={() => { setLinked(null); setLinkDone(false); setSaved(false); setOfacResult(null) }}
+          className="text-gray-600 hover:text-gray-400 text-xs shrink-0">
+          змінити
+        </button>
       </div>
-      <button onClick={() => { setLinked(null); setLinkDone(false) }}
-        className="text-gray-600 hover:text-gray-400 text-xs shrink-0">
-        змінити
-      </button>
+
+      {/* Web3 Forensics дії */}
+      <div className="flex flex-wrap gap-2 items-center">
+        {network && (
+          <button
+            onClick={handleSaveAnalysis}
+            disabled={saving || saved}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition
+                       bg-blue-900/50 border border-blue-700/50 text-blue-300
+                       hover:bg-blue-800/60 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {saved ? '✅ Збережено в БД' : saving ? '⏳ Зберігаю...' : '💾 Зберегти аналіз у картотеку'}
+          </button>
+        )}
+
+        <button
+          onClick={handleOfac}
+          disabled={ofacLoading}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition
+                     bg-yellow-900/40 border border-yellow-700/40 text-yellow-300
+                     hover:bg-yellow-800/50 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {ofacLoading ? '⏳ Перевіряю...' : '⚖️ Перевірити OFAC/Санкції'}
+        </button>
+
+        {ofacResult && (
+          <span className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold border ${
+            ofacResult.ofac_hit
+              ? 'bg-red-950 border-red-500/60 text-red-400'
+              : 'bg-green-950 border-green-600/40 text-green-400'
+          }`}>
+            {ofacResult.ofac_hit ? '🔴 OFAC HIT' : '✅ Санкцій немає'}
+            {ofacResult.ofac_hit && ofacResult.matches?.length > 0 && (
+              <span className="ml-1 opacity-70">({ofacResult.matches.length})</span>
+            )}
+          </span>
+        )}
+
+        {!network && (
+          <span className="text-gray-600 text-xs">
+            (Збереження в БД: тільки ERC-20 / TRC-20 / BTC / SOL)
+          </span>
+        )}
+      </div>
     </div>
   )
 

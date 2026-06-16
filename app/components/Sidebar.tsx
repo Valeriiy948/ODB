@@ -100,6 +100,8 @@ export default function Sidebar() {
         { icon: 'settings', label: t('Налаштування', 'Settings', 'Настройки'),  href: '/settings' },
         { icon: 'activity', label: t('Активність',   'Activity', 'Активность'), href: '/admin/activity' },
         { icon: 'tools',    label: t('Інструменти',  'Tools',    'Инструменты'),href: '/admin/tools' },
+        { icon: 'network',  label: t('Стан джерел',  'Sources',  'Источники'),  href: '/admin/source-health' },
+        { icon: 'alert',   label: t('Whale Alert',  'Whale Alert','Whale Alert'), href: '/admin/whale-alert' },
       ],
     },
   ]
