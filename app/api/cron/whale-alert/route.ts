@@ -211,21 +211,30 @@ function classifySignal(
     }
   }
 
-  // Exchange → unknown cold wallet ≥$5M = accumulation = BULLISH
-  if (fromExchange && isUnknown(tx.to_owner) && tx.amount_usd >= 5_000_000) {
+  // Exchange → unknown cold wallet = accumulation = BULLISH (поріг $1M — будь-яке значне виведення)
+  if (fromExchange && isUnknown(tx.to_owner) && tx.amount_usd >= 1_000_000) {
     return {
       direction:  'BULLISH',
-      confidence: tx.amount_usd >= 10_000_000 ? 'HIGH' : 'MEDIUM',
+      confidence: tx.amount_usd >= 10_000_000 ? 'HIGH' : tx.amount_usd >= 5_000_000 ? 'MEDIUM' : 'LOW',
       reason:     `${htmlEscape(tx.from_owner ?? 'Exchange')} → холодний гаманець (накопичення)`,
     }
   }
 
-  // Stablecoin (unknown) → exchange ≥$5M = buy power incoming = BULLISH
-  if (isStable && toExchange && isUnknown(tx.from_owner) && tx.amount_usd >= 5_000_000) {
+  // Stablecoin (unknown) → exchange = buy power incoming = BULLISH (поріг $1M)
+  if (isStable && toExchange && isUnknown(tx.from_owner) && tx.amount_usd >= 1_000_000) {
     return {
       direction:  'BULLISH',
-      confidence: 'MEDIUM',
+      confidence: tx.amount_usd >= 5_000_000 ? 'MEDIUM' : 'LOW',
       reason:     `Стейблкоїн → ${htmlEscape(tx.to_owner ?? 'Exchange')} (купівельна сила)`,
+    }
+  }
+
+  // Unknown → known exchange (non-smart-money) = BEARISH LOW
+  if (isUnknown(tx.from_owner) && toExchange && tx.amount_usd >= 1_000_000) {
+    return {
+      direction:  'BEARISH',
+      confidence: 'LOW',
+      reason:     `Гаманець → ${htmlEscape(tx.to_owner ?? 'Exchange')} (продаж)`,
     }
   }
 
@@ -234,13 +243,17 @@ function classifySignal(
     return {
       direction:  'NEUTRAL',
       confidence: 'LOW',
-      reason:     `${htmlEscape(tx.from_owner ?? '')} → ${htmlEscape(tx.to_owner ?? '')} (ребалансування)`,
+      reason:     `${htmlEscape(tx.from_owner ?? '')} → ${htmlEscape(tx.to_owner ?? '')} (ребалансування бірж)`,
     }
   }
 
-  // Unknown → Unknown = unclear, suspicious
+  // Unknown → Unknown = OTC/dark market/suspicious
   if (isUnknown(tx.from_owner) && isUnknown(tx.to_owner)) {
-    return { direction: 'NEUTRAL', confidence: 'LOW', reason: 'Невідомий → Невідомий (неясно)' }
+    return {
+      direction:  'NEUTRAL',
+      confidence: 'LOW',
+      reason:     'OTC / P2P / невідомий рух',
+    }
   }
 
   return { direction: 'NEUTRAL', confidence: 'LOW', reason: 'Недостатньо даних' }
@@ -410,6 +423,44 @@ function calcRiskScore(tx: StoredWhaleTx, intel: Partial<TxIntel>): number {
   return Math.min(score, 100)
 }
 
+// ─── Plain-language conclusion ────────────────────────────────────────────────
+function buildConclusion(intels: TxIntel[]): string {
+  const parts: string[] = []
+
+  const sanctioned  = intels.filter(i => i.is_sanctioned)
+  const structuring = intels.filter(i => i.is_structuring)
+  const transit     = intels.filter(i => i.is_transit && !i.is_structuring)
+  const bullish     = intels.filter(i => i.signal.direction === 'BULLISH')
+  const bearish     = intels.filter(i => i.signal.direction === 'BEARISH' && !i.is_sanctioned && !i.is_structuring && !i.is_transit)
+  const rebalance   = intels.filter(i => i.signal.reason.includes('ребалансування'))
+
+  if (sanctioned.length) {
+    parts.push(`🚨 Виявлено ${sanctioned.length} збіг з санкційним списком — потребує перевірки.`)
+  }
+  if (structuring.length) {
+    const total = structuring.reduce((s, i) => s + i.tx.amount_usd, 0)
+    parts.push(`🕵️ Structuring: ${structuring.length} транзакцій $${usdFmt(total)} дроблять суму — ознака приховування руху коштів.`)
+  }
+  if (transit.length) {
+    const addrs = [...new Set(transit.map(i => i.transit_addr).filter(Boolean))]
+    parts.push(`⚠️ Chain-hop: ${addrs.length > 0 ? addrs.length + ' адрес' : transit.length + ' транзакцій'} отримали і одразу переслали кошти далі.`)
+  }
+  if (bullish.length && bearish.length === 0 && !structuring.length) {
+    const assets = [...new Set(bullish.map(i => i.tx.symbol))].join(', ')
+    parts.push(`🟢 ${assets}: виведення з бірж переважає — ознака накопичення.`)
+  } else if (bearish.length > bullish.length && !structuring.length) {
+    const assets = [...new Set(bearish.map(i => i.tx.symbol))].join(', ')
+    parts.push(`🔴 ${assets}: кошти рухаються НА біржі — можливий продажний тиск.`)
+  } else if (bullish.length > 0 || bearish.length > 0) {
+    parts.push(`⚪ Змішані сигнали: ${bullish.length} накопичення, ${bearish.length} продаж.`)
+  }
+  if (rebalance.length && !parts.length) {
+    parts.push(`ℹ️ Переважно внутрішнє ребалансування між біржами — ринкового сигналу немає.`)
+  }
+
+  return parts.join('\n')
+}
+
 // ─── Smart Digest Formatter (Intelligence Engine v3) ─────────────────────────
 function formatSmartDigest(intels: TxIntel[]): string {
   const total = intels.reduce((s, i) => s + i.tx.amount_usd, 0)
@@ -428,16 +479,23 @@ function formatSmartDigest(intels: TxIntel[]): string {
   const regularSet = new Set([...sanctioned, ...clusters, ...transit, ...smartMoney])
   const regular    = intels.filter(i => !regularSet.has(i))
 
+  const conclusion    = buildConclusion(intels)
+  const signalSummary = aggregateSignals(intels)
+
   const lines: string[] = [
     `🐋 <b>Whale Intelligence Report</b>`,
     `💰 <b>$${usdFmt(total)}</b> · ${intels.length} транзакцій`,
     ``,
   ]
 
-  // Зведений ринковий сигнал
-  const signalSummary = aggregateSignals(intels)
+  if (conclusion) {
+    lines.push(`<b>ВИСНОВОК:</b>`)
+    lines.push(conclusion)
+    lines.push(``)
+  }
+
   if (signalSummary) {
-    lines.push(`📊 <b>РИНКОВІ СИГНАЛИ:</b>`)
+    lines.push(`📊 <b>Сигнали по активах:</b>`)
     lines.push(signalSummary)
     lines.push(``)
   }
