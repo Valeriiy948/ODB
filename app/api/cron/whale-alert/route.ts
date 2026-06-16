@@ -24,7 +24,8 @@ const MIN_USD        = Number(process.env.WHALE_ALERT_MIN_USD         ?? 500_000
 const TG_THRESH      = Number(process.env.WHALE_ALERT_TG_THRESHOLD    ?? 1_000_000)
 const DIGEST_COOL_MS = Number(process.env.WHALE_ALERT_DIGEST_COOLDOWN ?? 5) * 60_000
 const APP_URL        = process.env.APP_URL ?? 'https://odb-one.vercel.app'
-const CHANNEL_ID     = process.env.WHALE_ALERT_CHANNEL_ID ?? ''
+const CHANNEL_ID       = process.env.WHALE_ALERT_CHANNEL_ID ?? ''
+const OFAC_SERVICE_URL = process.env.OFAC_SERVICE_URL ?? 'http://161.35.86.145:8012'
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 function isAuthorized(req: NextRequest): boolean {
@@ -84,14 +85,34 @@ interface MarketSignal {
   reason:     string
 }
 
+interface OfacVerdict {
+  address:         string
+  sanctioned:      boolean
+  entity_name?:    string
+  asset?:          string
+  programs:        string[]
+  sdn_profile_id?: string
+}
+
+interface TransitInfo {
+  transit_addr:       string
+  time_delta_seconds: number | null
+  received_usd:       number | null
+  sent_usd:           number | null
+  amount_delta_usd:   number | null
+  is_comingling:      boolean
+}
+
 interface TxIntel {
   tx:             StoredWhaleTx
   is_sanctioned:  boolean
   sanction_label: string
+  ofac_hit:       OfacVerdict | null
   is_structuring: boolean
   struct_group:   string
   is_transit:     boolean
   transit_addr:   string
+  transit_info:   TransitInfo | null
   is_smart_money: boolean
   seen_before:    number
   risk_score:     number
@@ -260,7 +281,10 @@ function classifySignal(
     return { direction: 'NEUTRAL', confidence: 'LOW',
              reason: `${htmlEscape(tx.from_owner ?? '')} → ${htmlEscape(tx.to_owner ?? '')} (ребалансування)` }
   }
-  // wallet_to_wallet
+  // wallet_to_wallet — стейблкоїн між гаманцями ≠ ринковий сигнал (OTC/custody/розрахунок)
+  if (getAssetClass(tx.symbol) === 'stable') {
+    return { direction: 'NEUTRAL', confidence: 'LOW', reason: `${tx.symbol} OTC / custody потік — без ринкового сигналу` }
+  }
   return { direction: 'NEUTRAL', confidence: 'LOW', reason: 'OTC / P2P / невідомий рух' }
 }
 
@@ -379,6 +403,27 @@ interface WalletRecord {
   linked_person_id: string | null
 }
 
+// ─── OFAC SDN Screening (VPS :8010) ─────────────────────────────────────────
+async function screenOFAC(addresses: string[]): Promise<Map<string, OfacVerdict>> {
+  const unique = [...new Set(addresses.filter(Boolean))]
+  if (!unique.length) return new Map()
+  try {
+    const res = await fetch(`${OFAC_SERVICE_URL}/v1/screening/check`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ addresses: unique }),
+      signal:  AbortSignal.timeout(5_000),
+    })
+    if (!res.ok) return new Map()
+    const data = await res.json() as { results: OfacVerdict[] }
+    const map  = new Map<string, OfacVerdict>()
+    for (const v of data.results) if (v.sanctioned) map.set(v.address, v)
+    return map
+  } catch {
+    return new Map()  // graceful degradation: continue without OFAC if service is down
+  }
+}
+
 async function crossRefAddresses(addresses: string[]): Promise<Map<string, WalletRecord>> {
   const unique = [...new Set(addresses.filter(Boolean))]
   if (!unique.length) return new Map()
@@ -434,24 +479,37 @@ async function autoFlagHighRisk(intels: TxIntel[]): Promise<number> {
 }
 
 // ─── AML: Transit Chain-hop Detection ────────────────────────────────────────
-// Знаходить адреси які є одночасно to_address і from_address в одному батчі
-// (отримав → одразу переслав = transit/relay вузол)
-function detectTransitChain(txs: StoredWhaleTx[]): Map<string, string> {
-  const toMap   = new Map<string, string>() // address → whale_alert_id (tx де отримав)
-  const fromMap = new Map<string, string>() // address → whale_alert_id (tx де відправив)
+// Адреса є одночасно to і from в одному батчі → transit/relay вузол.
+// Повертає TransitInfo з часовою дельтою та різницею сум (co-mingling detection).
+function detectTransitChain(txs: StoredWhaleTx[]): Map<string, TransitInfo> {
+  const receivedAt = new Map<string, { id: string; ts: Date; amount_usd: number }>()
+  const sentFrom   = new Map<string, { id: string; ts: Date; amount_usd: number }>()
 
   for (const tx of txs) {
-    if (tx.to_address   && isUnknown(tx.to_owner))   toMap.set(tx.to_address, tx.whale_alert_id)
-    if (tx.from_address && isUnknown(tx.from_owner)) fromMap.set(tx.from_address, tx.whale_alert_id)
+    if (tx.to_address   && isUnknown(tx.to_owner))
+      receivedAt.set(tx.to_address,   { id: tx.whale_alert_id, ts: new Date(tx.tx_timestamp), amount_usd: tx.amount_usd })
+    if (tx.from_address && isUnknown(tx.from_owner))
+      sentFrom.set(tx.from_address, { id: tx.whale_alert_id, ts: new Date(tx.tx_timestamp), amount_usd: tx.amount_usd })
   }
 
-  const flagged = new Map<string, string>() // whale_alert_id → transit_address
-  for (const [addr, rxId] of toMap) {
-    const txId = fromMap.get(addr)
-    if (txId && txId !== rxId) {
-      flagged.set(rxId, addr) // tx де адреса отримала
-      flagged.set(txId, addr) // tx де адреса відправила
+  const flagged = new Map<string, TransitInfo>()
+  for (const [addr, rx] of receivedAt) {
+    const tx = sentFrom.get(addr)
+    if (!tx || tx.id === rx.id) continue
+
+    const timeDelta   = Math.abs(tx.ts.getTime() - rx.ts.getTime()) / 1000
+    const amountDelta = tx.amount_usd - rx.amount_usd  // + = co-mingling; - = fees/partial
+
+    const info: TransitInfo = {
+      transit_addr:       addr,
+      time_delta_seconds: timeDelta,
+      received_usd:       rx.amount_usd,
+      sent_usd:           tx.amount_usd,
+      amount_delta_usd:   amountDelta,
+      is_comingling:      amountDelta > 100,  // відправив більше ніж отримав → мав залишок
     }
+    flagged.set(rx.id, info)
+    flagged.set(tx.id, info)
   }
   return flagged
 }
@@ -499,9 +557,17 @@ function calcRiskScore(tx: StoredWhaleTx, intel: Partial<TxIntel>): number {
   if (isUnknown(tx.from_owner) && isUnknown(tx.to_owner)) score += 40
   if (tx.amount_usd >= 10_000_000) score += 20
   if (tx.amount_usd >= 5_000_000)  score += 10
-  if ((intel.seen_before ?? 0) > 5) score += 15
+
+  const seen = intel.seen_before ?? 0
+  if (seen > 5 && seen <= 100) score += 15  // підозріла частота
+  // seen > 100: дуже ймовірно хаб/OTC-сервіс — без додаткового бонусу
+
   if (isSmartMoney(tx)) score += 25
-  return Math.min(score, 100)
+
+  let capped = Math.min(score, 100)
+  // Хаб-дисконт: дуже висока частота + транзит = операційна інфраструктура, не разовий злочин
+  if (seen > 100 && intel.is_transit) capped = Math.max(capped - 20, 60)
+  return capped
 }
 
 // ─── Plain-language conclusion (на основі net flow, не голосування) ───────────
@@ -659,21 +725,52 @@ function formatSmartDigest(intels: TxIntel[]): string {
 
   // ── TRANSIT WALLETS ────────────────────────────────────────────────────────
   if (transit.length) {
-    // Групуємо по transit_addr щоб не дублювати одну адресу двічі
+    // Сортуємо: найбільший ланцюг першим
+    const sortedTransit = [...transit].sort((a, b) => {
+      const aAmt = a.transit_info?.received_usd ?? a.tx.amount_usd
+      const bAmt = b.transit_info?.received_usd ?? b.tx.amount_usd
+      return bAmt - aAmt
+    })
+
     const shownTransitAddrs = new Set<string>()
     lines.push(`━━━━━━━━━━━━`)
     lines.push(`⚠️ <b>CHAIN-HOP / ТРАНЗИТ (${transit.length} tx)</b>`)
-    for (const { tx, seen_before, risk_score, signal, transit_addr } of transit) {
+
+    for (const { tx, seen_before, risk_score, signal, transit_addr, transit_info } of sortedTransit) {
       const from     = partyDisplay(tx.from_owner, tx.from_owner_type, tx.from_address, tx.blockchain)
       const to       = partyDisplay(tx.to_owner,   tx.to_owner_type,   tx.to_address,   tx.blockchain)
       const txUrl    = explorerTxUrl(tx.blockchain, tx.hash)
       const addr     = transit_addr || tx.from_address || tx.to_address
       const sigEmoji = signal.direction === 'BEARISH' ? '🔴' : signal.direction === 'BULLISH' ? '🟢' : '⚪'
 
+      // Часова дельта між отриманням і відправкою
+      let timeLine = ''
+      if (transit_info?.time_delta_seconds != null) {
+        const mins = Math.round(transit_info.time_delta_seconds / 60)
+        timeLine = mins < 1
+          ? `⏱ &lt;1хв між отриманням і відправкою`
+          : `⏱ ${mins}хв між отриманням і відправкою`
+      }
+
+      // Co-mingling або неповна передача
+      let amountLine = ''
+      const delta = transit_info?.amount_delta_usd
+      if (delta != null && Math.abs(delta) > 100) {
+        if (transit_info!.is_comingling) {
+          amountLine = `⚠️ Co-mingling: $${usdFmt(transit_info!.received_usd ?? 0)} → $${usdFmt(transit_info!.sent_usd ?? 0)} <b>(+$${usdFmt(delta)} зайвих)</b>`
+        } else {
+          amountLine = `ℹ️ $${usdFmt(transit_info!.received_usd ?? 0)} → $${usdFmt(transit_info!.sent_usd ?? 0)} (-$${usdFmt(Math.abs(delta))} комісія/часткова)`
+        }
+      }
+
+      const hubNote = seen_before > 100 ? ` · 🔄 хаб (${seen_before}×)` : ''
+
       lines.push(
         `  💸 <b>$${usdFmt(tx.amount_usd)} ${tx.symbol}</b> (${chainLabel(tx.blockchain)}) <a href="${txUrl}">↗</a>`,
-        seen_before > 0 ? `  👁 ${seen_before}× у БД · Risk ${risk_score}/100` : `  Risk ${risk_score}/100`,
+        seen_before > 0 ? `  👁 ${seen_before}× у БД${hubNote} · Risk ${risk_score}/100` : `  Risk ${risk_score}/100`,
         `  ${from} → ${to}`,
+        timeLine   ? `  ${timeLine}`   : '',
+        amountLine ? `  ${amountLine}` : '',
         `  ${sigEmoji} ${signal.reason}`,
       )
       if (addr && !shownTransitAddrs.has(addr)) {
@@ -921,9 +1018,12 @@ export async function GET(req: NextRequest) {
       } else {
         log.push(`▶ Unsent: ${unsent.length} txs — Intelligence Engine v3`)
 
-        // ── Cross-referencing ──────────────────────────────────────────────
-        const addresses = unsent.flatMap(t => [t.from_address, t.to_address]).filter(Boolean) as string[]
-        const walletMap = await crossRefAddresses(addresses)
+        // ── Cross-referencing + OFAC screening (паралельно) ──────────────
+        const addresses              = unsent.flatMap(t => [t.from_address, t.to_address]).filter(Boolean) as string[]
+        const [walletMap, ofacMap]   = await Promise.all([
+          crossRefAddresses(addresses),
+          screenOFAC(addresses),
+        ])
 
         // ── Structuring + Transit detection ───────────────────────────────
         const structuringMap = detectStructuring(unsent as StoredWhaleTx[])
@@ -932,15 +1032,23 @@ export async function GET(req: NextRequest) {
         // ── Build Intel ────────────────────────────────────────────────────
         const intels: TxIntel[] = []
         for (const rawTx of unsent as StoredWhaleTx[]) {
-          const fromWallet   = rawTx.from_address ? walletMap.get(rawTx.from_address) : null
-          const toWallet     = rawTx.to_address   ? walletMap.get(rawTx.to_address)   : null
-          const isSanctioned = !!(fromWallet?.is_sanctioned || toWallet?.is_sanctioned)
-          const sanctionLabel = fromWallet?.label || toWallet?.label || ''
+          const fromWallet = rawTx.from_address ? walletMap.get(rawTx.from_address) : null
+          const toWallet   = rawTx.to_address   ? walletMap.get(rawTx.to_address)   : null
+
+          // OFAC SDN hit — перевіряємо обидві сторони
+          const ofacHit     = (rawTx.from_address ? ofacMap.get(rawTx.from_address) : null)
+                           ?? (rawTx.to_address   ? ofacMap.get(rawTx.to_address)   : null)
+                           ?? null
+          const isSanctioned  = !!(fromWallet?.is_sanctioned || toWallet?.is_sanctioned || ofacHit)
+          const sanctionLabel = ofacHit
+            ? `OFAC SDN: ${ofacHit.entity_name ?? 'Unknown Entity'} · ${ofacHit.programs.slice(0, 2).join(', ') || ofacHit.sdn_profile_id}`
+            : fromWallet?.label || toWallet?.label || ''
 
           const isStructuring = structuringMap.has(rawTx.whale_alert_id)
           const structGroup   = structuringMap.get(rawTx.whale_alert_id) ?? ''
-          const isTransit     = transitMap.has(rawTx.whale_alert_id)
-          const transitAddr   = transitMap.get(rawTx.whale_alert_id) ?? ''
+          const transitInfo   = transitMap.get(rawTx.whale_alert_id) ?? null
+          const isTransit     = !!transitInfo
+          const transitAddr   = transitInfo?.transit_addr ?? ''
           const smartMoney    = isSmartMoney(rawTx)
 
           let seenBefore = 0
@@ -954,10 +1062,12 @@ export async function GET(req: NextRequest) {
             tx:             rawTx,
             is_sanctioned:  isSanctioned,
             sanction_label: sanctionLabel,
+            ofac_hit:       ofacHit,
             is_structuring: isStructuring,
             struct_group:   structGroup,
             is_transit:     isTransit,
             transit_addr:   transitAddr,
+            transit_info:   transitInfo,
             is_smart_money: smartMoney,
             seen_before:    seenBefore,
             risk_score:     0,
