@@ -167,123 +167,204 @@ function partyDisplay(
 }
 
 // ─── Exchange Detection ───────────────────────────────────────────────────────
+const EXCHANGE_NAMES = ['binance','coinbase','okex','okx','kraken','bitfinex',
+  'huobi','bybit','kucoin','gate','gemini','crypto.com','bitmex','bitstamp','bitget']
+
 function isExchange(owner: string | null): boolean {
   if (!owner || isUnknown(owner)) return false
-  const ex = ['binance','coinbase','okex','okx','kraken','bitfinex','huobi','bybit','kucoin','gate','gemini','crypto.com','bitmex','bitstamp']
-  return ex.some(e => owner.toLowerCase().includes(e))
+  const lo = owner.toLowerCase()
+  return EXCHANGE_NAMES.some(e => lo.includes(e))
 }
 
-// ─── Market Signal Classification ────────────────────────────────────────────
+function exchangeName(owner: string | null): string {
+  if (!owner) return ''
+  const lo = owner.toLowerCase()
+  return EXCHANGE_NAMES.find(e => lo.includes(e)) ?? ''
+}
+
+// ─── Asset Class (стейблкоїн vs volatile) ─────────────────────────────────────
+const STABLE_ASSETS = new Set(['USDT','USDC','DAI','BUSD','TUSD','FDUSD'])
+
+function getAssetClass(symbol: string): 'stable' | 'volatile' {
+  return STABLE_ASSETS.has(symbol.toUpperCase()) ? 'stable' : 'volatile'
+}
+
+// ─── Flow Direction (WhaleFlowEngine port) ────────────────────────────────────
+type FlowDir = 'outflow' | 'inflow' | 'internal' | 'inter_exchange' | 'wallet_to_wallet'
+
+function getFlowDir(tx: StoredWhaleTx): { dir: FlowDir; labelConf: number } {
+  const fromEx = isExchange(tx.from_owner)
+  const toEx   = isExchange(tx.to_owner)
+
+  if (fromEx && toEx) {
+    const same = exchangeName(tx.from_owner) === exchangeName(tx.to_owner)
+    return { dir: same ? 'internal' : 'inter_exchange', labelConf: 1.0 }
+  }
+  if (fromEx) return { dir: 'outflow', labelConf: 1.0 }
+  if (toEx)   return { dir: 'inflow',  labelConf: 1.0 }
+  return { dir: 'wallet_to_wallet', labelConf: 0.0 }
+}
+
+// ─── Per-tx signal (AML override + flow direction) ────────────────────────────
 function classifySignal(
   tx: StoredWhaleTx,
   intel: { is_structuring: boolean; is_smart_money: boolean; is_transit: boolean },
 ): MarketSignal {
-  const toExchange   = isExchange(tx.to_owner)
-  const fromExchange = isExchange(tx.from_owner)
-  const isStable     = ['USDT', 'USDC', 'DAI', 'BUSD'].includes(tx.symbol)
-
-  // Structuring = завжди BEARISH HIGH (дроблення приховує рух коштів)
+  // AML overrides мають пріоритет над ринковою логікою
   if (intel.is_structuring) {
+    const toEx = isExchange(tx.to_owner)
     return {
-      direction:  'BEARISH',
-      confidence: 'HIGH',
-      reason:     toExchange
+      direction:  'BEARISH', confidence: 'HIGH',
+      reason: toEx
         ? `Structuring → ${htmlEscape(tx.to_owner ?? 'Exchange')} (координований вихід)`
         : 'Structuring — дроблення суми, приховування руху коштів',
     }
   }
-
-  // Transit chain-hop = BEARISH MEDIUM (отримав і одразу переслав)
   if (intel.is_transit) {
-    return {
-      direction:  'BEARISH',
-      confidence: 'MEDIUM',
-      reason:     'Chain-hop транзит — отримав і одразу переслав далі',
-    }
+    return { direction: 'BEARISH', confidence: 'MEDIUM', reason: 'Chain-hop — отримав і одразу переслав далі' }
   }
-
-  // Smart money: unknown → major exchange ≥$5M = BEARISH
   if (intel.is_smart_money) {
     return {
-      direction:  'BEARISH',
+      direction: 'BEARISH',
       confidence: tx.amount_usd >= 10_000_000 ? 'HIGH' : 'MEDIUM',
-      reason:     `Кит → ${htmlEscape(tx.to_owner ?? 'Exchange')} (продажний тиск)`,
+      reason: `Кит → ${htmlEscape(tx.to_owner ?? 'Exchange')} (продажний тиск)`,
     }
   }
 
-  // Exchange → unknown cold wallet = accumulation = BULLISH (поріг $1M — будь-яке значне виведення)
-  if (fromExchange && isUnknown(tx.to_owner) && tx.amount_usd >= 1_000_000) {
-    return {
-      direction:  'BULLISH',
-      confidence: tx.amount_usd >= 10_000_000 ? 'HIGH' : tx.amount_usd >= 5_000_000 ? 'MEDIUM' : 'LOW',
-      reason:     `${htmlEscape(tx.from_owner ?? 'Exchange')} → холодний гаманець (накопичення)`,
-    }
-  }
+  // Flow direction логіка (як у Python WhaleFlowEngine)
+  const { dir } = getFlowDir(tx)
+  const ac       = getAssetClass(tx.symbol)
 
-  // Stablecoin (unknown) → exchange = buy power incoming = BULLISH (поріг $1M)
-  if (isStable && toExchange && isUnknown(tx.from_owner) && tx.amount_usd >= 1_000_000) {
-    return {
-      direction:  'BULLISH',
-      confidence: tx.amount_usd >= 5_000_000 ? 'MEDIUM' : 'LOW',
-      reason:     `Стейблкоїн → ${htmlEscape(tx.to_owner ?? 'Exchange')} (купівельна сила)`,
-    }
+  if (dir === 'outflow') {
+    // Volatile виходить з біржі = накопичення = BULLISH
+    // Stable виходить з біржі = BEARISH (купівельна сила залишає)
+    return ac === 'volatile'
+      ? { direction: 'BULLISH',
+          confidence: tx.amount_usd >= 5_000_000 ? 'MEDIUM' : 'LOW',
+          reason: `${htmlEscape(tx.from_owner ?? 'Exchange')} → холодний гаманець (накопичення)` }
+      : { direction: 'BEARISH', confidence: 'LOW',
+          reason: `Стейблкоїн виходить з ${htmlEscape(tx.from_owner ?? 'Exchange')}` }
   }
-
-  // Unknown → known exchange (non-smart-money) = BEARISH LOW
-  if (isUnknown(tx.from_owner) && toExchange && tx.amount_usd >= 1_000_000) {
-    return {
-      direction:  'BEARISH',
-      confidence: 'LOW',
-      reason:     `Гаманець → ${htmlEscape(tx.to_owner ?? 'Exchange')} (продаж)`,
-    }
+  if (dir === 'inflow') {
+    // Stable приходить на біржу = BULLISH (купівельна сила)
+    // Volatile приходить на біржу = BEARISH (продаж)
+    return ac === 'stable'
+      ? { direction: 'BULLISH',
+          confidence: tx.amount_usd >= 5_000_000 ? 'MEDIUM' : 'LOW',
+          reason: `Стейблкоїн → ${htmlEscape(tx.to_owner ?? 'Exchange')} (купівельна сила)` }
+      : { direction: 'BEARISH',
+          confidence: tx.amount_usd >= 5_000_000 ? 'MEDIUM' : 'LOW',
+          reason: `${tx.symbol} → ${htmlEscape(tx.to_owner ?? 'Exchange')} (продажний тиск)` }
   }
-
-  // Exchange → Exchange = rebalancing = NEUTRAL
-  if (fromExchange && toExchange) {
-    return {
-      direction:  'NEUTRAL',
-      confidence: 'LOW',
-      reason:     `${htmlEscape(tx.from_owner ?? '')} → ${htmlEscape(tx.to_owner ?? '')} (ребалансування бірж)`,
-    }
+  if (dir === 'internal' || dir === 'inter_exchange') {
+    return { direction: 'NEUTRAL', confidence: 'LOW',
+             reason: `${htmlEscape(tx.from_owner ?? '')} → ${htmlEscape(tx.to_owner ?? '')} (ребалансування)` }
   }
-
-  // Unknown → Unknown = OTC/dark market/suspicious
-  if (isUnknown(tx.from_owner) && isUnknown(tx.to_owner)) {
-    return {
-      direction:  'NEUTRAL',
-      confidence: 'LOW',
-      reason:     'OTC / P2P / невідомий рух',
-    }
-  }
-
-  return { direction: 'NEUTRAL', confidence: 'LOW', reason: 'Недостатньо даних' }
+  // wallet_to_wallet
+  return { direction: 'NEUTRAL', confidence: 'LOW', reason: 'OTC / P2P / невідомий рух' }
 }
 
-// ─── Aggregate Signals per Asset ─────────────────────────────────────────────
-function aggregateSignals(intels: TxIntel[]): string {
-  const byAsset = new Map<string, { bearish: number; bullish: number }>()
+// ─── Net Flow Engine (WhaleFlowEngine port) ───────────────────────────────────
+// Замість "більшість голосів" — рахує нетто-потік (outflows - inflows) по активу
+// і дає сигнал лише якщо достатньо помічених адрес.
+interface AssetFlow {
+  asset:             string
+  asset_class:       'stable' | 'volatile'
+  net_flow_usd:      number   // позитивний = бичачий напрямок
+  inflow_usd:        number
+  outflow_usd:       number
+  w2w_usd:           number
+  labelled_fraction: number   // частка помічених (exchange-tagged) коштів
+  confidence:        number   // labelled_fraction * min(n/20, 1)
+  signal:            'BULLISH' | 'BEARISH' | 'NEUTRAL'
+  strength:          'HIGH' | 'MEDIUM' | 'LOW'
+  n_transfers:       number
+}
 
-  for (const intel of intels) {
-    const asset = intel.tx.symbol
-    const curr  = byAsset.get(asset) ?? { bearish: 0, bullish: 0 }
-    const w     = intel.signal.confidence === 'HIGH' ? 3
-                : intel.signal.confidence === 'MEDIUM' ? 2 : 1
-    if (intel.signal.direction === 'BEARISH') curr.bearish += w
-    if (intel.signal.direction === 'BULLISH') curr.bullish += w
-    byAsset.set(asset, curr)
+function computeFlowSignals(txs: StoredWhaleTx[]): Map<string, AssetFlow> {
+  const byAsset = new Map<string, StoredWhaleTx[]>()
+  for (const tx of txs) {
+    const key = tx.symbol.toUpperCase()
+    const arr = byAsset.get(key) ?? []
+    arr.push(tx)
+    byAsset.set(key, arr)
   }
 
+  const result = new Map<string, AssetFlow>()
+
+  for (const [asset, items] of byAsset) {
+    const ac = getAssetClass(asset)
+    let netFlow = 0, inflow = 0, outflow = 0, w2w = 0
+    let labelledUsd = 0, totalUsd = 0
+
+    for (const tx of items) {
+      const { dir, labelConf } = getFlowDir(tx)
+      totalUsd += tx.amount_usd
+
+      if (dir === 'outflow') {
+        outflow     += tx.amount_usd
+        labelledUsd += tx.amount_usd
+        // VOLATILE: outflow = +bullish; STABLE: outflow = -bearish
+        netFlow += ac === 'volatile' ? +tx.amount_usd : -tx.amount_usd
+      } else if (dir === 'inflow') {
+        inflow      += tx.amount_usd
+        labelledUsd += tx.amount_usd
+        // STABLE: inflow = +bullish; VOLATILE: inflow = -bearish
+        netFlow += ac === 'stable' ? +tx.amount_usd : -tx.amount_usd
+      } else if (dir === 'internal' || dir === 'inter_exchange') {
+        labelledUsd += tx.amount_usd * labelConf // помічені, але не рахуємо в нетто
+      } else {
+        w2w += tx.amount_usd
+      }
+    }
+
+    const labelledFraction = totalUsd > 0 ? labelledUsd / totalUsd : 0
+    const sampleFactor     = Math.min(1, items.length / 20)
+    const confidence       = Math.round(labelledFraction * sampleFactor * 100) / 100
+
+    // Сигнал: фіксовані пороги (z-score потребує historical data — TODO фаза 2)
+    let signal: 'BULLISH' | 'BEARISH' | 'NEUTRAL' = 'NEUTRAL'
+    let strength: 'HIGH' | 'MEDIUM' | 'LOW' = 'LOW'
+
+    if (confidence >= 0.25) {                     // мін 25% помічених коштів
+      const abs = Math.abs(netFlow)
+      const dir = netFlow > 0 ? 'BULLISH' : 'BEARISH'
+      if (abs >= 10_000_000) { signal = dir; strength = 'HIGH' }
+      else if (abs >= 3_000_000) { signal = dir; strength = 'MEDIUM' }
+      else if (abs >= 1_000_000) { signal = dir; strength = 'LOW' }
+    }
+
+    result.set(asset, {
+      asset, asset_class: ac,
+      net_flow_usd:      Math.round(netFlow),
+      inflow_usd:        Math.round(inflow),
+      outflow_usd:       Math.round(outflow),
+      w2w_usd:           Math.round(w2w),
+      labelled_fraction: Math.round(labelledFraction * 100) / 100,
+      confidence, signal, strength,
+      n_transfers: items.length,
+    })
+  }
+  return result
+}
+
+function formatFlowSummary(flows: Map<string, AssetFlow>): string {
   const lines: string[] = []
-  for (const [asset, { bearish, bullish }] of byAsset) {
-    if (bearish === 0 && bullish === 0) continue
-    if (bearish >= bullish * 1.5) {
-      const conf = bearish >= 6 ? 'HIGH' : bearish >= 3 ? 'MEDIUM' : 'LOW'
-      lines.push(`  ${asset} 🔴 BEARISH ${conf} — продажний тиск`)
-    } else if (bullish >= bearish * 1.5) {
-      const conf = bullish >= 6 ? 'HIGH' : bullish >= 3 ? 'MEDIUM' : 'LOW'
-      lines.push(`  ${asset} 🟢 BULLISH ${conf} — накопичення`)
-    } else if (bearish > 0 || bullish > 0) {
-      lines.push(`  ${asset} ⚪ MIXED — суперечливі сигнали`)
+  for (const flow of flows.values()) {
+    const { asset, signal, strength, net_flow_usd, confidence, labelled_fraction, inflow_usd, outflow_usd } = flow
+    const emoji  = signal === 'BULLISH' ? '🟢' : signal === 'BEARISH' ? '🔴' : '⚪'
+    const netAbs = Math.abs(net_flow_usd)
+    const netStr = netAbs >= 1_000_000
+      ? ` · нетто ${net_flow_usd >= 0 ? '+' : '-'}$${usdFmt(netAbs)}`
+      : ''
+
+    if (signal !== 'NEUTRAL') {
+      lines.push(`  ${asset} ${emoji} ${signal} ${strength}${netStr}`)
+      if (confidence < 0.3) {
+        lines.push(`    ⚠️ confidence ${Math.round(labelled_fraction*100)}% — мало помічених адрес`)
+      }
+    } else if (inflow_usd > 0 || outflow_usd > 0) {
+      lines.push(`  ${asset} ⚪ NEUTRAL — in $${usdFmt(inflow_usd)} / out $${usdFmt(outflow_usd)}`)
     }
   }
   return lines.join('\n')
@@ -423,39 +504,55 @@ function calcRiskScore(tx: StoredWhaleTx, intel: Partial<TxIntel>): number {
   return Math.min(score, 100)
 }
 
-// ─── Plain-language conclusion ────────────────────────────────────────────────
-function buildConclusion(intels: TxIntel[]): string {
+// ─── Plain-language conclusion (на основі net flow, не голосування) ───────────
+function buildConclusion(intels: TxIntel[], flows: Map<string, AssetFlow>): string {
   const parts: string[] = []
 
   const sanctioned  = intels.filter(i => i.is_sanctioned)
   const structuring = intels.filter(i => i.is_structuring)
   const transit     = intels.filter(i => i.is_transit && !i.is_structuring)
-  const bullish     = intels.filter(i => i.signal.direction === 'BULLISH')
-  const bearish     = intels.filter(i => i.signal.direction === 'BEARISH' && !i.is_sanctioned && !i.is_structuring && !i.is_transit)
-  const rebalance   = intels.filter(i => i.signal.reason.includes('ребалансування'))
 
   if (sanctioned.length) {
     parts.push(`🚨 Виявлено ${sanctioned.length} збіг з санкційним списком — потребує перевірки.`)
   }
   if (structuring.length) {
-    const total = structuring.reduce((s, i) => s + i.tx.amount_usd, 0)
-    parts.push(`🕵️ Structuring: ${structuring.length} транзакцій $${usdFmt(total)} дроблять суму — ознака приховування руху коштів.`)
+    const vol = structuring.reduce((s, i) => s + i.tx.amount_usd, 0)
+    parts.push(`🕵️ Structuring: ${structuring.length} tx · $${usdFmt(vol)} — дроблення суми, приховування руху.`)
   }
   if (transit.length) {
-    const addrs = [...new Set(transit.map(i => i.transit_addr).filter(Boolean))]
-    parts.push(`⚠️ Chain-hop: ${addrs.length > 0 ? addrs.length + ' адрес' : transit.length + ' транзакцій'} отримали і одразу переслали кошти далі.`)
+    const addrs = new Set(transit.map(i => i.transit_addr).filter(Boolean))
+    parts.push(`⚠️ Chain-hop: ${addrs.size || transit.length} транзитних адреси отримали і одразу переслали.`)
   }
-  if (bullish.length && bearish.length === 0 && !structuring.length) {
-    const assets = [...new Set(bullish.map(i => i.tx.symbol))].join(', ')
-    parts.push(`🟢 ${assets}: виведення з бірж переважає — ознака накопичення.`)
-  } else if (bearish.length > bullish.length && !structuring.length) {
-    const assets = [...new Set(bearish.map(i => i.tx.symbol))].join(', ')
-    parts.push(`🔴 ${assets}: кошти рухаються НА біржі — можливий продажний тиск.`)
-  } else if (bullish.length > 0 || bearish.length > 0) {
-    parts.push(`⚪ Змішані сигнали: ${bullish.length} накопичення, ${bearish.length} продаж.`)
+
+  // Ринковий висновок базується на нетто-потоці, не на голосуванні
+  const bullishFlows = [...flows.values()].filter(f => f.signal === 'BULLISH' && f.confidence >= 0.25)
+  const bearishFlows = [...flows.values()].filter(f => f.signal === 'BEARISH' && f.confidence >= 0.25)
+  const lowConfFlows = [...flows.values()].filter(f => f.signal === 'NEUTRAL' && f.labelled_fraction < 0.2 && f.n_transfers >= 3)
+
+  if (bullishFlows.length && !bearishFlows.length) {
+    for (const f of bullishFlows) {
+      const net = `+$${usdFmt(f.net_flow_usd)}`
+      const why = f.asset_class === 'volatile'
+        ? `відтік з бірж ${net} — накопичення`
+        : `стейблкоїн приходить на біржі ${net} — купівельна сила`
+      parts.push(`🟢 ${f.asset} ${f.strength}: ${why}.`)
+    }
+  } else if (bearishFlows.length && !bullishFlows.length) {
+    for (const f of bearishFlows) {
+      const net = `-$${usdFmt(Math.abs(f.net_flow_usd))}`
+      const why = f.asset_class === 'volatile'
+        ? `приплив на біржі ${net} — продажний тиск`
+        : `стейблкоїн виходить з бірж ${net}`
+      parts.push(`🔴 ${f.asset} ${f.strength}: ${why}.`)
+    }
+  } else if (bullishFlows.length && bearishFlows.length) {
+    const bul = bullishFlows.map(f => f.asset).join(', ')
+    const ber = bearishFlows.map(f => f.asset).join(', ')
+    parts.push(`⚪ Змішані: ${bul} бичачі, ${ber} ведмежі.`)
   }
-  if (rebalance.length && !parts.length) {
-    parts.push(`ℹ️ Переважно внутрішнє ребалансування між біржами — ринкового сигналу немає.`)
+
+  if (lowConfFlows.length && !parts.length) {
+    parts.push(`ℹ️ Мало помічених адрес — сигнал ненадійний (переважно OTC/гаманець→гаманець).`)
   }
 
   return parts.join('\n')
@@ -479,8 +576,10 @@ function formatSmartDigest(intels: TxIntel[]): string {
   const regularSet = new Set([...sanctioned, ...clusters, ...transit, ...smartMoney])
   const regular    = intels.filter(i => !regularSet.has(i))
 
-  const conclusion    = buildConclusion(intels)
-  const signalSummary = aggregateSignals(intels)
+  // Net flow engine — один раз для всього батчу
+  const flows         = computeFlowSignals(intels.map(i => i.tx))
+  const conclusion    = buildConclusion(intels, flows)
+  const signalSummary = formatFlowSummary(flows)
 
   const lines: string[] = [
     `🐋 <b>Whale Intelligence Report</b>`,
@@ -495,7 +594,7 @@ function formatSmartDigest(intels: TxIntel[]): string {
   }
 
   if (signalSummary) {
-    lines.push(`📊 <b>Сигнали по активах:</b>`)
+    lines.push(`📊 <b>Нетто-потік по активах:</b>`)
     lines.push(signalSummary)
     lines.push(``)
   }
@@ -666,20 +765,30 @@ function formatSingleTx(intel: TxIntel): string {
 
 // ─── Paid Channel Formatter (signal-focused, for traders) ────────────────────
 function formatChannelSignal(intels: TxIntel[]): string {
-  const total   = intels.reduce((s, i) => s + i.tx.amount_usd, 0)
-  const bearish = intels.filter(i => i.signal.direction === 'BEARISH').length
-  const bullish = intels.filter(i => i.signal.direction === 'BULLISH').length
+  const total = intels.reduce((s, i) => s + i.tx.amount_usd, 0)
+  const flows = computeFlowSignals(intels.map(i => i.tx))
+
+  const bullishFlows = [...flows.values()].filter(f => f.signal === 'BULLISH')
+  const bearishFlows = [...flows.values()].filter(f => f.signal === 'BEARISH')
 
   let dominantEmoji = '⚪'
   let dominantLabel = 'MIXED'
-  if (bearish > bullish * 1.5) { dominantEmoji = '🔴'; dominantLabel = 'BEARISH' }
-  else if (bullish > bearish * 1.5) { dominantEmoji = '🟢'; dominantLabel = 'BULLISH' }
+  if (bearishFlows.length > bullishFlows.length) { dominantEmoji = '🔴'; dominantLabel = 'BEARISH' }
+  else if (bullishFlows.length > bearishFlows.length) { dominantEmoji = '🟢'; dominantLabel = 'BULLISH' }
 
   const highConf = intels.filter(i => i.signal.confidence === 'HIGH')
+
+  const netLines = [...flows.values()]
+    .filter(f => f.signal !== 'NEUTRAL')
+    .map(f => {
+      const e = f.signal === 'BULLISH' ? '🟢' : '🔴'
+      return `  ${f.asset} ${e} нетто ${f.net_flow_usd >= 0 ? '+' : ''}$${usdFmt(f.net_flow_usd)} (conf ${Math.round(f.confidence*100)}%)`
+    })
 
   const lines: string[] = [
     `📡 <b>ODB Crypto Signal</b> · ${dominantEmoji} ${dominantLabel}`,
     `💰 $${usdFmt(total)} · ${intels.length} транзакцій`,
+    ...(netLines.length ? [``, ...netLines] : []),
     ``,
   ]
 
