@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase/client'
 import Icon, { type IconName } from '../components/Icon'
+import Sidebar from '../components/Sidebar'
 
 function detectType(q: string): string {
   const clean = q.replace(/[\s\-\(\)\+]/g, '')
@@ -106,41 +107,16 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: 'var(--odb-bg)' }}>
+    <div className="min-h-screen flex" style={{ background: 'var(--odb-bg)' }}>
+      <Sidebar />
+
+      <div className="flex-1 flex flex-col min-w-0">
 
       {/* Декоративне фонове світіння */}
-      <div className="pointer-events-none fixed inset-0 overflow-hidden">
+      <div className="pointer-events-none fixed inset-0 overflow-hidden" style={{ left: '224px' }}>
         <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[640px] h-[640px] rounded-full blur-[120px] opacity-[0.13]"
              style={{ background: 'radial-gradient(circle, var(--odb-accent), transparent 70%)' }} />
       </div>
-
-      {/* Top nav — скляний */}
-      <header className="odb-glass sticky top-0 z-20 flex items-center justify-between px-6 py-3 border-b"
-              style={{ borderColor: 'var(--odb-border-soft)' }}>
-        <div className="flex items-center gap-2.5">
-          <span className="text-[var(--odb-accent-hi)]"><Icon name="shield" size={22} /></span>
-          <span className="font-bold text-sm text-white tracking-wide">ODB</span>
-          <span className="text-[var(--odb-text-faint)] text-xs hidden sm:block">Intelligence Platform</span>
-        </div>
-        <nav className="flex items-center gap-1">
-          <button onClick={() => router.push('/persons')}
-            className="px-3 py-1.5 text-xs text-[var(--odb-text-dim)] hover:text-white hover:bg-[var(--odb-surface-3)] rounded-lg transition">
-            Картотека
-          </button>
-          <button onClick={() => router.push('/incidents')}
-            className="px-3 py-1.5 text-xs text-[var(--odb-text-dim)] hover:text-white hover:bg-[var(--odb-surface-3)] rounded-lg transition">
-            Справи
-          </button>
-          <button onClick={() => router.push('/settings')}
-            className="p-1.5 text-[var(--odb-text-dim)] hover:text-white hover:bg-[var(--odb-surface-3)] rounded-lg transition">
-            <Icon name="settings" size={16} />
-          </button>
-          <button onClick={async () => { await supabase.auth.signOut(); router.push('/login') }}
-            className="p-1.5 text-[var(--odb-danger)] hover:bg-red-950/40 rounded-lg transition ml-1">
-            <Icon name="logout" size={16} />
-          </button>
-        </nav>
-      </header>
 
       {/* Main */}
       <main className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 pb-16 pt-10">
@@ -252,6 +228,8 @@ export default function Dashboard() {
               style={{ borderColor: 'var(--odb-border-soft)' }}>
         ODB Intelligence Platform · OSINT &amp; War Crimes Documentation
       </footer>
+
+      </div>
     </div>
   )
 }
