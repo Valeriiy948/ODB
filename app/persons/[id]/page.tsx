@@ -149,6 +149,11 @@ export default function PersonDetailPage() {
               style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)', color: 'var(--odb-text-dim)' }}>
               📄 Звіт PDF
             </a>
+            <a href={`/api/persons/${s.personId}/dossier`}
+              className="px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1.5"
+              style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)', color: 'var(--odb-text-dim)' }}>
+              📝 DOCX
+            </a>
             <button onClick={() => s.runOsint()} disabled={s.osintLoading}
               className="px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 disabled:opacity-60"
               style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)', color: '#fff', boxShadow: '0 0 12px rgba(124,58,237,0.25)' }}>
