@@ -57,6 +57,7 @@ export default function Sidebar() {
     if (href === '/settings'       && pathname.startsWith('/settings'))       return true
     if (href === '/admin'          && pathname.startsWith('/admin'))          return true
     if (href === '/agent'          && pathname.startsWith('/agent'))          return true
+    if (href === '/investigations' && pathname.startsWith('/investigations')) return true
     return pathname === href
   }
 
@@ -78,6 +79,7 @@ export default function Sidebar() {
       title: t('РОЗВІДКА', 'INTELLIGENCE', 'РАЗВЕДКА'),
       items: [
         { icon: 'scan',     label: t('Авто-слідчий',     'Auto-Investigator','Авто-следователь'), href: '/agent' },
+        { icon: 'folder',   label: t('Розслідування',    'Investigations',  'Расследования'),    href: '/investigations' },
         { icon: 'users',    label: t('Картотека осіб',   'Persons DB',      'Картотека лиц'),    href: '/persons' },
         { icon: 'scale',    label: t('Справи',           'Cases',           'Дела'),             href: '/incidents' },
         { icon: 'phone',    label: t('Телефон / ІПН',    'Phone / ID',      'Телефон / ИНН'),    href: '/phone-search' },

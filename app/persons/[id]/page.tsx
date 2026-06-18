@@ -1,5 +1,6 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import Sidebar           from '../../components/Sidebar'
 import ConnectionsGraph  from '../../components/ConnectionsGraph'
 import EvidenceUploader  from '../../components/EvidenceUploader'
@@ -35,6 +36,40 @@ const TABS = [
 export default function PersonDetailPage() {
   const s = usePersonPage()
 
+  // ── Investigation modal state ─────────────────────────────────────────────
+  const [showInvModal, setShowInvModal] = useState(false)
+  const [invList, setInvList] = useState<{ id: string; title: string; person_ids: string[] }[]>([])
+  const [invLoading, setInvLoading] = useState(false)
+  const [invAdding, setInvAdding] = useState<string | null>(null)
+  const [invAdded, setInvAdded] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!showInvModal) return
+    setInvLoading(true)
+    fetch('/api/investigations?status=active')
+      .then(r => r.json())
+      .then(d => setInvList(d.data || []))
+      .catch(() => {})
+      .finally(() => setInvLoading(false))
+  }, [showInvModal])
+
+  async function addToInvestigation(invId: string) {
+    if (!s.personId || invAdding) return
+    setInvAdding(invId)
+    const inv = invList.find(i => i.id === invId)
+    if (!inv) { setInvAdding(null); return }
+    const updated = [...new Set([...(inv.person_ids || []), s.personId])]
+    await fetch(`/api/investigations/${invId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ person_ids: updated }),
+    })
+    setInvAdded(invId)
+    setInvList(prev => prev.map(i => i.id === invId ? { ...i, person_ids: updated } : i))
+    setInvAdding(null)
+    setTimeout(() => setInvAdded(null), 2000)
+  }
+
   // ── Loading / not found ───────────────────────────────────────────────────
   if (s.loading) return (
     <div className="min-h-screen flex" style={{ background: 'var(--odb-bg)' }}>
@@ -59,6 +94,7 @@ export default function PersonDetailPage() {
   const regHits = (s.regNazk?.found || 0) + (s.regMyrotvorets?.found || 0) + (s.regErb?.found || 0) + (s.regMvs?.total || 0) + (s.regSanctions?.total || 0)
 
   return (
+    <>
     <div className="min-h-screen flex" style={{ background: 'var(--odb-bg)', color: 'var(--odb-text)' }}>
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0">
@@ -101,6 +137,13 @@ export default function PersonDetailPage() {
                 {p.status}
               </span>
             )}
+            <button
+              onClick={() => setShowInvModal(true)}
+              className="px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1.5"
+              style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)', color: 'var(--odb-text-dim)' }}
+              title="Додати до розслідування">
+              📁 У справу
+            </button>
             <a href={`/api/persons/${s.personId}/report`} target="_blank" rel="noopener noreferrer"
               className="px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1.5"
               style={{ background: 'var(--odb-surface3)', border: '1px solid var(--odb-border)', color: 'var(--odb-text-dim)' }}>
@@ -305,5 +348,69 @@ export default function PersonDetailPage() {
         </div>
       </div>
     </div>
+
+    {/* ── Add to Investigation modal ──────────────────────────────────────── */}
+    {showInvModal && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        style={{ background: 'rgba(0,0,0,0.7)' }}
+        onClick={e => { if (e.target === e.currentTarget) setShowInvModal(false) }}>
+        <div className="w-full max-w-sm rounded-2xl p-5 border"
+          style={{ background: 'var(--odb-surface)', borderColor: 'var(--odb-border)' }}>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-bold">📁 Додати до розслідування</h2>
+            <button onClick={() => setShowInvModal(false)}
+              className="p-1 rounded-lg hover:bg-white/10 transition-colors"
+              style={{ color: 'var(--odb-text-faint)' }}>✕</button>
+          </div>
+          {invLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="w-6 h-6 rounded-full border-2 animate-spin"
+                style={{ borderColor: 'var(--odb-accent-hi)', borderTopColor: 'transparent' }} />
+            </div>
+          ) : invList.length === 0 ? (
+            <div className="text-center py-6">
+              <p className="text-sm mb-3" style={{ color: 'var(--odb-text-dim)' }}>Немає активних розслідувань</p>
+              <a href="/investigations"
+                className="inline-block px-4 py-2 rounded-lg text-sm font-medium"
+                style={{ background: 'var(--odb-accent-glow)', color: 'var(--odb-accent-hi)' }}>
+                Створити нове
+              </a>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {invList.map(inv => {
+                const alreadyIn = (inv.person_ids || []).includes(s.personId || '')
+                const isAdding = invAdding === inv.id
+                const wasAdded = invAdded === inv.id
+                return (
+                  <button
+                    key={inv.id}
+                    onClick={() => !alreadyIn && addToInvestigation(inv.id)}
+                    disabled={alreadyIn || isAdding}
+                    className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm border transition-all text-left"
+                    style={{
+                      background: alreadyIn ? 'var(--odb-surface-2)' : 'var(--odb-surface-2)',
+                      borderColor: wasAdded ? 'var(--odb-accent-lo)' : 'var(--odb-border-soft)',
+                      color: alreadyIn ? 'var(--odb-text-faint)' : 'var(--odb-text)',
+                      cursor: alreadyIn ? 'default' : 'pointer',
+                    }}>
+                    <span className="truncate">📁 {inv.title}</span>
+                    <span className="shrink-0 ml-2 text-xs">
+                      {isAdding ? '…' : wasAdded ? '✓ Додано' : alreadyIn ? 'Вже є' : '+ Додати'}
+                    </span>
+                  </button>
+                )
+              })}
+              <a href="/investigations"
+                className="block text-center text-xs mt-3 hover:underline"
+                style={{ color: 'var(--odb-accent-hi)' }}>
+                Відкрити всі розслідування →
+              </a>
+            </div>
+          )}
+        </div>
+      </div>
+    )}
+    </>
   )
 }
