@@ -75,6 +75,10 @@ const DATABASES = [
   { label: 'НАЗК/МВС',      sub: 'Реєстри UA',      dot: 'bg-green-400' },
   { label: 'Shodan',        sub: 'Мережа',          dot: 'bg-purple-400' },
   { label: 'Web',           sub: 'Інтернет',        dot: 'bg-emerald-400' },
+  { label: 'Bitcoin',       sub: 'BTC blockchain',  dot: 'bg-yellow-400' },
+  { label: 'Ethereum',      sub: 'ETH blockchain',  dot: 'bg-blue-400' },
+  { label: 'TRON',          sub: 'TRX + Tronscan',  dot: 'bg-red-400' },
+  { label: 'OFAC SDN',      sub: '780 крипто адрес',dot: 'bg-rose-400' },
 ]
 
 export default function Dashboard() {

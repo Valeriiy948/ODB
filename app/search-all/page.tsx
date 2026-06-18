@@ -340,6 +340,90 @@ function countHits(key: string, data: any): number {
   }
 }
 
+// ─── Next Steps Panel (rule-based AI suggestions) ────────────────────────────
+interface NextStep {
+  icon:  string
+  label: string
+  href:  string
+  color: string
+}
+
+function buildNextSteps(
+  query: string,
+  type: string,
+  sources: Record<string, { status: string; data: any }>,
+): NextStep[] {
+  const steps: NextStep[] = []
+  const extracted = extractPersonData(sources, query, type)
+
+  const odbHit       = sources.odb?.status       === 'done' && countHits('odb', sources.odb?.data) > 0
+  const sanctionsHit = sources.sanctions?.status === 'done' && countHits('sanctions', sources.sanctions?.data) > 0
+  const tgHit        = sources.telegram?.status  === 'done' && countHits('telegram', sources.telegram?.data) > 0
+
+  // Якщо в результатах є особа в Картотеці — відкрити профіль
+  if (odbHit) {
+    const personId = sources.odb?.data?.persons?.[0]?.id
+    if (personId)
+      steps.push({ icon: '👤', label: 'Відкрити профіль в Картотеці', href: `/persons/${personId}`, color: 'blue' })
+  }
+
+  // Знайдені телефони → пошук по кожному
+  const extraPhones = (extracted.all_phones || []).filter(p => p !== query).slice(0, 2)
+  for (const ph of extraPhones)
+    steps.push({ icon: '📱', label: `Пошукати ${ph}`, href: `/search-all?q=${encodeURIComponent(ph)}`, color: 'green' })
+
+  // Знайдений email → пошукати
+  if (extracted.email && extracted.email !== query)
+    steps.push({ icon: '✉️', label: `Пошукати ${extracted.email}`, href: `/search-all?q=${encodeURIComponent(extracted.email)}`, color: 'sky' })
+
+  // Telegram знайшов — пошукати username
+  if (tgHit && sources.telegram?.data?.result?.username) {
+    const tgUsername = sources.telegram.data.result.username
+    steps.push({ icon: '💬', label: `@${tgUsername} у Telegram`, href: `https://t.me/${tgUsername}`, color: 'sky' })
+  }
+
+  // Санкційне попадання → перевірити крипто
+  if (sanctionsHit)
+    steps.push({ icon: '💰', label: 'Перевірити криптогаманці на OFAC', href: `/crypto-intel`, color: 'orange' })
+
+  // Є ім'я — запропонувати фото-пошук
+  if (type === 'name' || (type !== 'phone' && type !== 'email' && extracted.name))
+    steps.push({ icon: '🖼️', label: 'Пошук по фото (Google Lens)', href: `https://images.google.com/searchbyimage?q=${encodeURIComponent(query)}`, color: 'purple' })
+
+  // Є телефон але TG не знайшов — запропонувати прямий пошук в TG
+  if (type === 'phone' && !tgHit)
+    steps.push({ icon: '💬', label: 'Пошукати у GetContact', href: `https://getcontact.com/en/search/?phone=${encodeURIComponent(query)}`, color: 'sky' })
+
+  return steps.slice(0, 5)
+}
+
+function NextStepsPanel({ query, type, sources }: {
+  query:   string
+  type:    string
+  sources: Record<string, { status: string; data: any }>
+}) {
+  const steps = buildNextSteps(query, type, sources)
+  if (!steps.length) return null
+
+  return (
+    <div className="mb-5 p-4 rounded-xl" style={{ background: '#0c1827', border: '1px solid #1e3a5f' }}>
+      <p className="text-xs font-semibold text-blue-400 mb-3 flex items-center gap-1.5">
+        🤖 Наступні кроки
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {steps.map((s, i) => (
+          <a key={i} href={s.href} target={s.href.startsWith('http') ? '_blank' : '_self'} rel="noopener noreferrer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-white transition hover:brightness-110"
+            style={{ background: '#1e293b', border: '1px solid #334155' }}>
+            <span>{s.icon}</span>
+            <span>{s.label}</span>
+          </a>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ─── Category totals ──────────────────────────────────────────────────────────
 function categoryHits(
   cat: typeof CATEGORIES[0],
@@ -1748,6 +1832,11 @@ function SearchAllPage() {
                 <span className="text-xs text-gray-600">{(searchDuration / 1000).toFixed(1)}с</span>
               )}
             </div>
+          )}
+
+          {/* Next Steps */}
+          {searched && !running && totalHits > 0 && (
+            <NextStepsPanel query={query} type={detectedType} sources={sources} />
           )}
 
           {/* Category cards */}
