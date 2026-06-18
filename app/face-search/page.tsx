@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Sidebar from '../components/Sidebar'
 import Icon from '../components/Icon'
@@ -8,7 +8,7 @@ import type { FaceResult } from '../api/face-search/route'
 
 type State = 'idle' | 'loading' | 'done' | 'error'
 
-export default function FaceSearchPage() {
+function FaceSearchContent() {
   const searchParams = useSearchParams()
   const initialUrl = searchParams.get('url') || ''
 
@@ -284,5 +284,21 @@ export default function FaceSearchPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function FaceSearchPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex" style={{ background: 'var(--odb-bg)' }}>
+        <Sidebar />
+        <div className="flex-1 flex items-center justify-center">
+          <div className="w-8 h-8 rounded-full border-2 animate-spin"
+            style={{ borderColor: 'var(--odb-accent-hi)', borderTopColor: 'transparent' }} />
+        </div>
+      </div>
+    }>
+      <FaceSearchContent />
+    </Suspense>
   )
 }
