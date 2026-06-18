@@ -393,6 +393,41 @@ function formatFlowSummary(flows: Map<string, AssetFlow>): string {
   return lines.join('\n')
 }
 
+// ─── Tronscan Entity Labels ───────────────────────────────────────────────────
+interface TronscanAccount {
+  name?: string
+  tag1?: string
+}
+
+function isTronAddress(addr: string): boolean {
+  return addr.startsWith('T') && addr.length === 34
+}
+
+async function fetchTronscanLabels(addresses: string[]): Promise<Map<string, string>> {
+  const unique = [...new Set(addresses.filter(Boolean).filter(isTronAddress))]
+  if (!unique.length) return new Map()
+
+  const results = new Map<string, string>()
+  for (let i = 0; i < unique.length; i += 5) {
+    await Promise.all(unique.slice(i, i + 5).map(async addr => {
+      try {
+        const res = await fetch(
+          `https://apilist.tronscanapi.com/api/accountv2?address=${addr}`,
+          {
+            headers: { 'User-Agent': 'ODB-Crypto-Intel/3.0', 'Accept': 'application/json' },
+            signal:  AbortSignal.timeout(3_000),
+          },
+        )
+        if (!res.ok) return
+        const data = await res.json() as TronscanAccount
+        const label = data.name?.trim() || data.tag1?.trim()
+        if (label && label !== addr) results.set(addr, label)
+      } catch { /* graceful degradation */ }
+    }))
+  }
+  return results
+}
+
 // ─── Cross-referencing ────────────────────────────────────────────────────────
 interface WalletRecord {
   address:          string
@@ -1024,12 +1059,20 @@ export async function GET(req: NextRequest) {
       } else {
         log.push(`▶ Unsent: ${unsent.length} txs — Intelligence Engine v3`)
 
-        // ── Cross-referencing + OFAC screening (паралельно) ──────────────
-        const addresses              = unsent.flatMap(t => [t.from_address, t.to_address]).filter(Boolean) as string[]
-        const [walletMap, ofacMap]   = await Promise.all([
+        // ── Cross-referencing + OFAC screening + Tronscan labels (паралельно) ─
+        const addresses = unsent.flatMap(t => [t.from_address, t.to_address]).filter(Boolean) as string[]
+        const tronUnknownAddrs = (unsent as StoredWhaleTx[]).flatMap(t =>
+          t.blockchain !== 'tron' ? [] : [
+            ...(t.from_address && isUnknown(t.from_owner) ? [t.from_address] : []),
+            ...(t.to_address   && isUnknown(t.to_owner)   ? [t.to_address]   : []),
+          ]
+        )
+        const [walletMap, ofacMap, tronscanMap] = await Promise.all([
           crossRefAddresses(addresses),
           screenOFAC(addresses),
+          fetchTronscanLabels(tronUnknownAddrs),
         ])
+        if (tronscanMap.size > 0) log.push(`▶ Tronscan: ${tronscanMap.size} TRON адрес деанонімізовано`)
 
         // ── Structuring + Transit detection ───────────────────────────────
         const structuringMap = detectStructuring(unsent as StoredWhaleTx[])
@@ -1055,17 +1098,27 @@ export async function GET(req: NextRequest) {
           const transitInfo   = transitMap.get(rawTx.whale_alert_id) ?? null
           const isTransit     = !!transitInfo
           const transitAddr   = transitInfo?.transit_addr ?? ''
-          const smartMoney    = isSmartMoney(rawTx)
+
+          // Entity Attribution: збагачуємо невідомих власників через Tronscan (TRON only)
+          const tFrom = rawTx.blockchain === 'tron' && rawTx.from_address && isUnknown(rawTx.from_owner)
+            ? tronscanMap.get(rawTx.from_address) : null
+          const tTo   = rawTx.blockchain === 'tron' && rawTx.to_address   && isUnknown(rawTx.to_owner)
+            ? tronscanMap.get(rawTx.to_address) : null
+          const tx = (tFrom || tTo)
+            ? { ...rawTx, from_owner: tFrom ?? rawTx.from_owner, to_owner: tTo ?? rawTx.to_owner }
+            : rawTx as StoredWhaleTx
+
+          const smartMoney = isSmartMoney(tx)
 
           let seenBefore = 0
-          if (isStructuring || isTransit || (isUnknown(rawTx.from_owner) && isUnknown(rawTx.to_owner))) {
+          if (isStructuring || isTransit || (isUnknown(tx.from_owner) && isUnknown(tx.to_owner))) {
             const checkAddr = rawTx.from_address || rawTx.to_address
             if (checkAddr) seenBefore = await getAddressSeen(checkAddr)
           }
 
           const partialIntel = { is_structuring: isStructuring, is_smart_money: smartMoney, is_transit: isTransit }
           const intel: TxIntel = {
-            tx:             rawTx,
+            tx,
             is_sanctioned:  isSanctioned,
             sanction_label: sanctionLabel,
             ofac_hit:       ofacHit,
@@ -1079,8 +1132,8 @@ export async function GET(req: NextRequest) {
             risk_score:     0,
             signal:         { direction: 'NEUTRAL', confidence: 'LOW', reason: '' },
           }
-          intel.risk_score = calcRiskScore(rawTx, intel)
-          intel.signal     = classifySignal(rawTx, partialIntel)
+          intel.risk_score = calcRiskScore(tx, intel)
+          intel.signal     = classifySignal(tx, partialIntel)
           intels.push(intel)
         }
 
