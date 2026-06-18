@@ -19,6 +19,7 @@ export async function GET(request: NextRequest) {
   const ipn   = searchParams.get('ipn')?.trim()
   const status = searchParams.get('status')
   const threat = searchParams.get('threat')
+  const ids   = searchParams.get('ids')
 
   const filter = searchParams.get('filter')
 
@@ -29,6 +30,20 @@ export async function GET(request: NextRequest) {
       'id, name_ukr, name_rus, name_eng, name, dob, rank, unit, unit_num, photo_url, threat_level, threat_score, status, verified, myrotvorets_url, last_full_osint',
       { count: 'estimated' }
     )
+
+  // Пошук по списку ID (для Investigation detail page)
+  if (ids) {
+    const idList = ids.split(',').map(s => s.trim()).filter(Boolean).slice(0, 100)
+    if (idList.length) {
+      const { data, error } = await supabase
+        .from('persons')
+        .select('id, name_ukr, name_rus, name_eng, name, photo_url, threat_level, threat_score')
+        .in('id', idList)
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ data: data || [], total: (data || []).length })
+    }
+    return NextResponse.json({ data: [], total: 0 })
+  }
 
   // Пошук по телефону — phones is text[], use array contains (@>) or cs operator
   if (phone) {
