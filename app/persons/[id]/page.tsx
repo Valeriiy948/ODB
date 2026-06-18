@@ -15,10 +15,12 @@ import { RegistriesTab }       from './tabs/RegistriesTab'
 import { CryptoWalletsTab }    from './tabs/CryptoWalletsTab'
 import { OverviewTab }         from './tabs/OverviewTab'
 import { OsintTab }            from './tabs/OsintTab'
+import GraphTab               from './tabs/GraphTab'
 
 // ─── Tab config ───────────────────────────────────────────────────────────────
 const TABS = [
   { id: 'overview',     icon: '📋', label: 'Огляд' },
+  { id: 'graph',        icon: '🕸️', label: 'Граф' },
   { id: 'connections',  icon: '🔗', label: "Зв'язки" },
   { id: 'incidents',    icon: '⚖️', label: 'Злочини' },
   { id: 'registries',   icon: '🏛️', label: 'Реєстри' },
@@ -221,6 +223,15 @@ export default function PersonDetailPage() {
 
           {s.activeTab === 'overview' && (
             <OverviewTab state={s} />
+          )}
+
+          {s.activeTab === 'graph' && (
+            <GraphTab
+              person={s.person}
+              personId={s.personId}
+              incidents={s.incidents}
+              onNavigate={href => window.location.href = href}
+            />
           )}
 
           {s.activeTab === 'connections' && (
