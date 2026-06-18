@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
 
     const uploadRes = await fetch(`${FACECHECK_BASE}/api/upload_pic`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${TOKEN}` },
+      headers: { Authorization: TOKEN },
       body: uploadForm,
       signal: AbortSignal.timeout(15_000),
     })
@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
       const searchRes = await fetch(`${FACECHECK_BASE}/api/search`, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${TOKEN}`,
+          Authorization: TOKEN,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ id_search: idSearch, demo: DEMO, status_only: attempt < maxAttempts - 1 }),
