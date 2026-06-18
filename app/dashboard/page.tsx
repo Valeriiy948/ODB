@@ -13,6 +13,13 @@ function detectType(q: string): string {
   if (/^\+?\d{10,15}$/.test(clean)) return 'phone'
   if (/@/.test(q))             return 'email'
   if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(q)) return 'ip'
+  // Крипто — перед domain/username щоб уникнути хибних спрацювань
+  if (/^0x[0-9a-fA-F]{40}$/.test(q))                return 'crypto_eth'
+  if (/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(q))        return 'crypto_tron'
+  if (/^(1|3)[1-9A-HJ-NP-Za-km-z]{25,33}$/.test(q)) return 'crypto_btc'
+  if (/^bc1[0-9a-z]{6,87}$/i.test(q))               return 'crypto_btc'
+  if (/^r[1-9A-HJ-NP-Za-km-z]{24,33}$/.test(q))     return 'crypto_xrp'
+  if (/^[0-9a-fA-F]{64}$/.test(q))                  return 'crypto_tx'
   if (/^[a-z0-9][a-z0-9\-]*\.[a-z]{2,}/i.test(q) && !q.includes(' ')) return 'domain'
   if (/^[a-z0-9_\.]{3,25}$/i.test(q) && !q.includes(' ')) return 'username'
   return 'name'
@@ -24,19 +31,26 @@ const TYPE_HINT: Record<string, { label: string; color: string }> = {
   inn:      { label: 'ІПН',       color: 'text-[var(--odb-warn)]' },
   snils:    { label: 'СНІЛС',     color: 'text-[var(--odb-warn)]' },
   edrpou:   { label: 'ЄДРПОУ',    color: 'text-[var(--odb-info)]' },
-  ip:       { label: 'IP адреса', color: 'text-purple-400' },
-  domain:   { label: 'Домен',     color: 'text-purple-300' },
-  username: { label: 'Username',  color: 'text-orange-400' },
-  name:     { label: "ПІБ / Ім'я",color: 'text-[var(--odb-text-dim)]' },
+  ip:          { label: 'IP адреса',   color: 'text-purple-400' },
+  domain:      { label: 'Домен',       color: 'text-purple-300' },
+  username:    { label: 'Username',    color: 'text-orange-400' },
+  name:        { label: "ПІБ / Ім'я", color: 'text-[var(--odb-text-dim)]' },
+  crypto_eth:  { label: '⟠ ETH',      color: 'text-blue-400' },
+  crypto_tron: { label: '◈ TRON',     color: 'text-red-400' },
+  crypto_btc:  { label: '₿ BTC',      color: 'text-yellow-400' },
+  crypto_xrp:  { label: '✕ XRP',      color: 'text-sky-400' },
+  crypto_tx:   { label: '# TX Hash',  color: 'text-violet-400' },
 }
 
 const EXAMPLES = [
-  { label: '+380501234567', hint: 'Телефон' },
-  { label: 'Іванов Іван', hint: 'ПІБ' },
-  { label: 'ivanov_ivan', hint: 'Username' },
-  { label: 'ivan@gmail.com', hint: 'Email' },
-  { label: '14223150', hint: 'ЄДРПОУ' },
-  { label: '185.87.152.1', hint: 'IP' },
+  { label: '+380501234567',                           hint: 'Телефон' },
+  { label: 'Іванов Іван',                             hint: 'ПІБ' },
+  { label: 'ivanov_ivan',                             hint: 'Username' },
+  { label: 'ivan@gmail.com',                          hint: 'Email' },
+  { label: '14223150',                                hint: 'ЄДРПОУ' },
+  { label: '185.87.152.1',                            hint: 'IP' },
+  { label: 'TJCTzdEMnYuMnqaE9pHMVrFkFfB3Yyxh9T',    hint: 'TRON' },
+  { label: '0x742d35Cc6634C0532925a3b8D4C9b2A4d6f8', hint: 'ETH' },
 ]
 
 const QUICK_LINKS: { icon: IconName; label: string; desc: string; href: string }[] = [
@@ -81,7 +95,10 @@ export default function Dashboard() {
   function handleSearch(q?: string) {
     const sq = (q ?? query).trim()
     if (!sq) return
-    router.push(`/search-all?q=${encodeURIComponent(sq)}`)
+    if (detectType(sq).startsWith('crypto_'))
+      router.push(`/crypto-intel?address=${encodeURIComponent(sq)}`)
+    else
+      router.push(`/search-all?q=${encodeURIComponent(sq)}`)
   }
 
   return (
