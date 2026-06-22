@@ -58,10 +58,8 @@ export async function GET(request: NextRequest) {
   else if (ipn) {
     query = query.or(`ipn.eq.${ipn},ipn.ilike.%${ipn}%`)
   }
-  // Пошук по ПІБ — use trigram index on name (unified field) for speed
-  // OR across multiple columns bypasses indexes; name field is the canonical search field
   else if (q) {
-    query = query.ilike('name', `%${q}%`)
+    query = query.or(`name_ukr.ilike.%${q}%,name_rus.ilike.%${q}%,name.ilike.%${q}%`)
   }
 
   if (status) query = query.eq('status', status)
