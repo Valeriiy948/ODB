@@ -193,6 +193,14 @@ function FaceSearchContent() {
             <div className="rounded-xl p-4 border" style={{ background: 'rgba(239,68,68,0.1)', borderColor: 'rgba(239,68,68,0.3)' }}>
               <p className="text-sm font-medium" style={{ color: '#ef4444' }}>Помилка</p>
               <p className="text-xs mt-1" style={{ color: 'var(--odb-text-dim)' }}>{error}</p>
+              {error.toLowerCase().includes('credits') && (
+                <div className="mt-3 p-3 rounded-lg text-xs" style={{ background: 'var(--odb-surface-2)', color: 'var(--odb-text-dim)' }}>
+                  <p className="font-semibold mb-1" style={{ color: '#f59e0b' }}>💳 Потрібно поповнити баланс</p>
+                  <p>API підключено і працює — кредити закінчились.</p>
+                  <p className="mt-1">Зайди на <strong>facecheck.id → Account → Buy Credits</strong></p>
+                  <p className="mt-1">$10 = ~33 пошуки · $30 = ~100 пошуків · $0.30 за пошук</p>
+                </div>
+              )}
               {error.includes('FACECHECK_API_TOKEN') && (
                 <div className="mt-3 p-3 rounded-lg text-xs" style={{ background: 'var(--odb-surface-2)', color: 'var(--odb-text-dim)' }}>
                   <p className="font-semibold mb-1" style={{ color: 'var(--odb-text)' }}>Як налаштувати:</p>
