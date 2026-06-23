@@ -58,7 +58,8 @@ export default function Sidebar() {
     if (href === '/admin'          && pathname.startsWith('/admin'))          return true
     if (href === '/agent'          && pathname.startsWith('/agent'))          return true
     if (href === '/investigations' && pathname.startsWith('/investigations')) return true
-    if (href === '/face-search'    && pathname.startsWith('/face-search'))    return true
+    if (href === '/face-search'         && pathname.startsWith('/face-search'))         return true
+    if (href === '/admin/whitebit-intel' && pathname.startsWith('/admin/whitebit-intel')) return true
     return pathname === href
   }
 
@@ -106,6 +107,7 @@ export default function Sidebar() {
         { icon: 'tools',    label: t('Інструменти',  'Tools',    'Инструменты'),href: '/admin/tools' },
         { icon: 'network',  label: t('Стан джерел',  'Sources',  'Источники'),  href: '/admin/source-health' },
         { icon: 'alert',   label: t('Whale Alert',  'Whale Alert','Whale Alert'), href: '/admin/whale-alert' },
+        { icon: 'bitcoin', label: t('WB Intelligence','WB Intel','WB Intel'),    href: '/admin/whitebit-intel' },
       ],
     },
   ]
