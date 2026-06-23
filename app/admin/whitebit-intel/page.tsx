@@ -70,11 +70,9 @@ export default function WhiteBitIntelPage() {
   // ─── Завантаження тікерів ─────────────────────────────────────────────────
   const loadTickers = useCallback(async () => {
     try {
-      const res = await fetch('https://whitebit.com/api/v4/public/ticker')
-      const all = await res.json() as Record<string, Ticker>
-      const filtered: Record<string, Ticker> = {}
-      WATCH_MARKETS.forEach(m => { if (all[m]) filtered[m] = all[m] })
-      setTickers(filtered)
+      const res = await fetch('/api/whitebit-intel/tickers')
+      const data = await res.json() as Record<string, Ticker>
+      setTickers(data)
     } catch {}
   }, [])
 
