@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/monitor",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/whitebit-brief",
+      "schedule": "0 7 * * *"
     }
   ]
 }
