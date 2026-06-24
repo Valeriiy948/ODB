@@ -19,9 +19,8 @@ export async function extractText(buffer: Buffer, mimeType: string): Promise<str
 }
 
 async function parsePDF(buf: Buffer): Promise<string> {
-  // Use internal module directly — avoids serverless filesystem error on init
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const pdfParse = require('pdf-parse/lib/pdf-parse.js') as (buf: Buffer, opts?: { max?: number }) => Promise<{ text: string }>
+  const pdfParse = require('pdf-parse') as (buf: Buffer, opts?: { max?: number }) => Promise<{ text: string }>
   const data = await pdfParse(buf, { max: 0 })
   return data.text?.replace(/\r\n/g, '\n').trim() ?? ''
 }

@@ -1,13 +1,13 @@
 import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
-  // Збільшуємо ліміт для завантаження довідок (PDF/DOCX до 50 МБ)
   experimental: {
     serverActions: {
       bodySizeLimit: '52mb',
     },
   },
-  // Turbopack — дефолт у Next.js 16 (webpack не потрібен)
+  // pdf-parse needs Node.js filesystem — must run as external package in serverless
+  serverExternalPackages: ['pdf-parse'],
   turbopack: {},
 }
 
