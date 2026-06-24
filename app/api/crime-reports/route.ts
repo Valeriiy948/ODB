@@ -258,7 +258,48 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: insertErr?.message ?? 'Insert failed' }, { status: 500 })
   }
 
-  // ── 7. Telegram: watchlist hits ───────────────────────────────────────────
+  // ── 7. Авто-додавання осіб з NER до таблиці persons ─────────────────────
+  if (entities.names.length > 0) {
+    for (const nameFound of entities.names.slice(0, 20)) { // max 20 імен
+      try {
+        // Шукаємо чи вже є така особа
+        const { data: existing } = await supabase
+          .from('persons')
+          .select('id')
+          .or(`name.ilike.${nameFound},name_ukr.ilike.${nameFound},name_rus.ilike.${nameFound}`)
+          .limit(1)
+          .maybeSingle()
+
+        let personId = existing?.id
+        if (!personId) {
+          // Створюємо нову картку особи
+          const { data: newPerson } = await supabase
+            .from('persons')
+            .insert({
+              name:         nameFound,
+              name_ukr:     nameFound,
+              status:       'з довідки',
+              verified:     false,
+              sources:      [`crime_report:${report.id}`],
+              description:  `Автоматично додано з довідки: ${title}`,
+            })
+            .select('id')
+            .single()
+          personId = newPerson?.id
+        }
+
+        if (personId) {
+          await supabase.from('crime_report_persons').upsert({
+            crime_report_id: report.id,
+            person_id:       personId,
+            name_found:      nameFound,
+          }, { onConflict: 'crime_report_id,person_id' })
+        }
+      } catch { /* не блокуємо основний флоу */ }
+    }
+  }
+
+  // ── 8. Telegram: watchlist hits ───────────────────────────────────────────
   if (watchlistHits.length > 0) {
     const hitLines = watchlistHits
       .map(h => `🔴 <b>${h.entity_type.toUpperCase()}</b>: <code>${h.value}</code> — ${h.label ?? ''} [${h.priority.toUpperCase()}]`)

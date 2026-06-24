@@ -294,6 +294,7 @@ export default function PersonsPage() {
   const [allLoading, setAllLoading] = useState(true)
   const [importingUrl, setImportingUrl] = useState<string | null>(null)
   const [importSuccess, setImportSuccess] = useState<string | null>(null)
+  const [crimeReports, setCrimeReports] = useState<Array<{id:string;title:string;erdr_number:string|null;location:string|null;incident_date:string|null;entities:{names:string[]}}>>([])
   const [tgResults, setTgResults] = useState<TgLeakResult[]>([])
   const [tgLoading, setTgLoading] = useState(false)
   const [tgCreating, setTgCreating] = useState(false)
@@ -377,11 +378,19 @@ export default function PersonsPage() {
 
     setLoading(true)
     setSearchData(null)
+    setCrimeReports([])
 
     try {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`)
-      const data: SearchResponse = await res.json()
+      const [searchRes, crRes] = await Promise.all([
+        fetch(`/api/search?q=${encodeURIComponent(q)}`),
+        fetch(`/api/crime-reports?q=${encodeURIComponent(q)}&limit=5`),
+      ])
+      const data: SearchResponse = await searchRes.json()
       setSearchData(data)
+      if (crRes.ok) {
+        const crData = await crRes.json()
+        setCrimeReports(crData.data ?? [])
+      }
     } catch {}
 
     setLoading(false)
@@ -755,6 +764,43 @@ export default function PersonsPage() {
                     Показано {localResults.length} з {localTotal.toLocaleString()} • Уточніть запит
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* ── Згадки в довідках ─────────────────────────────────────── */}
+            {!loading && crimeReports.length > 0 && (
+              <div className="border-t" style={{ borderColor: 'var(--odb-border-soft)' }}>
+                <div className="px-5 py-3 text-xs font-medium uppercase tracking-wide flex items-center gap-2"
+                     style={{ color: 'var(--odb-accent-hi)', background: 'rgba(99,102,241,0.05)' }}>
+                  <span>📂</span>
+                  <span>Згадки в довідках по злочинах ({crimeReports.length})</span>
+                </div>
+                {crimeReports.map(r => (
+                  <a key={r.id} href={`/crime-reports/${r.id}`}
+                     className="flex items-center gap-4 px-5 py-3 border-b transition-all hover:bg-white/5 cursor-pointer"
+                     style={{ borderColor: 'var(--odb-border-soft)' }}>
+                    <span className="text-xl shrink-0">📄</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-white truncate">{r.title}</p>
+                      <div className="flex gap-3 mt-0.5 text-xs" style={{ color: 'var(--odb-text-faint)' }}>
+                        {r.erdr_number && <span className="font-mono" style={{ color: 'var(--odb-accent-hi)' }}>ЄРДР: {r.erdr_number}</span>}
+                        {r.location    && <span>{r.location}</span>}
+                        {r.incident_date && <span>{new Date(r.incident_date).toLocaleDateString('uk-UA')}</span>}
+                      </div>
+                      {r.entities?.names?.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {r.entities.names.slice(0, 4).map((n, i) => (
+                            <span key={i} className="text-xs px-1.5 py-0.5 rounded"
+                                  style={{ background: 'rgba(168,85,247,0.15)', color: '#a855f7' }}>
+                              {n}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <span className="text-xs shrink-0" style={{ color: 'var(--odb-text-faint)' }}>→</span>
+                  </a>
+                ))}
               </div>
             )}
 
