@@ -88,6 +88,7 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = req.nextUrl
   const q        = searchParams.get('q') ?? ''
+  const personName = searchParams.get('person_name') ?? ''
   const riskMin  = parseInt(searchParams.get('risk_min') ?? '0')
   const limit    = Math.min(parseInt(searchParams.get('limit')  ?? '30'), 100)
   const offset   = parseInt(searchParams.get('offset') ?? '0')
@@ -100,6 +101,10 @@ export async function GET(req: NextRequest) {
 
   if (q) {
     query = query.textSearch('search_vector', q, { type: 'websearch' })
+  }
+  if (personName) {
+    // Шукаємо в extracted_text (через FTS) або в entities->names (GIN)
+    query = query.contains('entities', { names: [personName] })
   }
   if (riskMin > 0) {
     query = query.gte('crypto_risk_score', riskMin)

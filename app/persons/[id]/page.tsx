@@ -24,6 +24,7 @@ const TABS = [
   { id: 'graph',        icon: '🕸️', label: 'Граф' },
   { id: 'connections',  icon: '🔗', label: "Зв'язки" },
   { id: 'incidents',    icon: '⚖️', label: 'Злочини' },
+  { id: 'crime_reports',icon: '📂', label: 'Довідки' },
   { id: 'registries',   icon: '🏛️', label: 'Реєстри' },
   { id: 'media',        icon: '🎬', label: 'Медіа' },
   { id: 'documents',    icon: '📁', label: 'Документи' },
@@ -349,6 +350,10 @@ export default function PersonDetailPage() {
             <OsintTab state={s} />
           )}
 
+          {s.activeTab === 'crime_reports' && p && (
+            <CrimeReportsTab personName={p.name || p.name_ukr || p.name_rus || ''} />
+          )}
+
           {s.activeTab === 'notes' && (
             <NotesTab
               notes={p.notes}
@@ -424,5 +429,115 @@ export default function PersonDetailPage() {
       </div>
     )}
     </>
+  )
+}
+
+// ── CrimeReportsTab ───────────────────────────────────────────────────────────
+
+interface CrimeReport {
+  id: string; title: string; erdr_number: string|null; location: string|null
+  incident_date: string|null; created_at: string; crypto_risk_score: number
+  entities: { names: string[]; phones: string[]; crypto: unknown[]; vehicles: string[] }
+}
+
+function CrimeReportsTab({ personName }: { personName: string }) {
+  const [reports, setReports] = useState<CrimeReport[]>([])
+  const [loading, setLoading] = useState(true)
+  const [query,   setQuery]   = useState(personName)
+
+  useEffect(() => {
+    if (!personName) { setLoading(false); return }
+    search(personName)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [personName])
+
+  async function search(q: string) {
+    setLoading(true)
+    // спочатку точний збіг в entities.names, потім FTS по тексту
+    const [r1, r2] = await Promise.all([
+      fetch(`/api/crime-reports?person_name=${encodeURIComponent(q)}&limit=20`).then(r => r.json()),
+      fetch(`/api/crime-reports?q=${encodeURIComponent(q)}&limit=20`).then(r => r.json()),
+    ])
+    const all = [...(r1.data ?? []), ...(r2.data ?? [])]
+    const seen = new Set<string>()
+    setReports(all.filter(r => { if (seen.has(r.id)) return false; seen.add(r.id); return true }))
+    setLoading(false)
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <h3 className="text-sm font-semibold text-white">Згадки в довідках</h3>
+        {!loading && <span className="text-xs px-2 py-0.5 rounded-full"
+          style={{ background:'var(--odb-surface-2)', color:'var(--odb-text-faint)' }}>
+          {reports.length}
+        </span>}
+      </div>
+
+      {/* Search override */}
+      <div className="flex gap-2">
+        <input value={query} onChange={e => setQuery(e.target.value)}
+               onKeyDown={e => e.key === 'Enter' && search(query)}
+               placeholder="Пошук по довідках..."
+               className="flex-1 px-3 py-1.5 rounded-lg text-sm text-white border outline-none"
+               style={{ background:'var(--odb-surface-2)', borderColor:'var(--odb-border-soft)' }} />
+        <button onClick={() => search(query)}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium text-white"
+                style={{ background:'var(--odb-accent-hi)' }}>
+          Шукати
+        </button>
+      </div>
+
+      {loading ? (
+        <p className="text-sm" style={{ color:'var(--odb-text-faint)' }}>Пошук...</p>
+      ) : reports.length === 0 ? (
+        <div className="rounded-xl p-6 text-center" style={{ background:'var(--odb-surface)' }}>
+          <p className="text-sm" style={{ color:'var(--odb-text-faint)' }}>
+            Жодної довідки де згадується «{personName}»
+          </p>
+          <a href="/crime-reports" className="text-xs mt-2 inline-block hover:underline"
+             style={{ color:'var(--odb-accent-hi)' }}>
+            Відкрити реєстр довідок →
+          </a>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {reports.map(r => (
+            <a key={r.id} href={`/crime-reports/${r.id}`}
+               className="block rounded-xl border p-3 transition-all hover:border-opacity-80"
+               style={{ background:'var(--odb-surface)', borderColor:'var(--odb-border-soft)' }}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-white truncate">{r.title}</p>
+                  <div className="flex gap-3 mt-1 text-xs" style={{ color:'var(--odb-text-faint)' }}>
+                    {r.erdr_number && <span className="font-mono" style={{ color:'var(--odb-accent-hi)' }}>{r.erdr_number}</span>}
+                    {r.location    && <span>{r.location}</span>}
+                    {r.incident_date && <span>{new Date(r.incident_date).toLocaleDateString('uk-UA')}</span>}
+                  </div>
+                </div>
+                <span className="text-xs shrink-0 mt-0.5" style={{ color:'var(--odb-text-faint)' }}>
+                  {new Date(r.created_at).toLocaleDateString('uk-UA')}
+                </span>
+              </div>
+              {r.entities.names.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {r.entities.names.slice(0, 5).map((n, i) => (
+                    <span key={i} className="text-xs px-1.5 py-0.5 rounded"
+                          style={{ background:'rgba(168,85,247,0.15)', color:'#a855f7' }}>
+                      {n}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </a>
+          ))}
+          <a href={`/crime-reports?q=${encodeURIComponent(personName)}`}
+             className="block text-center text-xs py-2 hover:underline"
+             style={{ color:'var(--odb-accent-hi)' }}>
+            Пошук у всьому реєстрі →
+          </a>
+        </div>
+      )}
+    </div>
   )
 }
