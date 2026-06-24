@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter, useParams }             from 'next/navigation'
+import Sidebar from '../../components/Sidebar'
 
 interface CryptoAddr { address: string; type: string }
 
@@ -89,14 +90,20 @@ export default function CrimeReportDetailPage() {
   }
 
   if (loading) return (
-    <div className="flex-1 flex items-center justify-center" style={{ background: 'var(--odb-bg)' }}>
-      <div className="text-sm" style={{ color: 'var(--odb-text-faint)' }}>Завантаження...</div>
+    <div className="min-h-screen flex" style={{ background: 'var(--odb-bg)' }}>
+      <Sidebar />
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-sm" style={{ color: 'var(--odb-text-faint)' }}>Завантаження...</div>
+      </div>
     </div>
   )
 
   if (!report) return (
-    <div className="flex-1 flex items-center justify-center" style={{ background: 'var(--odb-bg)' }}>
-      <div className="text-white">Довідку не знайдено</div>
+    <div className="min-h-screen flex" style={{ background: 'var(--odb-bg)' }}>
+      <Sidebar />
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-white">Довідку не знайдено</div>
+      </div>
     </div>
   )
 
@@ -107,7 +114,9 @@ export default function CrimeReportDetailPage() {
     report.entities.crypto.length + report.entities.vehicles.length + report.entities.ipn.length
 
   return (
-    <div className="flex-1 flex flex-col min-h-0" style={{ background: 'var(--odb-bg)' }}>
+    <div className="min-h-screen flex" style={{ background: 'var(--odb-bg)' }}>
+    <Sidebar />
+    <div className="flex-1 flex flex-col min-h-0" style={{ minWidth: 0 }}>
 
       {/* Header */}
       <div className="px-6 py-4 border-b flex items-start justify-between gap-4 shrink-0"
@@ -369,6 +378,7 @@ export default function CrimeReportDetailPage() {
           )}
         </div>
       </div>
+    </div>
     </div>
   )
 }

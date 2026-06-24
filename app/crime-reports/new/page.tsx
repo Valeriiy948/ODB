@@ -3,6 +3,7 @@
 
 import { useState, useCallback, useId } from 'react'
 import { useRouter } from 'next/navigation'
+import Sidebar from '../../components/Sidebar'
 
 const ACCEPT = '.pdf,.docx,.xlsx'
 
@@ -124,6 +125,8 @@ export default function NewCrimeReportPage() {
   const parsingCount   = queue.filter(e => e.status === 'parsing').length
 
   return (
+    <div className="min-h-screen flex" style={{ background: 'var(--odb-bg)' }}>
+    <Sidebar />
     <div className="flex-1 p-6 max-w-3xl mx-auto space-y-5">
       {/* Header */}
       <div className="flex items-center gap-3">
@@ -206,6 +209,7 @@ export default function NewCrimeReportPage() {
           Після вибору файлів система автоматично заповнить ЄРДР, дату та місце події
         </div>
       )}
+    </div>
     </div>
   )
 }

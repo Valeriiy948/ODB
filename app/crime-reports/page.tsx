@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import Sidebar from '../components/Sidebar'
 
 interface CrimeReport {
   id:                string
@@ -73,7 +74,9 @@ export default function CrimeReportsPage() {
     r.entities.vehicles.length + r.entities.ipn.length
 
   return (
-    <div className="flex-1 p-6 space-y-6" style={{ background: 'var(--odb-bg)' }}>
+    <div className="min-h-screen flex" style={{ background: 'var(--odb-bg)' }}>
+    <Sidebar />
+    <div className="flex-1 p-6 space-y-6" style={{ minWidth: 0 }}>
 
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -239,6 +242,7 @@ export default function CrimeReportsPage() {
           </table>
         </div>
       )}
+    </div>
     </div>
   )
 }
