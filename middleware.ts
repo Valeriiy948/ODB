@@ -7,7 +7,8 @@ const PUBLIC_PATHS = [
   '/signals',                    // публічна сторінка сигналів (маркетинг)
   '/api/health',
   '/api/public/',                // публічні API (тізер для /signals)
-  '/api/whitebit-intel/tickers', // тікери потрібні /signals без авторизації
+  '/api/whitebit-intel/tickers',  // тікери потрібні /signals без авторизації
+  '/api/whitebit-intel/nbu-rate', // НБУ курс потрібен /signals без авторизації
   '/api/cron/',                  // cron jobs — перевіряють CRON_SECRET самостійно
   '/api/telegram/webhook',       // Telegram webhook — Telegram не має сесії
   '/_next',

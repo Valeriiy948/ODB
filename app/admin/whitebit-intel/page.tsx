@@ -82,15 +82,15 @@ export default function WhiteBitIntelPage() {
     try {
       const [tickRes, nbuRes] = await Promise.allSettled([
         fetch('/api/whitebit-intel/tickers'),
-        fetch('https://bank.gov.ua/NBUStatWeb/v1/statdirectory/exchange?valcode=usd&json'),
+        fetch('/api/whitebit-intel/nbu-rate'),
       ])
       if (tickRes.status === 'fulfilled' && tickRes.value.ok) {
         const data = await tickRes.value.json() as Record<string, Ticker>
         setTickers(data)
       }
       if (nbuRes.status === 'fulfilled' && nbuRes.value.ok) {
-        const nbuData = await nbuRes.value.json() as Array<{ rate: number }>
-        if (nbuData[0]?.rate) {
+        const nbuData = await nbuRes.value.json() as { rate: number }
+        if (nbuData?.rate) {
           setLastScan(prev => prev
             ? { ...prev, nbu_rate: nbuData[0].rate }
             : { ok: true, elapsed_ms: 0, markets_scanned: 0, snapshots_saved: 0, signals_found: 0, tg_sent: 0, uah_premium: null, nbu_rate: nbuData[0].rate }
