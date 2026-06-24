@@ -1,0 +1,243 @@
+// app/api/crime-reports/route.ts
+// GET  — список довідок з FTS-пошуком
+// POST — завантаження файлу + парсинг + NER + watchlist + AI summary + збереження
+
+import { NextRequest, NextResponse }       from 'next/server'
+import { createServerClient }              from '@supabase/ssr'
+import { cookies }                         from 'next/headers'
+import { createClient as createAdminClient } from '@supabase/supabase-js'
+import { extractText }                     from '@/lib/doc-parser'
+import { extractEntities, cryptoRiskScore } from '@/lib/ner'
+
+const SUPABASE_URL   = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const SUPABASE_ANON  = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const SERVICE_ROLE   = process.env.SUPABASE_SERVICE_ROLE_KEY!
+const TG_BOT_TOKEN   = process.env.TELEGRAM_BOT_TOKEN!
+const TG_CHAT_ID     = process.env.TELEGRAM_CHAT_ID!
+const ANTHROPIC_KEY  = process.env.ANTHROPIC_API_KEY
+
+const BUCKET = 'crime-reports'
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+async function serverClient() {
+  const cookieStore = await cookies()
+  return createServerClient(SUPABASE_URL, SUPABASE_ANON, {
+    cookies: {
+      getAll: () => cookieStore.getAll(),
+      setAll: (pairs) => pairs.forEach(({ name, value, options }) => {
+        try { cookieStore.set(name, value, options) } catch {}
+      }),
+    },
+  })
+}
+
+function adminClient() {
+  return createAdminClient(SUPABASE_URL, SERVICE_ROLE, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  })
+}
+
+async function tgSend(msg: string) {
+  if (!TG_BOT_TOKEN || !TG_CHAT_ID) return
+  await fetch(`https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage`, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ chat_id: TG_CHAT_ID, text: msg, parse_mode: 'HTML' }),
+  }).catch(() => {})
+}
+
+async function getAISummary(text: string): Promise<string | null> {
+  if (!ANTHROPIC_KEY || text.length < 200) return null
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method:  'POST',
+      headers: {
+        'Content-Type':    'application/json',
+        'x-api-key':       ANTHROPIC_KEY,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model:      'claude-haiku-4-5-20251001',
+        max_tokens: 450,
+        messages:   [{
+          role:    'user',
+          content: `Проаналізуй документ і відповідай ТІЛЬКИ JSON без markdown:
+{"summary":"2-3 речення про суть документу","facts":["факт1","факт2","факт3"],"threat":"LOW|MEDIUM|HIGH|CRITICAL","threat_reason":"чому такий рівень"}
+
+Документ (перші 4000 символів):
+${text.slice(0, 4000)}`,
+        }],
+      }),
+    })
+    const data = await res.json() as { content?: Array<{ text: string }> }
+    const raw  = data.content?.[0]?.text ?? ''
+    const parsed = JSON.parse(raw)
+    return `${parsed.summary}\n\nКлючові факти:\n${parsed.facts?.map((f: string) => `• ${f}`).join('\n') ?? ''}\n\nРівень загрози: ${parsed.threat} — ${parsed.threat_reason}`
+  } catch {
+    return null
+  }
+}
+
+// ── GET — list ────────────────────────────────────────────────────────────────
+
+export async function GET(req: NextRequest) {
+  const supabase = await serverClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { searchParams } = req.nextUrl
+  const q        = searchParams.get('q') ?? ''
+  const riskMin  = parseInt(searchParams.get('risk_min') ?? '0')
+  const limit    = Math.min(parseInt(searchParams.get('limit')  ?? '30'), 100)
+  const offset   = parseInt(searchParams.get('offset') ?? '0')
+
+  let query = supabase
+    .from('crime_reports')
+    .select('id,title,erdr_number,location,incident_date,file_type,crypto_risk_score,entities,tags,status,created_at,summary,watchlist_hits')
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1)
+
+  if (q) {
+    query = query.textSearch('search_vector', q, { type: 'websearch' })
+  }
+  if (riskMin > 0) {
+    query = query.gte('crypto_risk_score', riskMin)
+  }
+
+  const { data, error } = await query
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ data, count: data?.length ?? 0 })
+}
+
+// ── POST — upload + process ───────────────────────────────────────────────────
+
+export async function POST(req: NextRequest) {
+  const supabase = await serverClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const admin = adminClient()
+  const form  = await req.formData()
+
+  const file        = form.get('file') as File | null
+  const title       = (form.get('title')         as string) || 'Без назви'
+  const erdrNumber  = (form.get('erdr_number')   as string) || null
+  const location    = (form.get('location')      as string) || null
+  const incidentDate = (form.get('incident_date') as string) || null
+  const tagsRaw     = (form.get('tags')          as string) || ''
+  const tags        = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : []
+
+  // ── 1. Завантаження файлу ─────────────────────────────────────────────────
+  let fileUrl:  string | null = null
+  let fileName: string | null = null
+  let fileType: string | null = null
+  let fileSizeKb = 0
+  let extractedText = ''
+
+  if (file && file.size > 0) {
+    const arrayBuf = await file.arrayBuffer()
+    const buf      = Buffer.from(arrayBuf)
+    const ext      = file.name.split('.').pop()?.toLowerCase() ?? 'bin'
+    const path     = `${user.id}/${Date.now()}_${encodeURIComponent(file.name)}`
+
+    const { error: uploadErr } = await admin.storage
+      .from(BUCKET)
+      .upload(path, buf, { contentType: file.type, upsert: false })
+
+    if (uploadErr) {
+      return NextResponse.json({ error: `Storage upload failed: ${uploadErr.message}` }, { status: 500 })
+    }
+
+    fileUrl     = path
+    fileName    = file.name
+    fileType    = ext
+    fileSizeKb  = Math.round(file.size / 1024)
+
+    // ── 2. Витягування тексту ──────────────────────────────────────────────
+    extractedText = await extractText(buf, file.type)
+  }
+
+  // ── 3. NER ────────────────────────────────────────────────────────────────
+  const entities = extractEntities(extractedText)
+  const riskScore = cryptoRiskScore(entities)
+
+  // ── 4. AI Summary (Claude Haiku — async, не блокуємо) ─────────────────
+  const summary = await getAISummary(extractedText)
+
+  // ── 5. Watchlist check ────────────────────────────────────────────────────
+  const watchlistHits: Array<{ entity_type: string; value: string; label: string; priority: string }> = []
+
+  const allValues: Array<{ entity_type: string; value: string }> = [
+    ...entities.phones.map(v => ({ entity_type: 'phone', value: v })),
+    ...entities.crypto.map(c => ({ entity_type: 'crypto', value: c.address })),
+    ...entities.vehicles.map(v => ({ entity_type: 'vehicle', value: v })),
+    ...entities.ipn.map(v => ({ entity_type: 'ipn', value: v })),
+  ]
+
+  if (allValues.length > 0) {
+    const { data: hits } = await supabase
+      .from('watchlist')
+      .select('entity_type,value,label,priority')
+
+    if (hits) {
+      const hitSet = new Map(hits.map(h => [`${h.entity_type}:${h.value.toLowerCase()}`, h]))
+      for (const { entity_type, value } of allValues) {
+        const hit = hitSet.get(`${entity_type}:${value.toLowerCase()}`)
+        if (hit) watchlistHits.push(hit)
+      }
+    }
+  }
+
+  // ── 6. Зберігаємо в DB ───────────────────────────────────────────────────
+  const { data: report, error: insertErr } = await supabase
+    .from('crime_reports')
+    .insert({
+      title,
+      erdr_number:   erdrNumber,
+      location,
+      incident_date: incidentDate || null,
+      author_id:     user.id,
+      file_url:      fileUrl,
+      file_name:     fileName,
+      file_type:     fileType,
+      file_size_kb:  fileSizeKb,
+      extracted_text: extractedText.slice(0, 500_000), // ліміт 500k символів
+      summary,
+      entities,
+      crypto_risk_score: riskScore,
+      watchlist_hits: watchlistHits,
+      tags,
+    })
+    .select('id')
+    .single()
+
+  if (insertErr || !report) {
+    return NextResponse.json({ error: insertErr?.message ?? 'Insert failed' }, { status: 500 })
+  }
+
+  // ── 7. Telegram: watchlist hits ───────────────────────────────────────────
+  if (watchlistHits.length > 0) {
+    const hitLines = watchlistHits
+      .map(h => `🔴 <b>${h.entity_type.toUpperCase()}</b>: <code>${h.value}</code> — ${h.label ?? ''} [${h.priority.toUpperCase()}]`)
+      .join('\n')
+
+    await tgSend(
+      `🚨 <b>WATCHLIST ALERT — Crime Reports</b>\n` +
+      `📄 <b>${title}</b>\n` +
+      (erdrNumber ? `📋 ЄРДР: ${erdrNumber}\n` : '') +
+      `\nЗбіги зі списком спостереження:\n${hitLines}\n\n` +
+      `⚠️ Крипто-ризик: ${riskScore}/100\n` +
+      `🔗 /crime-reports/${report.id}`
+    )
+  }
+
+  return NextResponse.json({
+    id:        report.id,
+    entities,
+    risk_score: riskScore,
+    watchlist_hits: watchlistHits.length,
+    has_summary: !!summary,
+    text_length: extractedText.length,
+  }, { status: 201 })
+}
