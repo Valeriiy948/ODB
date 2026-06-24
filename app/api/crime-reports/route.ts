@@ -155,10 +155,28 @@ export async function POST(req: NextRequest) {
   let fileType: string | null = null
   let fileSizeKb = 0
   let extractedText = ''
+  let fileHash: string | null = null
 
   if (file && file.size > 0) {
     const arrayBuf = await file.arrayBuffer()
     const buf      = Buffer.from(arrayBuf)
+
+    // ── Дедублікація по хешу файлу ─────────────────────────────────────────
+    const hashBuf = await crypto.subtle.digest('SHA-256', arrayBuf)
+    fileHash = Buffer.from(hashBuf).toString('hex')
+    const { data: hashExisting } = await supabase
+      .from('crime_reports')
+      .select('id, title')
+      .eq('file_hash', fileHash)
+      .eq('author_id', user.id)
+      .maybeSingle()
+    if (hashExisting) {
+      return NextResponse.json(
+        { error: `Цей файл вже завантажено як «${hashExisting.title}»`, existing_id: hashExisting.id },
+        { status: 409 }
+      )
+    }
+
     const ext      = file.name.split('.').pop()?.toLowerCase() ?? 'bin'
     // Supabase Storage accepts only ASCII keys — use timestamp + extension only
     const safeName = `${Date.now()}.${ext}`
@@ -225,6 +243,7 @@ export async function POST(req: NextRequest) {
       file_name:     fileName,
       file_type:     fileType,
       file_size_kb:  fileSizeKb,
+      file_hash:     fileHash ?? null,
       extracted_text: extractedText.slice(0, 500_000), // ліміт 500k символів
       summary,
       entities,
