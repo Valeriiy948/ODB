@@ -93,26 +93,56 @@ export async function GET(req: NextRequest) {
   const limit    = Math.min(parseInt(searchParams.get('limit')  ?? '30'), 100)
   const offset   = parseInt(searchParams.get('offset') ?? '0')
 
-  let query = supabase
-    .from('crime_reports')
-    .select('id,title,erdr_number,location,incident_date,file_type,crypto_risk_score,entities,tags,status,created_at,summary,watchlist_hits')
-    .order('created_at', { ascending: false })
-    .range(offset, offset + limit - 1)
+  const baseSelect = 'id,title,erdr_number,location,incident_date,file_type,crypto_risk_score,entities,tags,status,created_at,summary,watchlist_hits'
+
+  let results: any[] = []
 
   if (q) {
-    query = query.textSearch('search_vector', q, { type: 'websearch' })
-  }
-  if (personName) {
-    // Шукаємо в extracted_text (через FTS) або в entities->names (GIN)
-    query = query.contains('entities', { names: [personName] })
-  }
-  if (riskMin > 0) {
-    query = query.gte('crypto_risk_score', riskMin)
+    // Run FTS + ILIKE in parallel, merge unique results
+    const ftsQuery = supabase
+      .from('crime_reports')
+      .select(baseSelect)
+      .eq('author_id', user.id)
+      .textSearch('search_vector', q, { type: 'websearch', config: 'simple' })
+      .order('created_at', { ascending: false })
+      .range(0, limit - 1)
+
+    // ILIKE fallback: title, ЄРДР, location — catches cases where extracted_text was empty
+    const ilikeFilter = [
+      `title.ilike.%${q}%`,
+      `erdr_number.ilike.%${q}%`,
+      `location.ilike.%${q}%`,
+    ].join(',')
+    const ilikeQuery = supabase
+      .from('crime_reports')
+      .select(baseSelect)
+      .eq('author_id', user.id)
+      .or(ilikeFilter)
+      .order('created_at', { ascending: false })
+      .range(0, limit - 1)
+
+    const [ftsRes, ilikeRes] = await Promise.all([ftsQuery, ilikeQuery])
+    const seen = new Set<string>()
+    for (const row of [...(ftsRes.data ?? []), ...(ilikeRes.data ?? [])]) {
+      if (!seen.has(row.id)) { seen.add(row.id); results.push(row) }
+    }
+    if (riskMin > 0) results = results.filter((r: any) => r.crypto_risk_score >= riskMin)
+    results = results.slice(offset, offset + limit)
+  } else {
+    let query = supabase
+      .from('crime_reports')
+      .select(baseSelect)
+      .eq('author_id', user.id)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1)
+    if (personName) query = query.contains('entities', { names: [personName] })
+    if (riskMin > 0) query = query.gte('crypto_risk_score', riskMin)
+    const { data, error } = await query
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    results = data ?? []
   }
 
-  const { data, error } = await query
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ data, count: data?.length ?? 0 })
+  return NextResponse.json({ data: results, count: results.length })
 }
 
 // ── POST — upload + process ───────────────────────────────────────────────────
