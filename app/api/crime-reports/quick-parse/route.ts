@@ -92,17 +92,24 @@ export async function POST(req: NextRequest) {
   if (!file || file.size === 0) return NextResponse.json({ error: 'No file' }, { status: 400 })
 
   const buf  = Buffer.from(await file.arrayBuffer())
-  const text = await extractText(buf, file.type)
+  const raw  = await extractText(buf, file.type)
 
-  if (!text || text.length < 10) {
+  if (!raw || raw.length < 10) {
     return NextResponse.json({ erdr: null, date: null, location: null, title: null, preview: '' })
   }
+
+  // Нормалізуємо всі нестандартні пробіли → звичайний пробіл
+  const text = raw
+    .replace(/ /g, ' ')   // non-breaking space (Word)
+    .replace(/​/g, '')    // zero-width space
+    .replace(/\r\n/g, '\n')    // Windows CRLF → LF
+    .replace(/[ \t]+/g, ' ')   // collapse multiple spaces/tabs
 
   const erdr     = extractErdr(text)
   const date     = extractDate(text)
   const location = extractLocation(text)
   const title    = extractTitle(text)
-  const preview  = text.slice(0, 300).replace(/\s+/g, ' ').trim()
+  const preview  = text.slice(0, 400).trim()
 
   return NextResponse.json({ erdr, date, location, title, preview })
 }
