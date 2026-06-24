@@ -139,7 +139,9 @@ export async function POST(req: NextRequest) {
     const arrayBuf = await file.arrayBuffer()
     const buf      = Buffer.from(arrayBuf)
     const ext      = file.name.split('.').pop()?.toLowerCase() ?? 'bin'
-    const path     = `${user.id}/${Date.now()}_${encodeURIComponent(file.name)}`
+    // Supabase Storage accepts only ASCII keys — use timestamp + extension only
+    const safeName = `${Date.now()}.${ext}`
+    const path     = `${user.id}/${safeName}`
 
     const { error: uploadErr } = await admin.storage
       .from(BUCKET)
