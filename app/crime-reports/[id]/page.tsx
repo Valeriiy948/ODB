@@ -53,7 +53,26 @@ export default function CrimeReportDetailPage() {
   const [viewUrl,   setViewUrl]   = useState<string | null>(null)
   const [loadingUrl, setLoadingUrl] = useState(false)
   const [tab,       setTab]       = useState<'viewer' | 'text' | 'graph'>('viewer')
-  const [deleting,  setDeleting]  = useState(false)
+  const [deleting,    setDeleting]    = useState(false)
+  const [reprocessing, setReprocessing] = useState(false)
+  const [reprocessMsg, setReprocessMsg] = useState('')
+
+  async function handleReprocess() {
+    setReprocessing(true)
+    setReprocessMsg('')
+    const res  = await fetch(`/api/crime-reports/reprocess`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ report_id: id }),
+    })
+    const json = await res.json()
+    if (res.ok) {
+      setReprocessMsg(`✅ Текст витягнуто (${json.text_length} симв.), знайдено ${json.names_found} імен`)
+      load() // refresh report data
+    } else {
+      setReprocessMsg(`❌ ${json.error}`)
+    }
+    setReprocessing(false)
+  }
 
   const load = useCallback(async () => {
     const res  = await fetch(`/api/crime-reports/${id}`)
@@ -177,6 +196,12 @@ export default function CrimeReportDetailPage() {
               </button>
             </>
           )}
+          <button onClick={handleReprocess} disabled={reprocessing}
+                  title="Повторно витягти текст та NER з файлу"
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium border transition hover:bg-white/5"
+                  style={{ borderColor: 'rgba(99,102,241,0.4)', color: '#818cf8' }}>
+            {reprocessing ? '⟳ Обробка...' : '⟳ Перепарсити'}
+          </button>
           <button onClick={handleDelete} disabled={deleting}
                   className="px-3 py-1.5 rounded-lg text-xs font-medium border transition"
                   style={{ borderColor: 'rgba(239,68,68,0.4)', color: '#ef4444' }}>
@@ -184,6 +209,15 @@ export default function CrimeReportDetailPage() {
           </button>
         </div>
       </div>
+
+      {reprocessMsg && (
+        <div className="mx-6 mt-3 px-4 py-2 rounded-lg text-sm"
+             style={{ background: reprocessMsg.startsWith('✅') ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
+                      color: reprocessMsg.startsWith('✅') ? '#4ade80' : '#f87171',
+                      border: `1px solid ${reprocessMsg.startsWith('✅') ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}` }}>
+          {reprocessMsg}
+        </div>
+      )}
 
       {/* Body: two-column layout */}
       <div className="flex flex-1 min-h-0 overflow-hidden">

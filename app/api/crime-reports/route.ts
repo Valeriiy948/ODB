@@ -235,7 +235,14 @@ export async function POST(req: NextRequest) {
     fileSizeKb  = Math.round(file.size / 1024)
 
     // ── 2. Витягування тексту ──────────────────────────────────────────────
-    extractedText = await extractText(buf, file.type)
+    // Use extension as fallback — browser may send empty file.type
+    const mimeByExt: Record<string, string> = {
+      pdf:  'application/pdf',
+      docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    }
+    const effectiveMime = file.type || mimeByExt[ext] || ''
+    extractedText = await extractText(buf, effectiveMime)
   }
 
   // ── 3. NER ────────────────────────────────────────────────────────────────
