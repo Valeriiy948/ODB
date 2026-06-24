@@ -2,9 +2,10 @@
 // Запускає ранковий брифінг вручну з адмін-панелі.
 // Захищено auth middleware — CRON_SECRET не потрібен.
 
-import { NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { NextResponse }       from 'next/server'
+import { createClient }       from '@supabase/supabase-js'
 import { sendTelegramMessage } from '@/lib/telegram'
+import { fetchUAHRate }       from '@/lib/uah-rate'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -15,20 +16,13 @@ const USDT_MARKETS = ['BTC_USDT', 'ETH_USDT', 'SOL_USDT', 'BNB_USDT', 'XRP_USDT'
 
 interface Ticker { last_price: string; change: string }
 
-async function fetchNBURate(): Promise<number | null> {
-  try {
-    const r = await fetch('https://bank.gov.ua/NBUStatWeb/v1/statdirectory/exchange?valcode=usd&json', { signal: AbortSignal.timeout(5_000) })
-    const d = await r.json() as Array<{ rate: number }>
-    return d[0]?.rate ?? null
-  } catch { return null }
-}
-
 export async function POST() {
   try {
-    const [tickerRes, nbuRate] = await Promise.all([
+    const [tickerRes, uahRateResult] = await Promise.all([
       fetch('https://whitebit.com/api/v4/public/ticker', { signal: AbortSignal.timeout(10_000), cache: 'no-store' }),
-      fetchNBURate(),
+      fetchUAHRate(),
     ])
+    const nbuRate = uahRateResult?.rate ?? null
     if (!tickerRes.ok) throw new Error(`WhiteBit ${tickerRes.status}`)
     const all = await tickerRes.json() as Record<string, Ticker>
 
