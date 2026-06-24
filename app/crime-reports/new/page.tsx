@@ -237,7 +237,7 @@ export default function NewCrimeReportPage() {
             <Field label="Номер ЄРДР">
               <div className="relative">
                 <input value={erdr} onChange={e => setErdr(e.target.value)}
-                       placeholder="20240000000000"
+                       placeholder="автозаповнення з документу"
                        className="w-full px-3 py-2 rounded-lg text-sm text-white border outline-none font-mono"
                        style={{ background:'var(--odb-surface-2)', borderColor: erdr ? 'rgba(34,197,94,0.4)' : 'var(--odb-border-soft)' }} />
                 {erdr && <span className="absolute right-2 top-2 text-xs" style={{ color:'#22c55e' }}>✓</span>}
