@@ -4,9 +4,12 @@ import { NextResponse, type NextRequest } from 'next/server'
 // Сторінки/API що доступні БЕЗ авторизації
 const PUBLIC_PATHS = [
   '/login',
+  '/signals',                    // публічна сторінка сигналів (маркетинг)
   '/api/health',
-  '/api/cron/',             // cron jobs — перевіряють CRON_SECRET самостійно
-  '/api/telegram/webhook', // Telegram webhook — Telegram не має сесії
+  '/api/public/',                // публічні API (тізер для /signals)
+  '/api/whitebit-intel/tickers', // тікери потрібні /signals без авторизації
+  '/api/cron/',                  // cron jobs — перевіряють CRON_SECRET самостійно
+  '/api/telegram/webhook',       // Telegram webhook — Telegram не має сесії
   '/_next',
   '/favicon.ico',
 ]
