@@ -55,11 +55,11 @@ export default function PublicSignalsPage() {
       const t: Record<string, Ticker> = await tickRes.value.json()
       setTickers(t)
 
-      // Розраховуємо UAH Premium на клієнті (NBU через тікери)
+      // UAH Premium через серверний проксі (НБУ CORS fix)
       try {
-        const nbuRes  = await fetch('https://bank.gov.ua/NBUStatWeb/v1/statdirectory/exchange?valcode=usd&json')
-        const nbuData = await nbuRes.json() as Array<{ rate: number }>
-        const rate    = nbuData[0]?.rate
+        const nbuRes  = await fetch('/api/whitebit-intel/nbu-rate')
+        const nbuData = await nbuRes.json() as { rate: number }
+        const rate    = nbuData?.rate
         if (rate && t['BTC_USDT'] && t['BTC_UAH']) {
           const fair = parseFloat(t['BTC_USDT'].last_price) * rate
           setPremium(((parseFloat(t['BTC_UAH'].last_price) / fair) - 1) * 100)
