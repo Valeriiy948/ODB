@@ -68,6 +68,7 @@ export default function WhiteBitIntelPage() {
   const [autoScan,  setAutoScan]  = useState(false)
   const [countdown, setCountdown] = useState(0)
   const [loading,   setLoading]   = useState(true)
+  const [briefing,  setBriefing]  = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
   const autoRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const cdRef   = useRef<ReturnType<typeof setInterval> | null>(null)
   const AUTO_S  = 120
@@ -83,6 +84,15 @@ export default function WhiteBitIntelPage() {
       const data = await res.json() as Record<string, Ticker>
       setTickers(data)
     } catch {}
+  }, [])
+
+  const sendBrief = useCallback(async () => {
+    setBriefing('sending')
+    try {
+      const res = await fetch('/api/whitebit-intel/send-brief', { method: 'POST' })
+      setBriefing(res.ok ? 'sent' : 'error')
+      setTimeout(() => setBriefing('idle'), 4000)
+    } catch { setBriefing('error'); setTimeout(() => setBriefing('idle'), 4000) }
   }, [])
 
   const runScan = useCallback(async () => {
@@ -163,6 +173,15 @@ export default function WhiteBitIntelPage() {
                 ? { background: 'rgba(245,158,11,.15)', borderColor: '#f59e0b', color: '#f59e0b' }
                 : { background: 'var(--odb-surface-2)', borderColor: 'var(--odb-border-soft)', color: 'var(--odb-text-dim)' }}>
               {autoScan ? `⟳ Авто ${AUTO_S}с` : '⟳ Авто'}
+            </button>
+            <button onClick={sendBrief} disabled={briefing === 'sending'}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-all disabled:opacity-50"
+              style={{
+                background:  briefing === 'sent'  ? 'rgba(34,197,94,.15)'  : briefing === 'error' ? 'rgba(239,68,68,.1)' : 'var(--odb-surface-2)',
+                borderColor: briefing === 'sent'  ? 'rgba(34,197,94,.4)'   : briefing === 'error' ? 'rgba(239,68,68,.3)' : 'var(--odb-border-soft)',
+                color:       briefing === 'sent'  ? '#22c55e'               : briefing === 'error' ? '#ef4444'            : 'var(--odb-text-dim)',
+              }}>
+              {briefing === 'sending' ? '⏳ Надсилаємо…' : briefing === 'sent' ? '✅ Надіслано' : briefing === 'error' ? '❌ Помилка' : '🌅 Брифінг'}
             </button>
             <button onClick={runScan} disabled={scanning}
               className="px-4 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-50 flex items-center gap-1.5"
