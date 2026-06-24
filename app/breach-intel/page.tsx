@@ -768,6 +768,7 @@ function BreachIntelContent() {
   const [odbPersons,   setOdbPersons]   = useState<any[]>([])
   const [odbReports,   setOdbReports]   = useState<any[]>([])
   const [odbLoading,   setOdbLoading]   = useState(false)
+  const [odbSearched,  setOdbSearched]  = useState(false)
 
   useEffect(() => {
     fetch('/api/breach/search').then(r => r.json()).then(d => {
@@ -951,6 +952,7 @@ function BreachIntelContent() {
   async function searchODB(q: string) {
     if (!q.trim()) return
     setOdbLoading(true)
+    setOdbSearched(false)
     setOdbPersons([])
     setOdbReports([])
     try {
@@ -960,10 +962,11 @@ function BreachIntelContent() {
       ])
       const persJson = persRes.ok ? await persRes.json() : {}
       const repJson  = repRes.ok  ? await repRes.json()  : {}
-      setOdbPersons(persJson.results ?? persJson.data ?? [])
+      // /api/search returns { local: { results: [...] } }
+      setOdbPersons(persJson.local?.results ?? persJson.results ?? persJson.data ?? [])
       setOdbReports(repJson.data ?? [])
     } catch { /* silent */ }
-    finally { setOdbLoading(false) }
+    finally { setOdbLoading(false); setOdbSearched(true) }
   }
 
   function handleSmartSearch(query: string, detection: QueryDetection) {
@@ -1333,7 +1336,7 @@ function BreachIntelContent() {
               )}
 
               {/* ODB Local Results — shown first, above external sources */}
-              {(odbLoading || odbPersons.length > 0 || odbReports.length > 0) && (
+              {(odbLoading || odbSearched) && (
                 <div className="max-w-2xl mb-4 rounded-xl border border-cyan-800 bg-cyan-950/20 p-4 space-y-3">
                   <div className="flex items-center gap-2 text-cyan-400 font-semibold text-sm">
                     <span>🗄️</span>
