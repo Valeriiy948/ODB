@@ -23,45 +23,38 @@ async function getUser() {
 
 // ── Шаблони для витягування метаданих ────────────────────────────────────────
 
-// ЄРДР: 12-14 цифр (часто починається з 202)
-const ERDR_RE = /\b(202\d{9,11}|\d{12,14})\b/g
-
-// Дати: 01.01.2024 або 1 січня 2024 або 2024-01-01
 const MONTHS: Record<string, string> = {
   'січня':'01','лютого':'02','березня':'03','квітня':'04','травня':'05','червня':'06',
   'липня':'07','серпня':'08','вересня':'09','жовтня':'10','листопада':'11','грудня':'12',
 }
-const DATE_DMY_RE = /\b(\d{1,2})[.\-\/](\d{1,2})[.\-\/](20\d{2})\b/g
-const DATE_UA_RE  = /\b(\d{1,2})\s+(січня|лютого|березня|квітня|травня|червня|липня|серпня|вересня|жовтня|листопада|грудня)\s+(20\d{2})\b/gi
-const DATE_ISO_RE = /\b(20\d{2})[.\-\/](\d{1,2})[.\-\/](\d{1,2})\b/g
-
-// Місце: "м. Харків", "с. Капітанівка", "смт. Балта", "місто Київ"
-const LOCATION_RE = /(?:м\.|місто|с\.|село|смт\.|селище|р-н|район|обл\.|область)\s+([А-ЯІЇЄЁA-Z][а-яіїєёa-z'А-ЯІЇЄЁ\-]+(?:\s+[А-ЯІЇЄЁA-Z][а-яіїєёa-z']+)?)/gi
-
-// Назва справи / заголовок після "ДОВІДКА", "ПРОТОКОЛ", "АКТ"
-const TITLE_RE = /(?:ДОВІДКА|ПРОТОКОЛ|АКТ|ВИСНОВОК|ЗВІТ|ПОВІДОМЛЕННЯ)\s+(.{5,80}?)(?:\n|$)/i
 
 function extractErdr(text: string): string | null {
-  const matches = [...text.matchAll(new RegExp(ERDR_RE.source, 'g'))]
+  // Спочатку шукаємо явну мітку "провадженні №" або "провадження №"
+  const labeled = text.match(/провадженн[іяю]\s*[№#NNo\.]*\s*(\d{10,20})/i)
+  if (labeled) return labeled[1]
+
+  // Загальний патерн: 10-20 цифр підряд (ЄРДР зазвичай 14-17 цифр)
+  const all = [...text.matchAll(/\b(\d{10,20})\b/g)]
     .map(m => m[1])
-    .filter(n => n.length >= 12)
-  return matches[0] ?? null
+    .filter(n => {
+      // виключаємо очевидно не-ЄРДР: телефони, ІПН, роки
+      if (n.length === 10 || n.length === 13) return false // телефон / ІПН
+      return true
+    })
+  return all[0] ?? null
 }
 
 function extractDate(text: string): string | null {
-  // ISO формат
-  for (const m of text.matchAll(new RegExp(DATE_ISO_RE.source, 'g'))) {
-    return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`
-  }
-  // DD.MM.YYYY
-  for (const m of text.matchAll(new RegExp(DATE_DMY_RE.source, 'g'))) {
-    const year = parseInt(m[3])
-    if (year >= 2020 && year <= 2030) {
+  // "від 27.02.2022" або просто DD.MM.YYYY
+  const dmyMatches = [...text.matchAll(/(\d{1,2})[.\-\/](\d{1,2})[.\-\/](20\d{2})\b/g)]
+  for (const m of dmyMatches) {
+    const day = parseInt(m[1]), mon = parseInt(m[2]), year = parseInt(m[3])
+    if (day >= 1 && day <= 31 && mon >= 1 && mon <= 12 && year >= 2014) {
       return `${year}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`
     }
   }
-  // Українська форма
-  for (const m of text.matchAll(new RegExp(DATE_UA_RE.source, 'gi'))) {
+  // Українська форма: "27 лютого 2022"
+  for (const m of text.matchAll(/(\d{1,2})\s+(січня|лютого|березня|квітня|травня|червня|липня|серпня|вересня|жовтня|листопада|грудня)\s+(20\d{2})/gi)) {
     const month = MONTHS[m[2].toLowerCase()]
     if (month) return `${m[3]}-${month}-${m[1].padStart(2,'0')}`
   }
@@ -69,17 +62,23 @@ function extractDate(text: string): string | null {
 }
 
 function extractLocation(text: string): string | null {
-  const matches: string[] = []
-  for (const m of text.matchAll(new RegExp(LOCATION_RE.source, 'gi'))) {
-    const loc = m[0].trim()
-    if (loc.length > 3 && loc.length < 80) matches.push(loc)
-  }
-  return matches[0] ?? null
+  // Шукаємо розширений контекст: с. Забуччя Бучанського району Київської області
+  const full = text.match(
+    /(?:м\.|місто|с\.|смт\.|селище|село)\s*([А-ЯІЇЄЁ][а-яіїєё'\-]+)(?:\s+(?:[А-ЯІЇЄЁ][а-яіїєё'\-]+(?:ого|ого|ської|ого|ського|ої)\s+)?(?:району?|обл(?:асті|\.)|міст[аою])[^.\n]{0,60})?/gi
+  )
+  if (full?.[0]) return full[0].trim().slice(0, 120)
+
+  // Просто назва населеного пункту
+  const simple = text.match(/(?:м\.|місто|с\.|смт\.|село)\s+([А-ЯІЇЄЁ][а-яіїєё'\-]+)/i)
+  if (simple) return simple[0].trim()
+
+  return null
 }
 
 function extractTitle(text: string): string | null {
-  const m = text.match(TITLE_RE)
-  return m ? m[1].trim().slice(0, 100) : null
+  // Шукаємо рядок одразу після "ДОВІДКА" / "ПРОТОКОЛ" тощо
+  const m = text.match(/(?:ДОВІДКА|ПРОТОКОЛ|АКТ|ВИСНОВОК|ЗВІТ)\s*\n?\s*(.{5,120}?)(?:\n|$)/i)
+  return m ? m[1].trim().replace(/\s+/g, ' ').slice(0, 120) : null
 }
 
 // ── Route ─────────────────────────────────────────────────────────────────────
