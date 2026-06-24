@@ -1,6 +1,7 @@
 import { NextResponse }         from 'next/server'
 import { createClient }         from '@supabase/supabase-js'
 import { sendTelegramMessage }  from '@/lib/telegram'
+import { fetchUAHRate }         from '@/lib/uah-rate'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -23,26 +24,17 @@ interface Ticker  { last_price: string; base_volume: string; quote_volume: strin
 interface Snapshot { market: string; last_price: number; base_volume: number; change_pct: number; captured_at: string }
 interface Mover   { market: string; change: number; price: number }
 
-async function fetchNBURate(): Promise<number | null> {
-  try {
-    const res  = await fetch('https://bank.gov.ua/NBUStatWeb/v1/statdirectory/exchange?valcode=usd&json', {
-      signal: AbortSignal.timeout(5_000), cache: 'no-store',
-    })
-    const data = await res.json() as Array<{ rate: number }>
-    return data[0]?.rate ?? null
-  } catch { return null }
-}
-
 export async function GET() {
   const t0      = Date.now()
   const signals: object[] = []
   let snapshots_saved = 0
 
   try {
-    const [tickerRes, nbuRate] = await Promise.all([
+    const [tickerRes, uahRateResult] = await Promise.all([
       fetch('https://whitebit.com/api/v4/public/ticker', { signal: AbortSignal.timeout(10_000), cache: 'no-store' }),
-      fetchNBURate(),
+      fetchUAHRate(),
     ])
+    const nbuRate = uahRateResult?.rate ?? null
     if (!tickerRes.ok) throw new Error(`WhiteBit ${tickerRes.status}`)
     const all = await tickerRes.json() as Record<string, Ticker>
 
