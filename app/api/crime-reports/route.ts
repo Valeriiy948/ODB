@@ -128,6 +128,22 @@ export async function POST(req: NextRequest) {
   const tagsRaw     = (form.get('tags')          as string) || ''
   const tags        = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : []
 
+  // ── 0. Дедублікація по ЄРДР ──────────────────────────────────────────────
+  if (erdrNumber) {
+    const { data: existing } = await supabase
+      .from('crime_reports')
+      .select('id, title')
+      .eq('erdr_number', erdrNumber)
+      .eq('author_id', user.id)
+      .maybeSingle()
+    if (existing) {
+      return NextResponse.json(
+        { error: `ЄРДР ${erdrNumber} вже існує у реєстрі`, existing_id: existing.id },
+        { status: 409 }
+      )
+    }
+  }
+
   // ── 1. Завантаження файлу ─────────────────────────────────────────────────
   let fileUrl:  string | null = null
   let fileName: string | null = null
