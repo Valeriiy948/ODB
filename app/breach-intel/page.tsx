@@ -1335,52 +1335,83 @@ function BreachIntelContent() {
                 </div>
               )}
 
-              {/* ODB Local Results — shown first, above external sources */}
+              {/* ── ODB Internal Results ─────────────────────────────────── */}
               {(odbLoading || odbSearched) && (
-                <div className="max-w-2xl mb-4 rounded-xl border border-cyan-800 bg-cyan-950/20 p-4 space-y-3">
-                  <div className="flex items-center gap-2 text-cyan-400 font-semibold text-sm">
-                    <span>🗄️</span>
-                    <span>В базі ODB</span>
-                    {odbLoading && <span className="text-xs text-gray-400">пошук...</span>}
+                <div className="max-w-2xl mb-5">
+                  {/* Header */}
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest px-2.5 py-1 rounded-full"
+                         style={{ background: 'rgba(6,182,212,0.12)', color: '#22d3ee', border: '1px solid rgba(6,182,212,0.25)' }}>
+                      🗄️ Власна база ODB
+                    </div>
+                    {odbLoading && <span className="text-xs text-gray-500 animate-pulse">пошук...</span>}
+                    {odbSearched && !odbLoading && (
+                      <span className="text-xs text-gray-600">
+                        {odbPersons.length + odbReports.length === 0
+                          ? 'не знайдено'
+                          : `${odbPersons.length + odbReports.length} збіг${odbPersons.length + odbReports.length > 1 ? 'и' : ''}`}
+                      </span>
+                    )}
                   </div>
 
-                  {!odbLoading && odbPersons.length === 0 && odbReports.length === 0 && (
-                    <p className="text-xs text-gray-500">Нічого не знайдено у власній базі</p>
-                  )}
-
-                  {odbPersons.length > 0 && (
-                    <div>
-                      <p className="text-xs text-gray-400 mb-1.5">👤 Особи ({odbPersons.length})</p>
-                      <div className="space-y-1">
-                        {odbPersons.map((p: any) => (
-                          <a key={p.id} href={`/persons/${p.id}`}
-                             className="flex items-center gap-3 px-3 py-2 rounded-lg bg-cyan-900/20 hover:bg-cyan-900/40 transition cursor-pointer no-underline">
-                            <span className="text-white text-sm font-medium">{p.name}</span>
-                            {p.dob && <span className="text-xs text-gray-400">{p.dob}</span>}
-                            {p.status && (
-                              <span className="text-xs px-1.5 py-0.5 rounded bg-cyan-800/50 text-cyan-300">{p.status}</span>
-                            )}
-                          </a>
-                        ))}
-                      </div>
+                  {!odbLoading && odbPersons.length === 0 && odbReports.length === 0 ? (
+                    <div className="flex items-center gap-2 px-4 py-3 rounded-xl border text-sm"
+                         style={{ borderColor: 'rgba(6,182,212,0.15)', background: 'rgba(6,182,212,0.04)', color: '#6b7280' }}>
+                      <span>✗</span> Особу не знайдено у власній базі та довідках
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {odbPersons.map((p: any) => (
+                        <a key={p.id} href={`/persons/${p.id}`}
+                           className="flex items-center gap-3 px-4 py-3 rounded-xl border transition-all no-underline group"
+                           style={{ borderColor: 'rgba(6,182,212,0.3)', background: 'rgba(6,182,212,0.07)' }}
+                           onMouseEnter={e => (e.currentTarget.style.background = 'rgba(6,182,212,0.14)')}
+                           onMouseLeave={e => (e.currentTarget.style.background = 'rgba(6,182,212,0.07)')}>
+                          <span className="text-xl">👤</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-white font-semibold text-sm">{p.name}</div>
+                            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                              {p.dob && <span className="text-xs text-gray-400">н. {p.dob}</span>}
+                              {p.rank && <span className="text-xs text-gray-400">{p.rank}</span>}
+                              {p.unit && <span className="text-xs text-gray-500">{p.unit}</span>}
+                            </div>
+                          </div>
+                          {p.status && (
+                            <span className="text-xs px-2 py-0.5 rounded-full shrink-0"
+                                  style={{ background: 'rgba(6,182,212,0.15)', color: '#22d3ee' }}>
+                              {p.status}
+                            </span>
+                          )}
+                          <span className="text-cyan-600 text-sm group-hover:text-cyan-400">→</span>
+                        </a>
+                      ))}
+                      {odbReports.map((r: any) => (
+                        <a key={r.id} href={`/crime-reports/${r.id}`}
+                           className="flex items-center gap-3 px-4 py-3 rounded-xl border transition-all no-underline group"
+                           style={{ borderColor: 'rgba(251,191,36,0.25)', background: 'rgba(251,191,36,0.05)' }}
+                           onMouseEnter={e => (e.currentTarget.style.background = 'rgba(251,191,36,0.1)')}
+                           onMouseLeave={e => (e.currentTarget.style.background = 'rgba(251,191,36,0.05)')}>
+                          <span className="text-xl">📂</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-white font-semibold text-sm">{r.title}</div>
+                            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                              {r.erdr_number && <span className="text-xs font-mono text-yellow-600">ЄРДР {r.erdr_number}</span>}
+                              {r.location && <span className="text-xs text-gray-400">{r.location}</span>}
+                              {r.incident_date && <span className="text-xs text-gray-500">{new Date(r.incident_date).toLocaleDateString('uk-UA')}</span>}
+                            </div>
+                          </div>
+                          <span className="text-yellow-700 text-sm group-hover:text-yellow-400">→</span>
+                        </a>
+                      ))}
                     </div>
                   )}
 
-                  {odbReports.length > 0 && (
-                    <div>
-                      <p className="text-xs text-gray-400 mb-1.5">📂 Довідки по злочинах ({odbReports.length})</p>
-                      <div className="space-y-1">
-                        {odbReports.map((r: any) => (
-                          <a key={r.id} href={`/crime-reports/${r.id}`}
-                             className="flex items-center gap-3 px-3 py-2 rounded-lg bg-cyan-900/20 hover:bg-cyan-900/40 transition cursor-pointer no-underline">
-                            <span className="text-white text-sm font-medium">{r.title}</span>
-                            {r.erdr_number && <span className="text-xs text-gray-400 font-mono">{r.erdr_number}</span>}
-                            {r.location && <span className="text-xs text-gray-400">{r.location}</span>}
-                          </a>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                  {/* Divider before external results */}
+                  <div className="flex items-center gap-3 mt-5 mb-4">
+                    <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.06)' }} />
+                    <span className="text-xs uppercase tracking-widest text-gray-600">Зовнішні бази</span>
+                    <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.06)' }} />
+                  </div>
                 </div>
               )}
 
