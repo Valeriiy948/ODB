@@ -98,7 +98,7 @@ export async function GET(req: NextRequest) {
   let results: any[] = []
 
   if (q) {
-    // Run FTS + ILIKE in parallel, merge unique results
+    // 1. FTS on search_vector (extracted_text + title + location)
     const ftsQuery = supabase
       .from('crime_reports')
       .select(baseSelect)
@@ -107,7 +107,7 @@ export async function GET(req: NextRequest) {
       .order('created_at', { ascending: false })
       .range(0, limit - 1)
 
-    // ILIKE fallback: title, ЄРДР, location — catches cases where extracted_text was empty
+    // 2. ILIKE on title/ЄРДР/location
     const ilikeFilter = [
       `title.ilike.%${q}%`,
       `erdr_number.ilike.%${q}%`,
@@ -121,9 +121,18 @@ export async function GET(req: NextRequest) {
       .order('created_at', { ascending: false })
       .range(0, limit - 1)
 
-    const [ftsRes, ilikeRes] = await Promise.all([ftsQuery, ilikeQuery])
+    // 3. Search in entities JSON (names, phones, etc.)
+    const entitiesQuery = supabase
+      .from('crime_reports')
+      .select(baseSelect)
+      .eq('author_id', user.id)
+      .filter('entities::text', 'ilike', `%${q}%`)
+      .order('created_at', { ascending: false })
+      .range(0, limit - 1)
+
+    const [ftsRes, ilikeRes, entRes] = await Promise.all([ftsQuery, ilikeQuery, entitiesQuery])
     const seen = new Set<string>()
-    for (const row of [...(ftsRes.data ?? []), ...(ilikeRes.data ?? [])]) {
+    for (const row of [...(ftsRes.data ?? []), ...(ilikeRes.data ?? []), ...(entRes.data ?? [])]) {
       if (!seen.has(row.id)) { seen.add(row.id); results.push(row) }
     }
     if (riskMin > 0) results = results.filter((r: any) => r.crypto_risk_score >= riskMin)
