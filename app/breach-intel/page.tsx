@@ -765,6 +765,9 @@ function BreachIntelContent() {
   const [showRaw,    setShowRaw]   = useState(false)
   const [pivotLoading, setPivotLoading] = useState(false)
   const [pivotDone,    setPivotDone]    = useState(false)
+  const [odbPersons,   setOdbPersons]   = useState<any[]>([])
+  const [odbReports,   setOdbReports]   = useState<any[]>([])
+  const [odbLoading,   setOdbLoading]   = useState(false)
 
   useEffect(() => {
     fetch('/api/breach/search').then(r => r.json()).then(d => {
@@ -945,6 +948,24 @@ function BreachIntelContent() {
     finally { setEnrichLoading(false) }
   }
 
+  async function searchODB(q: string) {
+    if (!q.trim()) return
+    setOdbLoading(true)
+    setOdbPersons([])
+    setOdbReports([])
+    try {
+      const [persRes, repRes] = await Promise.all([
+        fetch(`/api/search?q=${encodeURIComponent(q)}&limit=5`),
+        fetch(`/api/crime-reports?q=${encodeURIComponent(q)}&limit=5`),
+      ])
+      const persJson = persRes.ok ? await persRes.json() : {}
+      const repJson  = repRes.ok  ? await repRes.json()  : {}
+      setOdbPersons(persJson.results ?? persJson.data ?? [])
+      setOdbReports(repJson.data ?? [])
+    } catch { /* silent */ }
+    finally { setOdbLoading(false) }
+  }
+
   function handleSmartSearch(query: string, detection: QueryDetection) {
     const key = detection.fieldKey
     const override = { name:'', phone:'', email:'', dob:'', inn:'', passport:'',
@@ -952,6 +973,7 @@ function BreachIntelContent() {
     }
     setEnrichFields(override)
     runEnrich(override)
+    searchODB(query)
   }
 
   const totalHits   = result?.total_hits || 0
@@ -1307,6 +1329,55 @@ function BreachIntelContent() {
               {error && (
                 <div className="max-w-2xl bg-red-950 border border-red-800 text-red-300 rounded-xl p-3 mb-4 text-sm">
                   ⚠️ {error}
+                </div>
+              )}
+
+              {/* ODB Local Results — shown first, above external sources */}
+              {(odbLoading || odbPersons.length > 0 || odbReports.length > 0) && (
+                <div className="max-w-2xl mb-4 rounded-xl border border-cyan-800 bg-cyan-950/20 p-4 space-y-3">
+                  <div className="flex items-center gap-2 text-cyan-400 font-semibold text-sm">
+                    <span>🗄️</span>
+                    <span>В базі ODB</span>
+                    {odbLoading && <span className="text-xs text-gray-400">пошук...</span>}
+                  </div>
+
+                  {!odbLoading && odbPersons.length === 0 && odbReports.length === 0 && (
+                    <p className="text-xs text-gray-500">Нічого не знайдено у власній базі</p>
+                  )}
+
+                  {odbPersons.length > 0 && (
+                    <div>
+                      <p className="text-xs text-gray-400 mb-1.5">👤 Особи ({odbPersons.length})</p>
+                      <div className="space-y-1">
+                        {odbPersons.map((p: any) => (
+                          <a key={p.id} href={`/persons/${p.id}`}
+                             className="flex items-center gap-3 px-3 py-2 rounded-lg bg-cyan-900/20 hover:bg-cyan-900/40 transition cursor-pointer no-underline">
+                            <span className="text-white text-sm font-medium">{p.name}</span>
+                            {p.dob && <span className="text-xs text-gray-400">{p.dob}</span>}
+                            {p.status && (
+                              <span className="text-xs px-1.5 py-0.5 rounded bg-cyan-800/50 text-cyan-300">{p.status}</span>
+                            )}
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {odbReports.length > 0 && (
+                    <div>
+                      <p className="text-xs text-gray-400 mb-1.5">📂 Довідки по злочинах ({odbReports.length})</p>
+                      <div className="space-y-1">
+                        {odbReports.map((r: any) => (
+                          <a key={r.id} href={`/crime-reports/${r.id}`}
+                             className="flex items-center gap-3 px-3 py-2 rounded-lg bg-cyan-900/20 hover:bg-cyan-900/40 transition cursor-pointer no-underline">
+                            <span className="text-white text-sm font-medium">{r.title}</span>
+                            {r.erdr_number && <span className="text-xs text-gray-400 font-mono">{r.erdr_number}</span>}
+                            {r.location && <span className="text-xs text-gray-400">{r.location}</span>}
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
