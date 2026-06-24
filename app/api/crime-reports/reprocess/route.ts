@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { report_id } = await req.json()
+  const { report_id, manual_text } = await req.json()
   if (!report_id) return NextResponse.json({ error: 'report_id required' }, { status: 400 })
 
   // Fetch report
@@ -41,25 +41,32 @@ export async function POST(req: NextRequest) {
     .eq('author_id', user.id)
     .single()
   if (!report) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  if (!report.file_url) return NextResponse.json({ error: 'No file attached' }, { status: 400 })
 
-  // Download file from storage
-  const admin = createAdminClient(SUPABASE_URL, SERVICE_ROLE, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  })
-  const { data: fileData, error: dlErr } = await admin.storage.from(BUCKET).download(report.file_url)
-  if (dlErr || !fileData) return NextResponse.json({ error: `Download failed: ${dlErr?.message}` }, { status: 500 })
+  let extractedText = ''
 
-  const buf = Buffer.from(await fileData.arrayBuffer())
-  const mimeByExt: Record<string, string> = {
-    pdf:  'application/pdf',
-    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  if (manual_text?.trim()) {
+    // User provided manual text (for scanned PDFs)
+    extractedText = manual_text.trim()
+  } else {
+    if (!report.file_url) return NextResponse.json({ error: 'No file attached' }, { status: 400 })
+
+    // Download file from storage and auto-extract
+    const admin = createAdminClient(SUPABASE_URL, SERVICE_ROLE, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    })
+    const { data: fileData, error: dlErr } = await admin.storage.from(BUCKET).download(report.file_url)
+    if (dlErr || !fileData) return NextResponse.json({ error: `Download failed: ${dlErr?.message}` }, { status: 500 })
+
+    const buf = Buffer.from(await fileData.arrayBuffer())
+    const mimeByExt: Record<string, string> = {
+      pdf:  'application/pdf',
+      docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    }
+    const mime = mimeByExt[report.file_type ?? ''] ?? 'application/pdf'
+    extractedText = await extractText(buf, mime)
+    if (!extractedText) return NextResponse.json({ error: 'Text extraction returned empty — file may be scanned image. Use manual text input.' }, { status: 422 })
   }
-  const mime = mimeByExt[report.file_type ?? ''] ?? 'application/pdf'
-
-  const extractedText = await extractText(buf, mime)
-  if (!extractedText) return NextResponse.json({ error: 'Text extraction returned empty — file may be scanned image' }, { status: 422 })
 
   const entities  = extractEntities(extractedText)
   const riskScore = cryptoRiskScore(entities)

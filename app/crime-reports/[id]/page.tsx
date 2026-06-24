@@ -54,22 +54,29 @@ export default function CrimeReportDetailPage() {
   const [loadingUrl, setLoadingUrl] = useState(false)
   const [tab,       setTab]       = useState<'viewer' | 'text' | 'graph'>('viewer')
   const [deleting,    setDeleting]    = useState(false)
-  const [reprocessing, setReprocessing] = useState(false)
-  const [reprocessMsg, setReprocessMsg] = useState('')
+  const [reprocessing,  setReprocessing]  = useState(false)
+  const [reprocessMsg,  setReprocessMsg]  = useState('')
+  const [manualText,    setManualText]    = useState('')
+  const [showManual,    setShowManual]    = useState(false)
 
-  async function handleReprocess() {
+  async function handleReprocess(useManual = false) {
     setReprocessing(true)
     setReprocessMsg('')
+    const body: Record<string, string> = { report_id: id }
+    if (useManual && manualText.trim()) body.manual_text = manualText.trim()
     const res  = await fetch(`/api/crime-reports/reprocess`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ report_id: id }),
+      body: JSON.stringify(body),
     })
     const json = await res.json()
     if (res.ok) {
-      setReprocessMsg(`✅ Текст витягнуто (${json.text_length} симв.), знайдено ${json.names_found} імен`)
-      load() // refresh report data
+      setReprocessMsg(`✅ Текст збережено (${json.text_length} симв.), знайдено ${json.names_found} імен`)
+      setShowManual(false)
+      setManualText('')
+      load()
     } else {
       setReprocessMsg(`❌ ${json.error}`)
+      if (json.error?.includes('scanned')) setShowManual(true)
     }
     setReprocessing(false)
   }
@@ -216,6 +223,38 @@ export default function CrimeReportDetailPage() {
                       color: reprocessMsg.startsWith('✅') ? '#4ade80' : '#f87171',
                       border: `1px solid ${reprocessMsg.startsWith('✅') ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}` }}>
           {reprocessMsg}
+        </div>
+      )}
+
+      {/* Manual text input for scanned PDFs */}
+      {showManual && (
+        <div className="mx-6 mt-3 rounded-xl border p-4 space-y-3"
+             style={{ borderColor: 'rgba(99,102,241,0.3)', background: 'rgba(99,102,241,0.05)' }}>
+          <p className="text-sm font-medium" style={{ color: '#a5b4fc' }}>
+            📋 PDF є зображенням — скопіюй текст з документу і встав сюди:
+          </p>
+          <textarea
+            value={manualText}
+            onChange={e => setManualText(e.target.value)}
+            placeholder="Вставте текст документу (Ctrl+A → Ctrl+C з PDF viewer)..."
+            rows={8}
+            className="w-full px-3 py-2 rounded-lg text-sm outline-none resize-y font-mono"
+            style={{ background: 'var(--odb-surface-2)', border: '1px solid rgba(99,102,241,0.3)',
+                     color: 'var(--odb-text)', minHeight: '160px' }}
+          />
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => handleReprocess(true)}
+              disabled={reprocessing || !manualText.trim()}
+              className="px-4 py-2 rounded-lg text-sm font-medium text-white transition disabled:opacity-40"
+              style={{ background: 'rgba(99,102,241,0.8)' }}>
+              {reprocessing ? '⟳ Обробка...' : '✓ Зберегти текст і запустити NER'}
+            </button>
+            <button onClick={() => { setShowManual(false); setReprocessMsg('') }}
+                    className="text-xs text-gray-500 hover:text-gray-300">
+              Скасувати
+            </button>
+          </div>
         </div>
       )}
 
