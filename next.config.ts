@@ -1,7 +1,14 @@
-import type { NextConfig } from "next";
+import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
-  /* config options here */
-};
+  // Збільшуємо ліміт для завантаження довідок (PDF/DOCX до 50 МБ)
+  experimental: {
+    serverActions: {
+      bodySizeLimit: '52mb',
+    },
+  },
+  // Turbopack — дефолт у Next.js 16 (webpack не потрібен)
+  turbopack: {},
+}
 
-export default nextConfig;
+export default nextConfig
