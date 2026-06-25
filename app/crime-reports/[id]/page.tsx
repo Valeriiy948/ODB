@@ -203,7 +203,7 @@ export default function CrimeReportDetailPage() {
               </button>
             </>
           )}
-          <button onClick={handleReprocess} disabled={reprocessing}
+          <button onClick={() => handleReprocess(false)} disabled={reprocessing}
                   title="Повторно витягти текст та NER з файлу"
                   className="px-3 py-1.5 rounded-lg text-xs font-medium border transition hover:bg-white/5"
                   style={{ borderColor: 'rgba(99,102,241,0.4)', color: '#818cf8' }}>
