@@ -78,10 +78,43 @@ export async function POST(req: NextRequest) {
 
   if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 })
 
+  // Auto-add persons from NER (same logic as upload)
+  let personsAdded = 0
+  if (entities.names.length > 0) {
+    for (const nameFound of entities.names.slice(0, 20)) {
+      try {
+        const { data: existing } = await supabase
+          .from('persons')
+          .select('id')
+          .or(`name.ilike.${nameFound},name_ukr.ilike.${nameFound},name_rus.ilike.${nameFound}`)
+          .limit(1)
+          .maybeSingle()
+        let personId = existing?.id
+        if (!personId) {
+          const { data: newPerson } = await supabase
+            .from('persons')
+            .insert({ name: nameFound, name_ukr: nameFound, status: 'з довідки', verified: false,
+                      sources: [`crime_report:${report_id}`],
+                      description: `Автоматично додано з довідки: ${report.title}` })
+            .select('id').single()
+          personId = newPerson?.id
+          if (personId) personsAdded++
+        }
+        if (personId) {
+          await supabase.from('crime_report_persons').upsert(
+            { crime_report_id: report_id, person_id: personId, name_found: nameFound },
+            { onConflict: 'crime_report_id,person_id' }
+          )
+        }
+      } catch { /* non-blocking */ }
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     text_length: extractedText.length,
     names_found: entities.names.length,
+    persons_added: personsAdded,
     entities,
   })
 }
