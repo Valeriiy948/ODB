@@ -990,16 +990,14 @@ function formatChannelSignal(intels: TxIntel[], uahPremium?: number | null): str
     ``,
   ]
 
-  // UAH арбітражне вікно
+  // UAH валютна премія (BTC/UAH на WhiteBit vs BTC/USDT × курс НБУ)
   if (uahPremium != null && Math.abs(uahPremium) >= 1) {
-    const arbDir = uahPremium < 0 ? 'нижче' : 'вище'
-    const arbEmoji = uahPremium < 0 ? '⚡' : '⚡'
+    const dir = uahPremium > 0 ? 'дорожче' : 'дешевше'
+    const emoji = uahPremium > 0 ? '📈' : '📉'
     lines.push(
-      `${arbEmoji} <b>Арбітражне вікно WhiteBit:</b>`,
-      `   Зараз BTC на WhiteBit <b>${arbDir}</b> за справедливу ціну на <b>${Math.abs(uahPremium).toFixed(2)}%</b>`,
-      uahPremium < 0
-        ? `   Купити тут вигідніше — потенційний прибуток ${Math.abs(uahPremium).toFixed(2)}%`
-        : `   Продати тут вигідніше — або дочекайся зниження ціни`,
+      `${emoji} <b>UAH премія на WhiteBit:</b>`,
+      `   BTC/UAH торгується на <b>${Math.abs(uahPremium).toFixed(2)}%</b> <b>${dir}</b> за офіційним курсом НБУ`,
+      `   (це валютна премія, не міжбіржовий арбітраж)`,
       ``,
     )
   }
