@@ -300,19 +300,24 @@ export async function POST(req: NextRequest) {
   async function runAll() {
     const tasks: Promise<void>[] = []
 
-    // ── 1. ODB persons DB ─────────────────────────────────────────────────────
+    // ── 1. ODB persons DB + crime_reports ────────────────────────────────────
     tasks.push((async () => {
       send('odb', 'loading')
       const params = new URLSearchParams({ limit: '20' })
       if (type === 'phone')    params.set('phone', q)
       else if (type === 'inn') params.set('ipn', q)
-      else                     params.set('q', cleanName)  // cleanName без ДН
-      const d = await safeFetch(`${LOCAL}/api/persons?${params}`, {}, 7000)
-      if (d && d.data !== undefined) {
-        send('odb', 'done', { persons: d.data, total: d.total || d.data?.length || 0 })
-      } else {
-        send('odb', d ? 'done' : 'error', d)
-      }
+      else                     params.set('q', cleanName)
+      const [persD, repD] = await Promise.all([
+        safeFetch(`${LOCAL}/api/persons?${params}`, {}, 7000),
+        type === 'name' ? safeFetch(`${LOCAL}/api/crime-reports?q=${encodeURIComponent(cleanName)}&limit=5`, {}, 7000) : Promise.resolve(null),
+      ])
+      const persons      = persD?.data ?? []
+      const crimeReports = repD?.data  ?? []
+      send('odb', 'done', {
+        persons,
+        crime_reports: crimeReports,
+        total: (persD?.total || persons.length) + crimeReports.length,
+      })
     })())
 
     // ── 2. Telegram MTProto пошук ─────────────────────────────────────────────

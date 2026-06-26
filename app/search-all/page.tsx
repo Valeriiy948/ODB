@@ -505,22 +505,32 @@ function SocialResults({ sources }: { sources: Record<string, any> }) {
 }
 
 function PersonsResults({ data }: { data: any }) {
-  const items = data?.persons || data?.results || []
-  if (!items.length) return <p className="text-gray-500 text-sm">Записів не знайдено</p>
+  const persons      = data?.persons || data?.results || []
+  const crimeReports = data?.crime_reports || []
+  if (!persons.length && !crimeReports.length)
+    return <p className="text-gray-500 text-sm">Записів не знайдено</p>
   return (
     <div className="space-y-1.5">
-      {items.slice(0, 10).map((p: any, i: number) => (
+      {persons.slice(0, 10).map((p: any, i: number) => (
         <a key={i} href={`/persons/${p.id}`} target="_blank"
           className="flex items-center gap-3 text-sm hover:bg-gray-800 rounded-lg px-3 py-2 transition">
           <span className="text-gray-500">👤</span>
-          <span className="text-white font-medium">{p.name_ukr || p.name_rus || p.name_eng}</span>
+          <span className="text-white font-medium">{p.name_ukr || p.name_rus || p.name_eng || p.name}</span>
           {p.rank && <span className="text-xs text-gray-500">{p.rank}</span>}
           {p.threat_score >= 70 && (
             <span className="ml-auto text-xs text-red-400">🔴 {p.threat_score}</span>
           )}
         </a>
       ))}
-      {data.total > 10 && (
+      {crimeReports.slice(0, 5).map((r: any, i: number) => (
+        <a key={`r${i}`} href={`/crime-reports/${r.id}`} target="_blank"
+          className="flex items-center gap-3 text-sm hover:bg-gray-800 rounded-lg px-3 py-2 transition">
+          <span className="text-gray-500">📂</span>
+          <span className="text-white font-medium">{r.title}</span>
+          {r.erdr_number && <span className="text-xs text-yellow-600 font-mono">{r.erdr_number}</span>}
+        </a>
+      ))}
+      {data?.total > 10 && (
         <p className="text-xs text-gray-600 px-3">...та ще {data.total - 10} записів</p>
       )}
     </div>

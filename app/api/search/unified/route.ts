@@ -5,6 +5,18 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 
+// Транслітерація укр→рос для ботів (боти мають RU бази, шукають по-росіяськи)
+function toRussian(text: string): string {
+  const MAP: Record<string, string> = {
+    'і': 'и', 'І': 'И',
+    'ї': 'и', 'Ї': 'И',
+    'є': 'е', 'Є': 'Е',
+    'ґ': 'г', 'Ґ': 'Г',
+    "'": '',  '’': '',  // апостроф прибираємо
+  }
+  return text.split('').map(c => MAP[c] ?? c).join('')
+}
+
 const VPS_URL          = process.env.VPS_URL          || 'https://evidencebases.com/odb-api'
 const LEAKOSINT_TOKEN  = process.env.LEAKOSINT_TOKEN  || ''
 const OSINTKIT_KEY     = process.env.OSINTKIT_API_KEY || ''
@@ -83,7 +95,7 @@ async function searchTelegramBots(name: string, dob: string) {
   // Actually use GET with query params
   try {
     const url = new URL(`${VPS_URL}/presence/search`)
-    url.searchParams.set('q', name)
+    url.searchParams.set('q', toRussian(name))
     if (dob) url.searchParams.set('dob', dob)
     const res = await fetch(url.toString(), { signal: AbortSignal.timeout(55000) })
     if (!res.ok) return { source: 'telegram_bots', error: `HTTP ${res.status}`, entries: [] }
@@ -113,7 +125,7 @@ async function searchSherlockBot(full_name: string, dob: string) {
     {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ full_name: full_name.toUpperCase(), dob }),
+      body:    JSON.stringify({ full_name: toRussian(full_name).toUpperCase(), dob }),
     },
     65000
   )
