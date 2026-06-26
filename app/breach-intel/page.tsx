@@ -1180,7 +1180,7 @@ function BreachIntelContent() {
               )}
 
               {/* ── ODB Internal Results ─────────────────────────────────── */}
-              {(odbLoading || odbSearched) && (
+              {(true) && (
                 <div className="max-w-2xl mb-5">
                   {/* Header */}
                   <div className="flex items-center gap-2 mb-3">
