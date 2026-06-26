@@ -249,8 +249,8 @@ export async function POST(req: NextRequest) {
   const entities = extractEntities(extractedText)
   const riskScore = cryptoRiskScore(entities)
 
-  // ── 4. AI Summary (Claude Haiku — async, не блокуємо) ─────────────────
-  const summary = await getAISummary(extractedText)
+  // AI Summary виноситься в окремий endpoint /api/crime-reports/[id]/summarize
+  // щоб не блокувати upload (Vercel 10s timeout)
 
   // ── 5. Watchlist check ────────────────────────────────────────────────────
   const watchlistHits: Array<{ entity_type: string; value: string; label: string; priority: string }> = []
@@ -291,7 +291,7 @@ export async function POST(req: NextRequest) {
       file_size_kb:  fileSizeKb,
       file_hash:     fileHash ?? null,
       extracted_text: extractedText.slice(0, 500_000), // ліміт 500k символів
-      summary,
+      summary: null, // генерується окремо через /api/crime-reports/[id]/summarize
       entities,
       crypto_risk_score: riskScore,
       watchlist_hits: watchlistHits,
@@ -304,11 +304,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: insertErr?.message ?? 'Insert failed' }, { status: 500 })
   }
 
-  // ── 7. Авто-додавання осіб з NER до таблиці persons ─────────────────────
+  // ── 7. Авто-додавання осіб з NER до таблиці persons (паралельно) ────────
   if (entities.names.length > 0) {
-    for (const nameFound of entities.names.slice(0, 20)) { // max 20 імен
+    await Promise.all(entities.names.slice(0, 20).map(async (nameFound) => {
       try {
-        // Шукаємо чи вже є така особа
         const { data: existing } = await supabase
           .from('persons')
           .select('id')
@@ -318,7 +317,6 @@ export async function POST(req: NextRequest) {
 
         let personId = existing?.id
         if (!personId) {
-          // Створюємо нову картку особи
           const { data: newPerson } = await supabase
             .from('persons')
             .insert({
@@ -341,8 +339,8 @@ export async function POST(req: NextRequest) {
             name_found:      nameFound,
           }, { onConflict: 'crime_report_id,person_id' })
         }
-      } catch { /* не блокуємо основний флоу */ }
-    }
+      } catch { /* non-blocking */ }
+    }))
   }
 
   // ── 8. Telegram: watchlist hits ───────────────────────────────────────────
@@ -366,7 +364,6 @@ export async function POST(req: NextRequest) {
     entities,
     risk_score: riskScore,
     watchlist_hits: watchlistHits.length,
-    has_summary: !!summary,
     text_length: extractedText.length,
   }, { status: 201 })
 }

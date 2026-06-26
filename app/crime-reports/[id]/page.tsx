@@ -58,6 +58,7 @@ export default function CrimeReportDetailPage() {
   const [reprocessMsg,  setReprocessMsg]  = useState('')
   const [manualText,    setManualText]    = useState('')
   const [showManual,    setShowManual]    = useState(false)
+  const [summarizing,   setSummarizing]   = useState(false)
 
   async function handleReprocess(useManual = false) {
     setReprocessing(true)
@@ -79,6 +80,19 @@ export default function CrimeReportDetailPage() {
       if (json.error?.includes('scanned')) setShowManual(true)
     }
     setReprocessing(false)
+  }
+
+  async function handleSummarize() {
+    if (!report) return
+    setSummarizing(true)
+    const res  = await fetch(`/api/crime-reports/${id}/summarize`, { method: 'POST' })
+    const json = await res.json()
+    if (res.ok && json.summary) {
+      setReport(prev => prev ? { ...prev, summary: json.summary } : prev)
+    } else {
+      setReprocessMsg(`❌ ${json.error ?? 'AI summary failed'}`)
+    }
+    setSummarizing(false)
   }
 
   const load = useCallback(async () => {
@@ -209,6 +223,14 @@ export default function CrimeReportDetailPage() {
                   style={{ borderColor: 'rgba(99,102,241,0.4)', color: '#818cf8' }}>
             {reprocessing ? '⟳ Обробка...' : '⟳ Перепарсити'}
           </button>
+          {!report.summary && report.extracted_text && (
+            <button onClick={handleSummarize} disabled={summarizing}
+                    title="Згенерувати AI аналіз документу"
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium border transition hover:bg-white/5"
+                    style={{ borderColor: 'rgba(251,191,36,0.4)', color: '#fbbf24' }}>
+              {summarizing ? '⟳ AI аналіз...' : '🤖 AI аналіз'}
+            </button>
+          )}
           <button onClick={handleDelete} disabled={deleting}
                   className="px-3 py-1.5 rounded-lg text-xs font-medium border transition"
                   style={{ borderColor: 'rgba(239,68,68,0.4)', color: '#ef4444' }}>
