@@ -78,27 +78,47 @@ export async function POST(req: NextRequest) {
 
   if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 })
 
-  // Auto-add persons from NER (same logic as upload)
+  // Auto-add persons from NER with full context (dob, rank, position)
   let personsAdded = 0
-  if (entities.names.length > 0) {
-    for (const nameFound of entities.names.slice(0, 20)) {
+  const personsToAdd = entities.persons ?? entities.names.map((n: string) => ({ name: n }))
+  if (personsToAdd.length > 0) {
+    await Promise.all(personsToAdd.slice(0, 20).map(async (person: any) => {
       try {
+        const nameFound = person.name
         const { data: existing } = await supabase
           .from('persons')
-          .select('id')
+          .select('id, dob, rank')
           .or(`name.ilike.${nameFound},name_ukr.ilike.${nameFound},name_rus.ilike.${nameFound}`)
           .limit(1)
           .maybeSingle()
         let personId = existing?.id
         if (!personId) {
+          const descParts: string[] = [`Автоматично додано з довідки: ${report.title}`]
+          if (person.rank)     descParts.push(`Звання: ${person.rank}`)
+          if (person.position) descParts.push(`Посада: ${person.position}`)
+          if (person.unit)     descParts.push(`Підрозділ: ${person.unit}`)
           const { data: newPerson } = await supabase
             .from('persons')
-            .insert({ name: nameFound, name_ukr: nameFound, status: 'з довідки', verified: false,
-                      sources: [`crime_report:${report_id}`],
-                      description: `Автоматично додано з довідки: ${report.title}` })
+            .insert({
+              name:        nameFound,
+              name_ukr:    nameFound,
+              status:      'з довідки',
+              verified:    false,
+              sources:     [`crime_report:${report_id}`],
+              dob:         person.dob  ?? null,
+              rank:        person.rank ?? null,
+              description: descParts.join(' | '),
+            })
             .select('id').single()
           personId = newPerson?.id
           if (personId) personsAdded++
+        } else {
+          const updates: Record<string, any> = {}
+          if (person.dob  && !existing.dob)  updates.dob  = person.dob
+          if (person.rank && !existing.rank) updates.rank = person.rank
+          if (Object.keys(updates).length > 0) {
+            await supabase.from('persons').update(updates).eq('id', personId)
+          }
         }
         if (personId) {
           await supabase.from('crime_report_persons').upsert(
@@ -107,7 +127,7 @@ export async function POST(req: NextRequest) {
           )
         }
       } catch { /* non-blocking */ }
-    }
+    }))
   }
 
   return NextResponse.json({
