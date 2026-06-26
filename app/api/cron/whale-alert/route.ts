@@ -24,7 +24,7 @@ const MIN_USD        = Number(process.env.WHALE_ALERT_MIN_USD         ?? 500_000
 const TG_THRESH      = Number(process.env.WHALE_ALERT_TG_THRESHOLD    ?? 1_000_000)
 const DIGEST_COOL_MS = Number(process.env.WHALE_ALERT_DIGEST_COOLDOWN ?? 5) * 60_000
 const APP_URL        = process.env.APP_URL ?? 'https://odb-one.vercel.app'
-const CHANNEL_ID       = process.env.WHALE_ALERT_CHANNEL_ID ?? ''
+const CHANNEL_ID       = process.env.WHALE_ALERT_CHANNEL_ID ?? process.env.CHANNEL_ID ?? ''
 const OFAC_SERVICE_URL = process.env.OFAC_SERVICE_URL ?? 'http://161.35.86.145:8012'
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
