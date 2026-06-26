@@ -85,6 +85,7 @@ export default function PhoneSearchPage() {
 
   // Результати за джерелами
   const [localPersons, setLocalPersons]   = useState<any[]>([])
+  const [localReports, setLocalReports]   = useState<any[]>([])
   const [leaksRes, setLeaksRes]           = useState<any>(null)
   const [nazkRes, setNazkRes]             = useState<any>(null)
   const [myroRes, setMyroRes]             = useState<any>(null)
@@ -123,22 +124,30 @@ export default function PhoneSearchPage() {
     setRunning(true)
 
     // Скидаємо
-    setLocalPersons([]); setLeaksRes(null); setNazkRes(null)
+    setLocalPersons([]); setLocalReports([]); setLeaksRes(null); setNazkRes(null)
     setMyroRes(null); setTgPhoneRes(null); setErbRes(null); setMvsRes(null)
 
-    // ── 1. Локальна DB осіб ──────────────────────────────────────────────────
+    // ── 1. Локальна DB осіб + crime_reports ─────────────────────────────────
     setLoadingLocal(true)
     ;(async () => {
       try {
         const fragBody: Record<string, string> = {}
-        if (type === 'phone')    fragBody.phone = q
-        if (type === 'inn')      fragBody.ipn   = q.replace(/\D/g,'')
-        if (type === 'snils')    fragBody.snils  = q.replace(/\D/g,'')
+        if (type === 'phone')    fragBody.phone    = q
+        if (type === 'inn')      fragBody.ipn      = q.replace(/\D/g,'')
+        if (type === 'snils')    fragBody.snils    = q.replace(/\D/g,'')
         if (type === 'passport') fragBody.passport = q
-        if (type === 'email')    fragBody.email  = q
+        if (type === 'email')    fragBody.email    = q
         if (type === 'unknown' || type === 'vk') fragBody.last_name = q
-        const r = await post('/api/search/fragments', fragBody)
-        setLocalPersons(r.results || [])
+
+        const promises: [Promise<any>, Promise<any>] = [
+          post('/api/search/fragments', fragBody),
+          (type === 'unknown')
+            ? fetch(`/api/crime-reports?q=${encodeURIComponent(q)}&limit=10`).then(r => r.json())
+            : Promise.resolve(null),
+        ]
+        const [persR, repR] = await Promise.all(promises)
+        setLocalPersons(persR?.results || [])
+        setLocalReports(repR?.data || [])
       } catch {}
       setLoadingLocal(false)
     })()
@@ -355,8 +364,8 @@ export default function PhoneSearchPage() {
 
                 {/* ── Місцева база осіб ── */}
                 <SourceCard icon="🛡️" title="Локальна база ODB" color="text-blue-400"
-                  loading={loadingLocal} count={localPersons.length}>
-                  {localPersons.length > 0 ? (
+                  loading={loadingLocal} count={localPersons.length + localReports.length}>
+                  {(localPersons.length > 0 || localReports.length > 0) ? (
                     <div className="space-y-2">
                       {localPersons.map((p: any, i: number) => (
                         <div key={i}
@@ -381,6 +390,22 @@ export default function PhoneSearchPage() {
                           {p.myrotvorets_url && (
                             <span className="mt-1 inline-block text-xs text-red-400">🚨 Миротворець</span>
                           )}
+                        </div>
+                      ))}
+                      {localReports.map((r: any, i: number) => (
+                        <div key={`r${i}`}
+                          onClick={() => router.push(`/crime-reports/${r.id}`)}
+                          className="p-3 rounded-lg bg-yellow-950/20 border border-yellow-800/30 cursor-pointer hover:bg-yellow-950/40 transition">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-full bg-yellow-900/40 flex items-center justify-center shrink-0 text-sm">📂</div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-white text-sm font-medium truncate">{r.title}</p>
+                              <div className="flex gap-2 flex-wrap">
+                                {r.erdr_number && <span className="text-yellow-600 text-xs font-mono">{r.erdr_number}</span>}
+                                {r.location && <span className="text-gray-400 text-xs">{r.location}</span>}
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       ))}
                     </div>
