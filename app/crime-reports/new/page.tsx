@@ -17,6 +17,7 @@ interface FileEntry {
   date:     string
   preview:  string
   autoFill: boolean
+  progress?: number  // 0-100, тільки під час uploading
   result?:  { id: string; risk_score: number; entities: { names: string[]; phones: string[]; crypto: unknown[]; vehicles: string[] } }
   error?:   string
 }
@@ -99,15 +100,30 @@ export default function NewCrimeReportPage() {
         if (entry.location) form.append('location',      entry.location)
         if (entry.date)     form.append('incident_date', entry.date)
 
-        const res  = await fetch('/api/crime-reports', { method: 'POST', body: form })
-        const json = await res.json()
+        const json = await new Promise<{ status: number; body: any }>((resolve, reject) => {
+          const xhr = new XMLHttpRequest()
+          xhr.open('POST', '/api/crime-reports')
+          xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) {
+              const pct = Math.round((e.loaded / e.total) * 90) // 0-90% — upload
+              update(entry.uid, { progress: pct })
+            }
+          }
+          xhr.onload = () => {
+            update(entry.uid, { progress: 100 })
+            try { resolve({ status: xhr.status, body: JSON.parse(xhr.responseText) }) }
+            catch { resolve({ status: xhr.status, body: {} }) }
+          }
+          xhr.onerror = () => reject(new Error('Network error'))
+          xhr.send(form)
+        })
 
-        if (res.status === 409) {
+        if (json.status === 409) {
           update(entry.uid, { status: 'duplicate', error: `ЄРДР ${entry.erdr} вже існує` })
-        } else if (!res.ok) {
-          update(entry.uid, { status: 'error', error: json.error ?? 'Помилка завантаження' })
+        } else if (json.status >= 400) {
+          update(entry.uid, { status: 'error', error: json.body?.error ?? 'Помилка завантаження' })
         } else {
-          update(entry.uid, { status: 'done', result: json })
+          update(entry.uid, { status: 'done', result: json.body })
         }
       } catch (err) {
         update(entry.uid, { status: 'error', error: String(err) })
@@ -274,11 +290,31 @@ function FileCard({ entry, onChange, onRemove, onOpenReport }: FileCardProps) {
             <p className="text-xs mt-1" style={{ color:'#ef4444' }}>{entry.error}</p>
           )}
 
-          {/* Uploading spinner */}
+          {/* Uploading progress */}
           {entry.status === 'uploading' && (
-            <p className="text-xs mt-1" style={{ color:'var(--odb-accent-hi)' }}>
-              Завантаження та NER-аналіз...
-            </p>
+            <div className="mt-2 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs" style={{ color:'var(--odb-accent-hi)' }}>
+                  {(entry.progress ?? 0) < 90
+                    ? `⬆ Завантаження… ${entry.progress ?? 0}%`
+                    : '⚙ NER-аналіз…'}
+                </span>
+                <span className="text-xs" style={{ color:'var(--odb-text-faint)' }}>
+                  {(entry.progress ?? 0) < 90 ? `${entry.progress ?? 0}%` : ''}
+                </span>
+              </div>
+              <div className="w-full rounded-full overflow-hidden" style={{ height: 4, background: 'rgba(255,255,255,0.08)' }}>
+                <div
+                  className="h-full rounded-full transition-all duration-300"
+                  style={{
+                    width: `${entry.progress ?? 0}%`,
+                    background: (entry.progress ?? 0) < 90
+                      ? 'linear-gradient(90deg, #6366f1, #818cf8)'
+                      : 'linear-gradient(90deg, #f59e0b, #fbbf24)',
+                  }}
+                />
+              </div>
+            </div>
           )}
 
           {/* Parsing spinner */}
