@@ -901,8 +901,71 @@ function formatSingleTx(intel: TxIntel): string {
   return lines.join('\n')
 }
 
-// ─── Paid Channel Formatter (signal-focused, for traders) ────────────────────
-function formatChannelSignal(intels: TxIntel[]): string {
+// ─── Trader Insight Builder (людська мова для початківців) ───────────────────
+function buildTraderInsight(intel: TxIntel): { headline: string; action: string; meaning: string; play: string } {
+  const { tx, signal, is_transit, is_structuring } = intel
+  const { dir } = getFlowDir(tx)
+  const ac = getAssetClass(tx.symbol)
+  const sym = tx.symbol.toUpperCase()
+  const toName = tx.to_owner && !isUnknown(tx.to_owner) ? tx.to_owner : null
+  const fromName = tx.from_owner && !isUnknown(tx.from_owner) ? tx.from_owner : null
+
+  // AML override
+  if (is_structuring) return {
+    headline: '🔴 ПІДОЗРІЛА АКТИВНІСТЬ',
+    action:   `${sym} дробиться на кілька транзакцій для приховування`,
+    meaning:  'Класична схема відмивання грошей. Великі кошти розбивають на рівні частини щоб уникнути виявлення.',
+    play:     'Не торгова ситуація — слідчий сигнал.',
+  }
+  if (is_transit) return {
+    headline: '🟡 РІВЕНЬ ЗАГРОЗИ: НЕЙТРАЛЬНИЙ',
+    action:   `${sym} прийшов і одразу переслали далі (relay-гаманець)`,
+    meaning:  'Кошти просто проходять через проміжний гаманець. Капітал перерозподіляють, не продають.',
+    play:     'Спостерігай — якщо гроші підуть на біржу після цього, буде торговий сигнал.',
+  }
+
+  // Flow-based
+  if (dir === 'inflow' && ac === 'stable') return {
+    headline: '🟢 ПОЗИТИВНИЙ СИГНАЛ',
+    action:   `$${usdFmt(tx.amount_usd)} ${sym} зайшло на ${toName ?? 'біржу'}`,
+    meaning:  'Завели "паливо для росту". Великі гроші принесли стейблкоїни на біржу — готуються купувати BTC/ETH. Купівельний тиск зростає.',
+    play:     `Розглянь лонг BTC або ETH. Ціна може піти вгору 📈`,
+  }
+  if (dir === 'outflow' && ac === 'volatile') return {
+    headline: '🟢 ПОЗИТИВНИЙ СИГНАЛ',
+    action:   `$${usdFmt(tx.amount_usd)} ${sym} вийшло з ${fromName ?? 'біржі'} на холодний гаманець`,
+    meaning:  'Активи ховають, продавати не будуть. Кит виводить монети на зберігання — зменшується кількість монет на біржі, дефіцит.',
+    play:     `HODL або докуп ${sym}. Продавці зменшуються 📉➡️📈`,
+  }
+  if (dir === 'inflow' && ac === 'volatile') return {
+    headline: '🔴 РИЗИК ДЛЯ ЦІНИ',
+    action:   `$${usdFmt(tx.amount_usd)} ${sym} зайшло на ${toName ?? 'біржу'}`,
+    meaning:  'Увага, можливий розпродаж. Кит приніс монети на біржу щоб зафіксувати прибуток. Тиск на продаж.',
+    play:     `Будь обережний з лонгами. Ціна ${sym} може піти вниз 📉`,
+  }
+  if (dir === 'outflow' && ac === 'stable') return {
+    headline: '🟡 РІВЕНЬ ЗАГРОЗИ: НЕЙТРАЛЬНИЙ',
+    action:   `$${usdFmt(tx.amount_usd)} ${sym} вийшло з ${fromName ?? 'біржі'}`,
+    meaning:  'OTC або custody розрахунок. Стейблкоїни виходять з біржі — може бути OTC угода або переказ між рахунками.',
+    play:     'Нейтральна ситуація, ринку не впливає.',
+  }
+  if (dir === 'inter_exchange') return {
+    headline: '🟡 РІВЕНЬ ЗАГРОЗИ: НЕЙТРАЛЬНИЙ',
+    action:   `$${usdFmt(tx.amount_usd)} ${sym} між ${fromName ?? '?'} → ${toName ?? '?'}`,
+    meaning:  'Ребалансування між біржами. Капітал просто переміщується між платформами.',
+    play:     'Спостерігай. Може бути підготовка до великої позиції.',
+  }
+
+  return {
+    headline: signal.direction === 'BULLISH' ? '🟢 ПОЗИТИВНИЙ СИГНАЛ' : signal.direction === 'BEARISH' ? '🔴 РИЗИК ДЛЯ ЦІНИ' : '🟡 НЕЙТРАЛЬНО',
+    action:   `$${usdFmt(tx.amount_usd)} ${sym} (${chainLabel(tx.blockchain)})`,
+    meaning:  signal.reason,
+    play:     'Аналізуй додатково перед входом.',
+  }
+}
+
+// ─── Paid Channel Formatter (beginner-friendly trader format) ─────────────────
+function formatChannelSignal(intels: TxIntel[], uahPremium?: number | null): string {
   const total = intels.reduce((s, i) => s + i.tx.amount_usd, 0)
   const flows = computeFlowSignals(intels.map(i => i.tx))
 
@@ -910,55 +973,66 @@ function formatChannelSignal(intels: TxIntel[]): string {
   const bearishFlows = [...flows.values()].filter(f => f.signal === 'BEARISH')
 
   let dominantEmoji = '⚪'
-  let dominantLabel = 'MIXED'
-  if (bearishFlows.length > bullishFlows.length) { dominantEmoji = '🔴'; dominantLabel = 'BEARISH' }
-  else if (bullishFlows.length > bearishFlows.length) { dominantEmoji = '🟢'; dominantLabel = 'BULLISH' }
+  let dominantLabel = 'ЗМІШАНІ СИГНАЛИ'
+  if (bearishFlows.length > bullishFlows.length) { dominantEmoji = '🔴'; dominantLabel = 'РИЗИК ДЛЯ РИНКУ' }
+  else if (bullishFlows.length > bearishFlows.length) { dominantEmoji = '🟢'; dominantLabel = 'РИНОК ГОТУЄТЬСЯ РОСТИ' }
 
-  const highConf = intels.filter(i => i.signal.confidence === 'HIGH')
-
-  const netLines = [...flows.values()]
-    .filter(f => f.signal !== 'NEUTRAL')
-    .map(f => {
-      const e = f.signal === 'BULLISH' ? '🟢' : '🔴'
-      return `  ${f.asset} ${e} нетто ${f.net_flow_usd >= 0 ? '+' : ''}$${usdFmt(f.net_flow_usd)} (conf ${Math.round(f.confidence*100)}%)`
-    })
+  // Шкала жадібності/паніки
+  const riskAvg = Math.round(intels.reduce((s, i) => s + i.risk_score, 0) / intels.length)
+  const panicBar = riskAvg >= 70 ? '🔴🔴🔴🔴🔴' : riskAvg >= 50 ? '🔴🔴🔴⚪⚪' : riskAvg >= 30 ? '🟡🟡⚪⚪⚪' : '🟢⚪⚪⚪⚪'
 
   const lines: string[] = [
-    `📡 <b>ODB Crypto Signal</b> · ${dominantEmoji} ${dominantLabel}`,
-    `💰 $${usdFmt(total)} · ${intels.length} транзакцій`,
-    ...(netLines.length ? [``, ...netLines] : []),
+    `📡 <b>ODB WHALE SIGNAL</b>`,
+    `${dominantEmoji} <b>${dominantLabel}</b>`,
+    `💰 <b>$${usdFmt(total)}</b> · ${intels.length} транзакцій`,
+    ``,
+    `<b>Шкала ризику:</b> ${panicBar} ${riskAvg}/100`,
     ``,
   ]
 
-  if (highConf.length) {
-    lines.push(`🎯 <b>HIGH CONFIDENCE сигнали:</b>`)
-    for (const { tx, signal, risk_score } of highConf) {
-      const sigEmoji = signal.direction === 'BEARISH' ? '🔴' : '🟢'
-      const from = partyDisplay(tx.from_owner, tx.from_owner_type, tx.from_address, tx.blockchain)
-      const to   = partyDisplay(tx.to_owner, tx.to_owner_type, tx.to_address, tx.blockchain)
+  // UAH арбітражне вікно
+  if (uahPremium != null && Math.abs(uahPremium) >= 1) {
+    const arbDir = uahPremium < 0 ? 'нижче' : 'вище'
+    const arbEmoji = uahPremium < 0 ? '⚡' : '⚡'
+    lines.push(
+      `${arbEmoji} <b>Арбітражне вікно WhiteBit:</b>`,
+      `   Зараз BTC на WhiteBit <b>${arbDir}</b> за справедливу ціну на <b>${Math.abs(uahPremium).toFixed(2)}%</b>`,
+      uahPremium < 0
+        ? `   Купити тут вигідніше — потенційний прибуток ${Math.abs(uahPremium).toFixed(2)}%`
+        : `   Продати тут вигідніше — або дочекайся зниження ціни`,
+      ``,
+    )
+  }
+
+  // Топ сигнали з людською інтерпретацією
+  const topSignals = intels
+    .filter(i => i.signal.direction !== 'NEUTRAL' || i.risk_score >= 60)
+    .sort((a, b) => b.tx.amount_usd - a.tx.amount_usd)
+    .slice(0, 4)
+
+  if (topSignals.length) {
+    lines.push(`━━━━━━━━━━━━`)
+    for (const intel of topSignals) {
+      const insight = buildTraderInsight(intel)
       lines.push(
-        `${sigEmoji} <b>$${usdFmt(tx.amount_usd)} ${tx.symbol}</b> · Risk ${risk_score}/100`,
-        `   ${from} → ${to}`,
-        `   ${signal.reason}`,
+        `<b>${insight.headline}</b>`,
+        `📌 <b>Суть:</b> ${insight.action}`,
+        `💡 <b>Що це означає:</b> ${insight.meaning}`,
+        `💰 <b>Потенційний заробіток:</b> ${insight.play}`,
         ``,
       )
     }
   }
 
-  // Решта high-risk
-  const rest = intels.filter(i => i.signal.confidence !== 'HIGH' && i.risk_score >= 50)
+  // Решта у компактному вигляді
+  const rest = intels.filter(i => !topSignals.includes(i))
   if (rest.length) {
-    lines.push(`⚠️ <b>Підозрілі (${rest.length}):</b>`)
-    for (const { tx, signal, risk_score } of rest) {
-      const sigEmoji = signal.direction === 'BEARISH' ? '🔴' : signal.direction === 'BULLISH' ? '🟢' : '⚪'
-      const from = partyDisplay(tx.from_owner, tx.from_owner_type, tx.from_address, tx.blockchain)
-      const to   = partyDisplay(tx.to_owner, tx.to_owner_type, tx.to_address, tx.blockchain)
-      lines.push(`  ${sigEmoji} $${usdFmt(tx.amount_usd)} ${tx.symbol} · ${from} → ${to} · Risk ${risk_score}/100`)
-    }
+    const restTotal = rest.reduce((s, i) => s + i.tx.amount_usd, 0)
+    lines.push(`📋 Ще ${rest.length} транзакцій на $${usdFmt(restTotal)} — деталі на дашборді`)
     lines.push(``)
   }
 
-  lines.push(`🔎 Деталі → ODB Platform · @odb_osint_monitor_bot`)
+  lines.push(`🔎 <a href="${APP_URL}/admin/whale-alert">ODB Whale Dashboard</a> · @odb_osint_monitor_bot`)
   return lines.join('\n')
 }
 
@@ -1160,6 +1234,28 @@ export async function GET(req: NextRequest) {
 
         const mainSent = await sendTelegramMessage(text, 'HTML', undefined, { inline_keyboard: keyboard })
 
+        // ── Fetch UAH premium for arbitrage window ────────────────────────
+        let uahPremium: number | null = null
+        try {
+          const [tickRes, nbuRes] = await Promise.allSettled([
+            fetch('https://whitebit.com/api/v4/public/ticker', { signal: AbortSignal.timeout(4_000), cache: 'no-store' }),
+            fetch('https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?valcode=USD&json', { signal: AbortSignal.timeout(4_000) }),
+          ])
+          if (tickRes.status === 'fulfilled' && tickRes.value.ok &&
+              nbuRes.status === 'fulfilled' && nbuRes.value.ok) {
+            const tickers = await tickRes.value.json() as Record<string, any>
+            const nbuData = await nbuRes.value.json() as Array<{ rate: number }>
+            const nbuRate    = nbuData[0]?.rate
+            const btcUah     = parseFloat(tickers['BTC_UAH']?.last_price ?? '0')
+            const btcUsdt    = parseFloat(tickers['BTC_USDT']?.last_price ?? '0')
+            if (nbuRate && btcUah && btcUsdt) {
+              const fairBtcUah = btcUsdt * nbuRate
+              uahPremium = ((btcUah - fairBtcUah) / fairBtcUah) * 100
+              log.push(`▶ UAH Premium: ${uahPremium.toFixed(2)}%`)
+            }
+          }
+        } catch { /* graceful degradation */ }
+
         // ── Платний канал: HIGH confidence або sanctions ───────────────────
         if (CHANNEL_ID) {
           const signalWorthy = intels.filter(i =>
@@ -1170,7 +1266,7 @@ export async function GET(req: NextRequest) {
           )
           if (signalWorthy.length > 0) {
             await sendTelegramMessage(
-              formatChannelSignal(signalWorthy),
+              formatChannelSignal(signalWorthy, uahPremium),
               'HTML',
               { chat_id: CHANNEL_ID },
               { inline_keyboard: [[
