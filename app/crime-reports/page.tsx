@@ -50,6 +50,8 @@ export default function CrimeReportsPage() {
   const [loading, setLoading] = useState(true)
   const [query,   setQuery]   = useState('')
   const [riskFilter, setRiskFilter] = useState(0)
+  const [bulkState, setBulkState] = useState<'idle'|'running'|'done'>('idle')
+  const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0 })
 
   const load = useCallback(async (q: string, minRisk: number) => {
     setLoading(true)
@@ -69,6 +71,24 @@ export default function CrimeReportsPage() {
     load(query, riskFilter)
   }
 
+  async function handleBulkReprocess() {
+    setBulkState('running')
+    setBulkProgress({ done: 0, total: 0 })
+    let offset = 0
+    let totalDone = 0
+    while (true) {
+      const res  = await fetch('/api/crime-reports/reprocess-all', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ offset }) })
+      const json = await res.json()
+      totalDone += json.processed ?? 0
+      offset = json.next_offset ?? offset
+      setBulkProgress({ done: totalDone, total: offset })
+      if (json.done) break
+    }
+    setBulkState('done')
+    load(query, riskFilter)
+    setTimeout(() => setBulkState('idle'), 5000)
+  }
+
   const totalEntities = (r: CrimeReport) =>
     r.entities.names.length + r.entities.phones.length + r.entities.crypto.length +
     r.entities.vehicles.length + r.entities.ipn.length
@@ -86,13 +106,27 @@ export default function CrimeReportsPage() {
             Аналіз документів · NER · Крипто-ризик · Watchlist
           </p>
         </div>
-        <button
-          onClick={() => router.push('/crime-reports/new')}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-black transition-all hover:opacity-90"
-          style={{ background: 'linear-gradient(135deg, var(--odb-accent-hi), var(--odb-accent-lo))' }}
-        >
-          + Завантажити довідку
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleBulkReprocess}
+            disabled={bulkState === 'running'}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all hover:opacity-90 disabled:opacity-50"
+            style={{ background: 'var(--odb-surface-2)', color: 'var(--odb-text-faint)', border: '1px solid var(--odb-border-soft)' }}
+          >
+            {bulkState === 'running'
+              ? `⟳ Обробка… ${bulkProgress.done}/${bulkProgress.total}`
+              : bulkState === 'done'
+              ? `✓ Готово (${bulkProgress.done})`
+              : '⟳ Перепарсити всі'}
+          </button>
+          <button
+            onClick={() => router.push('/crime-reports/new')}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-black transition-all hover:opacity-90"
+            style={{ background: 'linear-gradient(135deg, var(--odb-accent-hi), var(--odb-accent-lo))' }}
+          >
+            + Завантажити довідку
+          </button>
+        </div>
       </div>
 
       {/* Search bar */}
