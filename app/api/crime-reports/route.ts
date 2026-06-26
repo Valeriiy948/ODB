@@ -87,11 +87,12 @@ export async function GET(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { searchParams } = req.nextUrl
-  const q        = searchParams.get('q') ?? ''
+  const q          = searchParams.get('q') ?? ''
   const personName = searchParams.get('person_name') ?? ''
-  const riskMin  = parseInt(searchParams.get('risk_min') ?? '0')
-  const limit    = Math.min(parseInt(searchParams.get('limit')  ?? '30'), 100)
-  const offset   = parseInt(searchParams.get('offset') ?? '0')
+  const personId   = searchParams.get('person_id') ?? ''
+  const riskMin    = parseInt(searchParams.get('risk_min') ?? '0')
+  const limit      = Math.min(parseInt(searchParams.get('limit')  ?? '30'), 100)
+  const offset     = parseInt(searchParams.get('offset') ?? '0')
 
   const baseSelect = 'id,title,erdr_number,location,incident_date,file_type,crypto_risk_score,entities,tags,status,created_at,summary,watchlist_hits'
 
@@ -137,6 +138,14 @@ export async function GET(req: NextRequest) {
     }
     if (riskMin > 0) results = results.filter((r: any) => r.crypto_risk_score >= riskMin)
     results = results.slice(offset, offset + limit)
+  } else if (personId) {
+    // Search via crime_report_persons junction table (direct person↔report link)
+    const { data: links } = await supabase
+      .from('crime_report_persons')
+      .select(`crime_report_id, crime_reports!inner(${baseSelect})`)
+      .eq('person_id', personId)
+      .limit(limit)
+    results = (links ?? []).map((l: any) => l.crime_reports).filter(Boolean)
   } else {
     let query = supabase
       .from('crime_reports')
