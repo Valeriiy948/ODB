@@ -351,7 +351,7 @@ export default function PersonDetailPage() {
           )}
 
           {s.activeTab === 'crime_reports' && p && (
-            <CrimeReportsTab personName={p.name || p.name_ukr || p.name_rus || ''} />
+            <CrimeReportsTab personId={p.id} personName={p.name || p.name_ukr || p.name_rus || ''} />
           )}
 
           {s.activeTab === 'notes' && (
@@ -440,7 +440,7 @@ interface CrimeReport {
   entities: { names: string[]; phones: string[]; crypto: unknown[]; vehicles: string[] }
 }
 
-function CrimeReportsTab({ personName }: { personName: string }) {
+function CrimeReportsTab({ personId, personName }: { personId: string; personName: string }) {
   const [reports, setReports] = useState<CrimeReport[]>([])
   const [loading, setLoading] = useState(true)
   const [query,   setQuery]   = useState(personName)
@@ -453,12 +453,16 @@ function CrimeReportsTab({ personName }: { personName: string }) {
 
   async function search(q: string) {
     setLoading(true)
-    // спочатку точний збіг в entities.names, потім FTS по тексту
-    const [r1, r2] = await Promise.all([
-      fetch(`/api/crime-reports?person_name=${encodeURIComponent(q)}&limit=20`).then(r => r.json()),
+    // 3 шляхи: junction table (по person_id), entities.names, FTS
+    const fetches: Promise<any>[] = [
       fetch(`/api/crime-reports?q=${encodeURIComponent(q)}&limit=20`).then(r => r.json()),
-    ])
-    const all = [...(r1.data ?? []), ...(r2.data ?? [])]
+      fetch(`/api/crime-reports?person_name=${encodeURIComponent(q)}&limit=20`).then(r => r.json()),
+    ]
+    if (personId) fetches.push(
+      fetch(`/api/crime-reports?person_id=${encodeURIComponent(personId)}&limit=20`).then(r => r.json())
+    )
+    const results = await Promise.all(fetches)
+    const all = results.flatMap(r => r.data ?? [])
     const seen = new Set<string>()
     setReports(all.filter(r => { if (seen.has(r.id)) return false; seen.add(r.id); return true }))
     setLoading(false)

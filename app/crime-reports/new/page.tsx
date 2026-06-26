@@ -44,7 +44,11 @@ export default function NewCrimeReportPage() {
   }
 
   async function addFiles(files: FileList | File[]) {
-    const arr = Array.from(files)
+    const arr = Array.from(files).filter(f => {
+      const alreadyIn = queue.some(e => e.file.name === f.name && e.file.size === f.size)
+      return !alreadyIn
+    })
+    if (!arr.length) return
     const entries: FileEntry[] = arr.map(f => ({
       uid:      uid(),
       file:     f,
@@ -136,9 +140,9 @@ export default function NewCrimeReportPage() {
     setQueue(q => q.filter(e => e.uid !== u))
   }
 
-  const doneCount      = queue.filter(e => e.status === 'done').length
-  const pendingCount   = queue.filter(e => e.status === 'ready').length
-  const parsingCount   = queue.filter(e => e.status === 'parsing').length
+  const doneCount    = queue.filter(e => e.status === 'done').length
+  const pendingCount = queue.filter(e => e.status === 'ready').length
+  const parsingCount = queue.filter(e => e.status === 'parsing').length
 
   return (
     <div className="min-h-screen flex" style={{ background: 'var(--odb-bg)' }}>
@@ -287,7 +291,14 @@ function FileCard({ entry, onChange, onRemove, onOpenReport }: FileCardProps) {
 
           {/* Error/duplicate message */}
           {(entry.status === 'error' || entry.status === 'duplicate') && entry.error && (
-            <p className="text-xs mt-1" style={{ color:'#ef4444' }}>{entry.error}</p>
+            <div className="flex items-center gap-2 mt-1">
+              <p className="text-xs" style={{ color:'#ef4444' }}>{entry.error}</p>
+              <button onClick={() => onChange({ status: 'ready', error: undefined })}
+                      className="text-xs px-2 py-0.5 rounded shrink-0"
+                      style={{ background:'rgba(239,68,68,0.15)', color:'#ef4444' }}>
+                Спробувати знову
+              </button>
+            </div>
           )}
 
           {/* Uploading progress */}
