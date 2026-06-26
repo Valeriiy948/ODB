@@ -291,7 +291,14 @@ function FileCard({ entry, onChange, onRemove, onOpenReport }: FileCardProps) {
 
           {/* Error/duplicate message */}
           {(entry.status === 'error' || entry.status === 'duplicate') && entry.error && (
-            <p className="text-xs mt-1" style={{ color:'#ef4444' }}>{entry.error}</p>
+            <div className="flex items-center gap-2 mt-1">
+              <p className="text-xs" style={{ color:'#ef4444' }}>{entry.error}</p>
+              <button onClick={() => onChange({ status: 'ready', error: undefined })}
+                      className="text-xs px-2 py-0.5 rounded shrink-0"
+                      style={{ background:'rgba(239,68,68,0.15)', color:'#ef4444' }}>
+                Спробувати знову
+              </button>
+            </div>
           )}
 
           {/* Uploading progress */}
