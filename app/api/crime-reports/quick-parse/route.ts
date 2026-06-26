@@ -76,9 +76,21 @@ function extractLocation(text: string): string | null {
 }
 
 function extractTitle(text: string): string | null {
-  // Шукаємо рядок одразу після "ДОВІДКА" / "ПРОТОКОЛ" тощо
-  const m = text.match(/(?:ДОВІДКА|ПРОТОКОЛ|АКТ|ВИСНОВОК|ЗВІТ)\s*\n?\s*(.{5,120}?)(?:\n|$)/i)
-  return m ? m[1].trim().replace(/\s+/g, ' ').slice(0, 120) : null
+  // Шукаємо тип документу у перших 600 символах
+  const head = text.slice(0, 600)
+  const TYPE_RE = /\b(ДОВІДКА|ПІДОЗРА|ОБВИНУВАЧЕННЯ|ПРОТОКОЛ|АКТ|ВИСНОВОК|ЗВІТ|ВИРОК|УХВАЛА|ПОСТАНОВА|КЛОПОТАННЯ|ПОВІДОМЛЕННЯ)\b/i
+  const typeMatch = head.match(TYPE_RE)
+  if (!typeMatch) return null
+
+  const typeName = typeMatch[0].trim()
+  // Беремо текст після типу документу на тому ж або наступному рядку
+  const after = head.slice((typeMatch.index ?? 0) + typeName.length).replace(/^[\s\n:]+/, '').slice(0, 160)
+  const line = after.split('\n')[0].trim().replace(/\s+/g, ' ')
+
+  // Відкидаємо якщо починається з малої букви (середина речення) або занадто коротко
+  if (!line || line.length < 5 || /^[а-яіїєё]/.test(line)) return typeMatch[0].trim()
+
+  return `${typeName} ${line}`.slice(0, 120)
 }
 
 // ── Route ─────────────────────────────────────────────────────────────────────
