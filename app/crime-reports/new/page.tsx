@@ -140,10 +140,9 @@ export default function NewCrimeReportPage() {
     setQueue(q => q.filter(e => e.uid !== u))
   }
 
-  const doneCount      = queue.filter(e => e.status === 'done').length
-  const pendingCount   = queue.filter(e => e.status === 'ready').length
-  const parsingCount   = queue.filter(e => e.status === 'parsing').length
-  const duplicateCount = queue.filter(e => e.status === 'duplicate').length
+  const doneCount    = queue.filter(e => e.status === 'done').length
+  const pendingCount = queue.filter(e => e.status === 'ready').length
+  const parsingCount = queue.filter(e => e.status === 'parsing').length
 
   return (
     <div className="min-h-screen flex" style={{ background: 'var(--odb-bg)' }}>
@@ -168,11 +167,10 @@ export default function NewCrimeReportPage() {
               </span>
             )}
             {pendingCount > 0 && (
-              <button onClick={uploadAll} disabled={running || parsingCount > 0 || duplicateCount > 0}
-                      title={duplicateCount > 0 ? 'Видаліть дублікати перед завантаженням' : undefined}
+              <button onClick={uploadAll} disabled={running || parsingCount > 0}
                       className="px-4 py-2 rounded-xl text-sm font-semibold text-black disabled:opacity-50"
                       style={{ background:'linear-gradient(135deg, var(--odb-accent-hi), var(--odb-accent-lo))' }}>
-                {running ? 'Завантажуємо...' : duplicateCount > 0 ? `${duplicateCount} дублікат(и) — видаліть` : `Завантажити ${pendingCount} файл${pendingCount > 1 ? 'и' : ''}`}
+                {running ? 'Завантажуємо...' : `Завантажити ${pendingCount} файл${pendingCount > 1 ? 'и' : ''}`}
               </button>
             )}
           </div>
