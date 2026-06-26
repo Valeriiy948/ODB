@@ -92,8 +92,8 @@ export default function WhiteBitIntelPage() {
         const nbuData = await nbuRes.value.json() as { rate: number }
         if (nbuData?.rate) {
           setLastScan(prev => prev
-            ? { ...prev, nbu_rate: nbuData[0].rate }
-            : { ok: true, elapsed_ms: 0, markets_scanned: 0, snapshots_saved: 0, signals_found: 0, tg_sent: 0, uah_premium: null, nbu_rate: nbuData[0].rate }
+            ? { ...prev, nbu_rate: nbuData.rate }
+            : { ok: true, elapsed_ms: 0, markets_scanned: 0, snapshots_saved: 0, signals_found: 0, tg_sent: 0, uah_premium: null, nbu_rate: nbuData.rate }
           )
         }
       }
