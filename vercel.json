@@ -5,10 +5,6 @@
       "schedule": "0 0 * * *"
     },
     {
-      "path": "/api/cron/whitebit-brief",
-      "schedule": "0 7 * * *"
-    },
-    {
       "path": "/api/cron/whale-alert",
       "schedule": "0 * * * *"
     },
